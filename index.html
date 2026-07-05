@@ -9,18 +9,22 @@
   <meta property="og:title" content="Lumian Services. Sauber. Schnell. Frisch.">
   <meta property="og:description" content="Fenster, Storen, Dachrinnen und Aussenreinigung in der Zentralschweiz. Jung, fair und unkompliziert.">
   <meta property="og:type" content="website">
-  <meta name="twitter:image" content="https://mrkabu80.github.io/LumianServices/assets/img/og-image.png">
+  <meta name="twitter:image" content="https://www.lumianservices.ch/assets/img/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta property="og:site_name" content="Lumian Services">
   <meta property="og:image:height" content="630">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:type" content="image/png">
-  <meta property="og:image:secure_url" content="https://mrkabu80.github.io/LumianServices/assets/img/og-image.png">
-  <meta property="og:url" content="https://mrkabu80.github.io/LumianServices/">
-  <meta property="og:image" content="https://mrkabu80.github.io/LumianServices/assets/img/og-image.png">
+  <meta property="og:image:secure_url" content="https://www.lumianservices.ch/assets/img/og-image.png">
+  <meta property="og:url" content="https://www.lumianservices.ch/">
+  <meta property="og:image" content="https://www.lumianservices.ch/assets/img/og-image.png">
   <link rel="icon" href="assets/img/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/img/favicon-192.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/img/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Lumian">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preload" href="styles.css" as="style">
   <link rel="stylesheet" href="styles.css">
   <script type="application/ld+json">
@@ -344,6 +348,17 @@
         <a class="btn btn-primary" href="#booking">Jetzt anfragen</a>
       </div>
     </section>
+
+    <section class="app-cta section-pad-sm" id="app">
+      <div class="container app-card reveal">
+        <div>
+          <p class="section-kicker">Als App speichern</p>
+          <h2>Lumian direkt auf dem Home-Bildschirm.</h2>
+          <p>Speichern Sie die Website wie eine App auf dem Smartphone. So sind Kontakt, Offerte und WhatsApp immer schnell erreichbar.</p>
+        </div>
+        <button class="btn btn-ghost" type="button" data-install-app>App-Hinweis anzeigen</button>
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer">
@@ -362,6 +377,7 @@
         <h3>Rechtliches</h3>
         <a href="impressum.html">Impressum</a>
         <a href="datenschutz.html">Datenschutz</a>
+        <a href="cookies.html">Cookies</a>
         <a href="buchung.html">Buchungshinweise</a>
       </div>
     </div>
@@ -374,6 +390,25 @@
   </div>
 
   <a class="floating-whatsapp" href="https://wa.me/41772794707?text=Hoi%20Lumian%20Services%2C%20ich%20m%C3%B6chte%20eine%20Reinigung%20anfragen." target="_blank" rel="noopener" aria-label="WhatsApp Anfrage senden">✆</a>
+
+
+  <div class="cookie-notice" data-cookie-notice hidden>
+    <div>
+      <strong>Cookies & Datenschutz</strong>
+      <p>Wir verwenden nur technisch notwendige Speicherung, damit diese Website zuverlässig funktioniert. Keine Werbung, kein Tracking.</p>
+    </div>
+    <div class="cookie-actions">
+      <a href="cookies.html">Cookie-Hinweise</a>
+      <a href="datenschutz.html">Datenschutz</a>
+      <button type="button" class="btn btn-primary btn-small" data-cookie-accept>Verstanden</button>
+    </div>
+  </div>
+
+  <div class="install-help" data-install-help hidden>
+    <button type="button" class="install-help-close" data-install-close aria-label="Hinweis schliessen">×</button>
+    <strong>Lumian als App speichern</strong>
+    <p data-install-help-text>Auf dem iPhone: Teilen-Symbol in Safari öffnen und «Zum Home-Bildschirm» wählen. Auf Android: Menü öffnen und «App installieren» oder «Zum Startbildschirm hinzufügen» wählen.</p>
+  </div>
 
   <script src="assets/js/gallery-data.js" defer></script>
   <script src="script.js" defer></script>

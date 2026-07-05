@@ -846,3 +846,80 @@ details p { padding: 0 22px 20px; margin: 0; }
 
 .contact-card p { margin: 0; color: var(--soft); line-height: 1.5; }
 .footer-address { display: inline-block; color: var(--soft); font-size: 14px; line-height: 1.5; }
+
+
+/* Cookie notice and app install helpers */
+.cookie-notice {
+  position: fixed;
+  z-index: 9999;
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
+  background: rgba(5, 14, 21, .88);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+}
+.cookie-notice[hidden], .install-help[hidden] { display: none !important; }
+.cookie-notice strong { display: block; color: var(--text); margin-bottom: 4px; }
+.cookie-notice p { margin: 0; color: var(--soft); font-size: 14px; line-height: 1.45; }
+.cookie-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.cookie-actions a { color: var(--cyan); font-weight: 850; font-size: 14px; text-decoration: none; }
+.btn-small { padding: 10px 15px; font-size: 14px; border-radius: 999px; }
+.app-cta { padding-top: 0; }
+.app-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 22px;
+  padding: clamp(24px, 4vw, 38px);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 85% 20%, rgba(19,200,243,.16), transparent 34%),
+    rgba(255,255,255,.04);
+  box-shadow: var(--shadow);
+}
+.app-card h2 { margin-bottom: 10px; }
+.app-card p { margin-bottom: 0; }
+.install-help {
+  position: fixed;
+  z-index: 10000;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(112px, calc(env(safe-area-inset-bottom) + 96px));
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 48px 18px 18px;
+  border-radius: 22px;
+  border: 1px solid var(--line-strong);
+  background: rgba(5, 14, 21, .94);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+}
+.install-help strong { display: block; margin-bottom: 6px; color: var(--text); }
+.install-help p { margin: 0; color: var(--soft); font-size: 14px; line-height: 1.5; }
+.install-help-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  cursor: pointer;
+}
+.legal-box a { color: var(--cyan); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 760px) {
+  .cookie-notice, .app-card { grid-template-columns: 1fr; }
+  .cookie-actions { justify-content: flex-start; }
+  .app-card .btn { width: 100%; justify-content: center; }
+}

@@ -45,7 +45,7 @@ if (form) {
       `Ort: ${data.get('place') || '-'}`,
       `Service: ${data.get('service') || '-'}`,
       `Wunsch-Termin: ${data.get('date') || '-'}`,
-      `Referral-Code: ${data.get('referral') || '-'}`,
+      `Danke-Code: ${data.get('referral') || '-'}`,
       '',
       `Beschreibung: ${data.get('message') || '-'}`,
       '',
@@ -154,3 +154,63 @@ document.querySelectorAll('[data-calendar-url]').forEach(box => {
     link.textContent = 'Online-Slot öffnen';
   }
 });
+
+
+// Cookie notice: necessary storage only, no marketing/tracking cookies.
+const cookieNotice = document.querySelector('[data-cookie-notice]');
+const cookieAccept = document.querySelector('[data-cookie-accept]');
+const cookieKey = 'lumian_cookie_notice_ok_v1';
+
+try {
+  if (cookieNotice && localStorage.getItem(cookieKey) !== 'yes') {
+    cookieNotice.hidden = false;
+  }
+  cookieAccept?.addEventListener('click', () => {
+    localStorage.setItem(cookieKey, 'yes');
+    if (cookieNotice) cookieNotice.hidden = true;
+  });
+} catch (error) {
+  if (cookieNotice) cookieNotice.hidden = false;
+}
+
+// Add to Home Screen / PWA install support.
+let deferredInstallPrompt = null;
+const installButton = document.querySelector('[data-install-app]');
+const installHelp = document.querySelector('[data-install-help]');
+const installHelpText = document.querySelector('[data-install-help-text]');
+const installClose = document.querySelector('[data-install-close]');
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  if (installButton) installButton.textContent = 'Lumian als App installieren';
+});
+
+installButton?.addEventListener('click', async () => {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => null);
+    deferredInstallPrompt = null;
+    if (installButton) installButton.textContent = 'App-Hinweis anzeigen';
+    return;
+  }
+
+  const ua = navigator.userAgent || '';
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+  if (installHelpText) {
+    installHelpText.textContent = isIOS
+      ? 'Auf dem iPhone: Teilen-Symbol in Safari öffnen und «Zum Home-Bildschirm» wählen.'
+      : 'Im Browser-Menü «App installieren» oder «Zum Startbildschirm hinzufügen» wählen. Falls diese Option nicht erscheint, öffnen Sie die Seite direkt im Browser.';
+  }
+  if (installHelp) installHelp.hidden = false;
+});
+
+installClose?.addEventListener('click', () => {
+  if (installHelp) installHelp.hidden = true;
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

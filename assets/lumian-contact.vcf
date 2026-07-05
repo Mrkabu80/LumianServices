@@ -1,10 +1,11 @@
 BEGIN:VCARD
 VERSION:3.0
-FN:Lumian Services
+N:Services;Lumian;;;
+FN:Lumian Services Team
 ORG:Lumian Services
 TITLE:Fensterreinigung · Storen · Dachrinnen · Aussenreinigung
 TEL;TYPE=CELL,VOICE:+41772794707
-EMAIL;TYPE=INTERNET:info@lumianservices.ch
+EMAIL;TYPE=WORK,INTERNET:info@lumianservices.ch
 URL:https://www.lumianservices.ch
 ADR;TYPE=WORK:;;Wilhalde 8A;Othmarsingen;;5504;Switzerland
 NOTE:Schnell. Fair. Sichtbar sauber.

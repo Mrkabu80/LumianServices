@@ -654,6 +654,62 @@ details p { padding: 0 22px 20px; margin: 0; }
   box-shadow: 0 18px 45px rgba(0,0,0,.26);
 }
 .founder-avatars figcaption { margin-top: 9px; color: var(--text); font-weight: 950; }
+
+.founder-team-photo {
+  position: relative;
+  margin: 0;
+  text-align: center;
+  padding: 8px 0 2px;
+}
+.founder-team-photo::before,
+.founder-team-photo::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+}
+.founder-team-photo::before {
+  width: 78px;
+  height: 78px;
+  top: 8px;
+  left: 22px;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,.28), rgba(19,200,243,.16) 45%, rgba(19,200,243,.04) 72%, transparent 74%);
+  filter: blur(.2px);
+  opacity: .9;
+}
+.founder-team-photo::after {
+  width: 44px;
+  height: 44px;
+  right: 26px;
+  bottom: 58px;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,.26), rgba(19,200,243,.14) 45%, rgba(19,200,243,.04) 72%, transparent 74%);
+  opacity: .82;
+}
+.founder-team-photo img {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 300px);
+  height: auto;
+  max-height: 205px;
+  object-fit: contain;
+  object-position: center bottom;
+  display: block;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, .22));
+}
+.founder-team-photo figcaption {
+  position: relative;
+  z-index: 1;
+  margin-top: 8px;
+  color: var(--text);
+  font-weight: 950;
+}
+
 .language-hub {
   text-align: center;
   padding: 18px;
@@ -835,6 +891,24 @@ details p { padding: 0 22px 20px; margin: 0; }
   .hero-logo-img { width: min(98%, 380px); }
   .hero-copy { text-align: left; }
   .founder-avatars img { width: 92px; height: 92px; }
+
+  .founder-team-photo::before {
+    width: 54px;
+    height: 54px;
+    top: 10px;
+    left: 10px;
+  }
+  .founder-team-photo::after {
+    width: 30px;
+    height: 30px;
+    right: 10px;
+    bottom: 46px;
+  }
+  .founder-team-photo img {
+    width: min(100%, 240px);
+    max-height: 165px;
+  }
+
   .gallery-slider { padding: 0 0 60px; }
   .gallery-track { grid-auto-columns: 86%; }
   .gallery-slide { min-height: 360px; }

@@ -179,6 +179,13 @@
   }
 
   function referralLink(customerId) { return fillTemplate(getSetting('referralBase'), { customerId }); }
+  function fullAddressForPerson(p = {}) {
+    return [p.address, p.place].filter(Boolean).join(', ');
+  }
+  function mapsUrlForPerson(p = {}) {
+    const q = fullAddressForPerson(p) || p.address || p.place || '';
+    return q ? `https://maps.google.com/?q=${encodeURIComponent(q)}` : '';
+  }
 
   function validateEmail(email) {
     const value = String(email || '').trim();
@@ -392,7 +399,7 @@
       const overdue = new Date(j.appointmentAt).getTime() < now;
       return `<article class="item-card">
         <div class="item-top"><div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge">${esc(p.id || '')}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · ${esc(p.address || '')}</div></div><span class="badge ${overdue?'danger':'warn'}">${esc(j.status)}</span></div>
-        <div class="actions">${customerReminderLink(j)}${phoneLink(p.phone)}${mapLink(p.address)}${calendarButton(j)}</div>
+        <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}</div>
       </article>`;
     }).join('') : '<div class="empty">Keine offenen Termine.</div>';
   }
@@ -450,7 +457,7 @@
         <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empf. ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(p.address || '')}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}</div>
-      <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p.address)}${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
+      <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p)}${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
     </article>`;
   }
 
@@ -481,7 +488,7 @@
       </div>
       <div class="item-sub">${esc(p.address || '')}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
-      <div class="actions">${customerReminderLink(j)}${phoneLink(p.phone)}${mapLink(p.address)}${calendarButton(j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!done?`<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button><button class="secondary" data-paid-job="${esc(j.id)}">Bezahlt</button>`:whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true)}</div>
+      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!done?`<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button><button class="secondary" data-paid-job="${esc(j.id)}">Bezahlt</button>`:whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true)}</div>
     </article>`;
   }
 
@@ -496,10 +503,15 @@
 
   function customerCard(p) {
     const jobs = state.jobs.filter(j => j.personId === p.id);
+    const link = referralLink(p.id);
     return `<article class="item-card">
-      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span></div><div class="item-sub">${esc(p.address || '')}</div></div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
-      <div class="item-sub">Empfehlungslink: ${esc(referralLink(p.id))}</div>
-      <div class="actions">${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}${mapLink(p.address)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
+      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span></div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div></div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
+      <div class="referral-box">
+        <span>Empfehlungslink</span>
+        <strong>${esc(link)}</strong>
+        <small>Diesen Link kann der Kunde weiterleiten. Neue Kunden kommen damit mit Code ${esc(p.id)} ins Formular; der Bonus wird später über den erledigten Empfehlungs-Job getrackt.</small>
+      </div>
+      <div class="actions">${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
     </article>`;
   }
 
@@ -544,10 +556,23 @@
   function completedJobs() {
     return state.jobs.filter(j => ['Erledigt','Bezahlt'].includes(j.status));
   }
+  function paidJobs() {
+    return state.jobs.filter(j => j.status === 'Bezahlt');
+  }
+  function forecastJobs(range) {
+    return state.jobs
+      .filter(j => j.status !== 'Bezahlt' && j.status !== 'Abgesagt')
+      .filter(j => Number(j.amount || 0) > 0)
+      .filter(j => dateInRange(j.appointmentAt || j.createdAt, range.from, range.to))
+      .map(j => {
+        const p = personById(j.personId) || {};
+        return { type:'Forecast', id:j.id, date:j.appointmentAt || j.createdAt, title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, status:j.status, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
+      });
+  }
   function jobIncomeItems(range) {
-    return completedJobs().filter(j => dateInRange(financeJobDate(j), range.from, range.to)).map(j => {
+    return paidJobs().filter(j => dateInRange(financeJobDate(j), range.from, range.to)).map(j => {
       const p = personById(j.personId) || {};
-      return { type:'Job', id:j.id, date:financeJobDate(j), title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
+      return { type:'Job bezahlt', id:j.id, date:financeJobDate(j), title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
     });
   }
   function manualIncomeItems(range) {
@@ -564,10 +589,12 @@
     const jobs = jobIncomeItems(range);
     const manual = manualIncomeItems(range);
     const expenses = expenseItems(range);
+    const forecast = forecastJobs(range);
     const jobIncome = jobs.reduce((s,x)=>s+x.amount,0);
     const manualIncome = manual.reduce((s,x)=>s+x.amount,0);
     const expenseTotal = expenses.reduce((s,x)=>s+x.amount,0);
-    return { jobs, manual, expenses, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal };
+    const forecastTotal = forecast.reduce((s,x)=>s+x.amount,0);
+    return { jobs, manual, expenses, forecast, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
   }
 
   function canEditFinanceEntry(x) {
@@ -580,10 +607,11 @@
     const s = financeSummary(range);
     $('[data-finance-period-label]').textContent = range.label;
     $('[data-finance-stats]').innerHTML = [
-      ['Einnahmen Jobs', money(s.jobIncome), `${s.jobs.length} fertige Jobs`],
+      ['Bezahlte Jobs', money(s.jobIncome), `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
+      ['Voraussichtlich', money(s.forecastTotal), `${s.forecast.length} offene/geplante Jobs`],
       ['Ausgaben', money(s.expenseTotal), `${s.expenses.length} Kostenposition(en)`],
-      ['Gewinn grob', money(s.profit), 'Einnahmen minus Ausgaben']
+      ['Gewinn grob', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
     ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
 
     renderFinanceChart(s);
@@ -605,9 +633,10 @@
     renderCustomerActivity(range);
   }
   function renderFinanceChart(s) {
-    const max = Math.max(s.incomeTotal, s.expenseTotal, Math.abs(s.profit), 1);
+    const max = Math.max(s.incomeTotal, s.forecastTotal || 0, s.expenseTotal, Math.abs(s.profit), 1);
     const rows = [
-      ['Einnahmen', s.incomeTotal, 'income'],
+      ['Bezahlte Einnahmen', s.incomeTotal, 'income'],
+      ['Voraussichtlich', s.forecastTotal, 'forecast'],
       ['Ausgaben', s.expenseTotal, 'expense'],
       ['Gewinn', s.profit, s.profit >= 0 ? 'profit' : 'loss']
     ];
@@ -657,7 +686,10 @@
     }).join('') : '<div class="empty">Noch keine Boni. Sie entstehen automatisch, wenn ein Empfehlungs-Job erledigt wird und der Mindestauftrag erreicht ist.</div>';
   }
 
-  function mapLink(address) { return address ? `<a class="secondary" href="https://maps.google.com/?q=${encodeURIComponent(address)}" target="_blank" rel="noopener">Maps</a>` : ''; }
+  function mapLink(target) {
+    const q = typeof target === 'string' ? target : fullAddressForPerson(target || {});
+    return q ? `<a class="secondary" href="https://maps.google.com/?q=${encodeURIComponent(q)}" target="_blank" rel="noopener">Maps</a>` : '';
+  }
   function phoneLink(phone) { const p = parseSwissPhone(phone); return p.ok && !p.empty ? `<a class="secondary" href="tel:${esc(p.tel)}">Anrufen</a>` : ''; }
   function smsLink(phone, text='') { return ''; }
   function isLikelySwissMobile(parsed) { return parsed?.ok && !parsed.empty && /^417[4-9]\d{7}$/.test(parsed.wa); }
@@ -665,7 +697,7 @@
   function whatsappLink(phone, text, label='WhatsApp', primary=false) { const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
   function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://api.whatsapp.com/send?phone=${n}&text=${encodeURIComponent(text)}` : '#'; }
   function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'WhatsApp'); }
-  function calendarButton(job) { return job.appointmentAt ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
+  function calendarButton(job) { return job.appointmentAt && !['Erledigt','Bezahlt','Abgesagt'].includes(job.status) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
   function waLeadLink(p,l) { return whatsappLink(p.phone, newCustomerText(p,l), 'WhatsApp'); }
 
   function referralInviteText(p) {
@@ -892,15 +924,43 @@
   });
 
   function addCalendar(job) {
-    if (!job || !job.appointmentAt) return toast('Kein Termin gesetzt.');
+    if (!job?.appointmentAt) return toast('Kein Termin im Job eingetragen.');
     const p = personById(job.personId) || {};
     const start = new Date(job.appointmentAt);
-    const end = new Date(start.getTime() + 2*60*60*1000);
+    if (Number.isNaN(start.getTime())) return toast('Termin ist ungültig.');
+    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
     const pad = n => String(n).padStart(2,'0');
+    const clean = v => String(v || '').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');
     const icsDate = d => `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
-    const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Lumian Services//Portal//DE','BEGIN:VEVENT',`UID:${job.id}@lumianservices.ch`,`DTSTAMP:${icsDate(new Date())}`,`DTSTART:${icsDate(start)}`,`DTEND:${icsDate(end)}`,`SUMMARY:Lumian: ${p.name || 'Kunde'} - ${job.service || 'Reinigung'}`,`LOCATION:${p.address || ''}`,`DESCRIPTION:Telefon: ${p.phone || ''}\nBetrag: CHF ${job.amount || ''}\nJob: ${job.id}\nKunde: ${p.id || ''}`,'END:VEVENT','END:VCALENDAR'].join('\r\n');
+    const address = fullAddressForPerson(p);
+    const maps = mapsUrlForPerson(p);
+    const description = [
+      `Kunde: ${p.name || ''} (${p.id || ''})`,
+      `Telefon: ${p.phone || ''}`,
+      `Service: ${job.service || ''}`,
+      `Betrag: CHF ${job.amount || ''}`,
+      `Job: ${job.id}`,
+      maps ? `Maps: ${maps}` : ''
+    ].filter(Boolean).join('\n');
+    const ics = [
+      'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Lumian Services//Portal//DE','BEGIN:VEVENT',
+      `UID:${clean(job.id)}@lumianservices.ch`,
+      `DTSTAMP:${icsDate(new Date())}`,
+      `DTSTART:${icsDate(start)}`,
+      `DTEND:${icsDate(end)}`,
+      `SUMMARY:${clean(`Lumian: ${p.name || 'Kunde'} - ${job.service || 'Reinigung'}`)}`,
+      `LOCATION:${clean(address)}`,
+      maps ? `URL:${clean(maps)}` : '',
+      `DESCRIPTION:${clean(description)}`,
+      'END:VEVENT','END:VCALENDAR'
+    ].filter(Boolean).join('\r\n');
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${job.id}-lumian-termin.ics`; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${job.id}-lumian-termin.ics`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Kalenderdatei erstellt. Auf dem iPhone öffnen und hinzufügen.');
   }
 
   function setRefField(scope, personId) {
@@ -1366,11 +1426,13 @@
     const s = financeSummary(range);
     const rows = [
       ['Typ','Datum/Von','Bis','Titel/Kunde','Kategorie','Betrag CHF','Eingetragen von','Notiz','JobID/ID'],
-      ...s.jobs.map(x => ['Einnahme Job', ymd(x.date), '', x.title, 'Job', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
+      ...s.jobs.map(x => ['Einnahme Job bezahlt', ymd(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
+      ...s.forecast.map(x => ['Voraussichtlich', ymd(x.date), '', x.title, x.status || 'offen/geplant', x.amount, userName(x.assignedTo || x.createdBy), 'Noch nicht kassiert', x.jobId]),
       ...s.manual.map(x => ['Einnahme manuell', ymd(x.date), x.to || '', x.title, 'Manuell', x.amount, userName(x.createdBy), x.notes || '', x.id]),
       ...s.expenses.map(x => ['Ausgabe', ymd(x.date), '', x.title, x.category || 'Ausgabe', -Number(x.amount || 0), userName(x.createdBy), x.notes || '', x.id]),
       [],
-      ['Zusammenfassung','','','Einnahmen Jobs','',s.jobIncome,'',''],
+      ['Zusammenfassung','','','Bezahlte Jobs','',s.jobIncome,'',''],
+      ['Zusammenfassung','','','Voraussichtlich / noch nicht kassiert','',s.forecastTotal,'',''],
       ['Zusammenfassung','','','Manuell ergänzt','',s.manualIncome,'',''],
       ['Zusammenfassung','','','Ausgaben','',-s.expenseTotal,'',''],
       ['Zusammenfassung','','','Gewinn grob','',s.profit,'','']

@@ -6,8 +6,8 @@
  * 2) Extensions -> Apps Script.
  * 3) Paste this whole file.
  * 4) Deploy -> New deployment -> Web app.
- *    Execute as: Me
- *    Who has access: Anyone with the link
+ * Execute as: Me
+ * Who has access: Anyone with the link
  * 5) Copy the Web App URL into Lumian Portal -> Setup.
  * 6) Optional: create a Google Drive folder for photos and paste its folder ID into the portal setup.
  */
@@ -45,7 +45,7 @@ function doPost(e) {
 function emptyState_() {
   var now = new Date().toISOString();
   return {
-    version: 6,
+    version: 7,
     createdAt: now,
     updatedAt: now,
     users: [],
@@ -79,10 +79,17 @@ function resetAll_(confirmText) {
 }
 
 
+function normalizeAppointmentInput_(value) {
+  var raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw + 'T09:00';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return raw.slice(0, 16);
+  return '';
+}
+
 function saveWebsiteLead_(lead) {
   var now = lead.createdAt || new Date().toISOString();
   var state = loadState_() || {
-    version: 6,
+    version: 7,
     createdAt: now,
     updatedAt: now,
     users: [],
@@ -142,7 +149,7 @@ function saveWebsiteLead_(lead) {
     service: lead.service || '',
     source: source,
     expectedValue: '',
-    appointmentAt: '',
+    appointmentAt: normalizeAppointmentInput_(lead.desiredDate || ''),
     referredById: referral,
     status: 'Offen',
     createdAt: now,
@@ -270,8 +277,8 @@ function writeSheets_(state) {
   writeSheet_(ss, 'Leads', ['LeadId','LumianNr','Service','Source','ExpectedValue','AppointmentAt','ReferredBy','Status','CreatedAt','CreatedBy','Notes'], (state.leads || []).map(function(l) {
     return [l.id,l.personId,l.service,l.source,l.expectedValue,l.appointmentAt,l.referredById,l.status,l.createdAt,l.createdBy,l.notes];
   }));
-  writeSheet_(ss, 'Jobs', ['JobId','LumianNr','LeadId','Service','AppointmentAt','Amount','Status','AssignedTo','Source','ReferredBy','BeforePhoto','AfterPhoto','CreatedAt','CreatedBy','Notes'], (state.jobs || []).map(function(j) {
-    return [j.id,j.personId,j.leadId,j.service,j.appointmentAt,j.amount,j.status,j.assignedTo,j.source,j.referredById,photoLink_(j.beforePhoto),photoLink_(j.afterPhoto),j.createdAt,j.createdBy,j.notes];
+  writeSheet_(ss, 'Jobs', ['JobId','LumianNr','LeadId','Service','AppointmentAt','Amount','Status','PaidAt','CompletedAt','AssignedTo','Source','ReferredBy','BeforePhoto','AfterPhoto','CreatedAt','CreatedBy','Notes'], (state.jobs || []).map(function(j) {
+    return [j.id,j.personId,j.leadId,j.service,j.appointmentAt,j.amount,j.status,j.paidAt || '',j.completedAt || '',j.assignedTo,j.source,j.referredById,photoLink_(j.beforePhoto),photoLink_(j.afterPhoto),j.createdAt,j.createdBy,j.notes];
   }));
   writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','CreatedAt','CreatedBy'], (state.rewards || []).map(function(r) {
     return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,r.createdAt,r.createdBy];

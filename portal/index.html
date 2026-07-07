@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=60">
+  <link rel="stylesheet" href="portal.css?v=61">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -304,7 +304,7 @@
         <div class="panel-head">
           <div>
             <h2>Setup</h2>
-            <p class="muted">Bonus, Texte, Google Sheet, Drive, Passwort, Biometrie und Backup.</p>
+            <p class="muted">Bonus, Texte, Google Review, Google Sheet, Drive, Passwort, Biometrie und Backup.</p>
           </div>
           <div class="panel-actions">
             <button class="primary setup-save-top" type="submit" form="settings-form">Setup speichern</button>
@@ -327,7 +327,10 @@
               <input name="businessPhone" inputmode="tel" placeholder="077 279 47 07">
             </label>
             <label>Empfehlungslink Basis
-              <input name="referralBase" placeholder="https://www.lumianservices.ch/?ref={{customerId}}#booking">
+              <input name="referralBase" placeholder="https://www.lumianservices.ch/empfehlung/?ref={{customerId}}">
+            </label>
+            <label>Google Review Link
+              <input name="googleReviewUrl" placeholder="https://g.page/r/.../review">
             </label>
           </fieldset>
 
@@ -360,7 +363,10 @@
             <label>Termin-Erinnerung an Kunden
               <textarea name="reminderTemplate" rows="4"></textarea>
             </label>
-            <p class="hint">Platzhalter: {{name}}, {{customerId}}, {{bonus}}, {{minOrder}}, {{referralLink}}, {{date}}, {{service}}, {{amount}}, {{address}}</p>
+            <label>Google Review Anfrage
+              <textarea name="reviewTemplate" rows="5"></textarea>
+            </label>
+            <p class="hint">Platzhalter: {{name}}, {{customerId}}, {{bonus}}, {{minOrder}}, {{referralLink}}, {{googleReviewLink}}, {{date}}, {{service}}, {{amount}}, {{address}}</p>
           </fieldset>
             </div>
 
@@ -436,8 +442,10 @@
 
   <dialog data-lead-dialog class="modal">
     <form method="dialog" class="modal-card" data-lead-form novalidate>
-      <header><h2>Lead hinzufügen</h2><button type="button" data-close-modal>×</button></header>
-      <p class="hint">Lead = Anfrage. Beim Speichern bekommt die Person automatisch eine Lumian-Nr.</p>
+      <header><h2 data-lead-modal-title>Lead hinzufügen</h2><button type="button" data-close-modal>×</button></header>
+      <input type="hidden" name="leadId">
+      <input type="hidden" name="personId">
+      <p class="hint">Lead = Anfrage. Beim Speichern bekommt die Person automatisch eine Lumian-Nr. Web-Leads können nach dem Kundenkontakt hier vollständig ergänzt werden.</p>
       <div class="form-grid">
         <label>Name<input name="name" required autocomplete="name" placeholder="z.B. Maria Müller"></label>
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
@@ -457,7 +465,7 @@
       </div>
       <footer>
         <button type="button" class="secondary" data-close-modal>Abbrechen</button>
-        <button class="primary" type="submit">Lead speichern</button>
+        <button class="primary" type="submit" data-lead-submit>Lead speichern</button>
       </footer>
     </form>
   </dialog>
@@ -555,6 +563,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=60"></script>
+  <script src="portal.js?v=61"></script>
 </body>
 </html>

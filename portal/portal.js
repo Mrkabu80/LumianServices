@@ -32,13 +32,15 @@
     minOrder: 300,
     businessPhone: '0772794707',
     referralBase: 'https://www.lumianservices.ch/empfehlung/?ref={{customerId}}',
+    googleReviewUrl: 'https://g.page/r/CQIaGL8jXr4wEAI/review',
     scriptUrl: 'https://script.google.com/macros/s/AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg/exec',
     driveFolderId: '',
     calendarId: '',
     recoveryCode: 'Lumian-Reset-2026',
     referralTemplate: 'Hoi {{name}}, danke nochmals für dein Vertrauen in Lumian Services.\n\nWenn du uns an Freunde, Familie oder Nachbarn weiterempfiehlst, erhalten sie CHF {{bonus}} Rabatt auf ihren ersten Auftrag ab CHF {{minOrder}}. Du erhältst nach abgeschlossenem Auftrag ebenfalls CHF {{bonus}} Guthaben für deine nächste Reinigung.\n\nDein Empfehlungslink:\n{{referralLink}}\n\nLiebe Grüsse\nLumian Services',
     newCustomerTemplate: 'Hoi {{name}}, danke für deine Anfrage bei Lumian Services.\n\nGerne schauen wir uns dein Anliegen an und melden uns mit einem Vorschlag. Wenn du über eine Empfehlung kommst, gilt der CHF {{bonus}} Vorteil ab einem Auftrag von CHF {{minOrder}}.\n\nLiebe Grüsse\nLumian Services',
-    reminderTemplate: 'Hoi {{name}}, kurze Erinnerung: Wir haben deinen Lumian Termin am {{date}} für {{service}} eingetragen.\n\nAdresse: {{address}}\nBetrag gemäss Abmachung: CHF {{amount}}\n\nLiebe Grüsse\nLumian Services'
+    reminderTemplate: 'Hoi {{name}}, kurze Erinnerung: Wir haben deinen Lumian Termin am {{date}} für {{service}} eingetragen.\n\nAdresse: {{address}}\nBetrag gemäss Abmachung: CHF {{amount}}\n\nLiebe Grüsse\nLumian Services',
+    reviewTemplate: 'Hoi {{name}}, danke nochmals für dein Vertrauen in Lumian Services.\n\nWenn du mit unserer Arbeit zufrieden warst, freuen wir uns sehr über eine kurze Google-Bewertung. Das hilft uns als junges Schweizer Unternehmen enorm.\n\nHier direkt bewerten:\n{{googleReviewLink}}\n\nLiebe Grüsse\nLumian Services'
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -54,7 +56,7 @@
 
   function newState() {
     return {
-      version: 6,
+      version: 7,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       users: USERS.map(u => ({ ...u, role: 'admin', active: true, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '', recoveryCode: `${u.name}-Reset-2026` })),
@@ -85,7 +87,7 @@
   function migrateState(s) {
     const base = newState();
     const merged = { ...base, ...s };
-    merged.version = 6;
+    merged.version = 7;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     // v27: move default referral links from homepage booking anchor to dedicated referral page.
     if (String(merged.settings.referralBase || '').includes('#booking')) merged.settings.referralBase = DEFAULT_SETTINGS.referralBase;
@@ -158,7 +160,7 @@
 
   function personSearchText(p) {
     const lead = leadForPerson(p.id);
-    return [p.id, p.name, p.phone, p.email, p.address, p.place, p.source, p.status, p.contactStatus, p.contactReason, p.contactNote, lead?.id, lead?.service, lead?.status].join(' ').toLowerCase();
+    return [p.id, p.name, p.phone, p.email, p.address, p.place, p.source, p.status, p.contactStatus, p.contactReason, p.contactNote, lead?.id, lead?.service, lead?.status, lead?.notes].join(' ').toLowerCase();
   }
 
   function searchPeople(q, limit = 8) {
@@ -199,6 +201,7 @@
   }
 
   function referralLink(customerId) { return fillTemplate(getSetting('referralBase'), { customerId }); }
+  function googleReviewLink() { return String(getSetting('googleReviewUrl') || '').trim(); }
   function fullAddressForPerson(p = {}) {
     return [p.address, p.place].filter(Boolean).join(', ');
   }
@@ -476,7 +479,7 @@
     if (filter === 'lost') leads = leads.filter(l => l.status === 'Verloren');
     if (q) leads = leads.filter(l => {
       const p = personById(l.personId) || {};
-      return [l.id,l.service,l.status,l.source,p.id,p.name,p.phone,p.email,p.address,p.place].join(' ').toLowerCase().includes(q);
+      return [l.id,l.service,l.status,l.source,l.expectedValue,l.appointmentAt,l.notes,p.id,p.name,p.phone,p.email,p.address,p.place].join(' ').toLowerCase().includes(q);
     });
     const pageData = paginateItems(leads, 'leads');
     renderPager('leads', pageData);
@@ -491,8 +494,8 @@
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy || l.assignedTo || currentUser))}</div></div>
         <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empf. ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
       </div>
-      <div class="item-sub">${esc(fullAddressForPerson(p))}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}</div>
-      <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p)}${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
+      <div class="item-sub">${esc(fullAddressForPerson(p))}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}${l.notes?`<br>${esc(String(l.notes).slice(0,160))}`:''}</div>
+      <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-edit-lead="${esc(l.id)}">Bearbeiten</button>${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
     </article>`;
   }
 
@@ -513,17 +516,19 @@
 
   function jobCard(j) {
     const p = personById(j.personId) || {};
-    const done = ['Erledigt','Bezahlt'].includes(j.status);
+    const completed = isCompletedJob(j);
+    const paid = isPaidJob(j);
+    const done = completed;
     const ref = personById(j.referredById || p.referredById);
     const photos = [j.beforePhoto, j.afterPhoto].filter(Boolean).map((ph,i)=>`<img class="thumb" src="${esc(ph.dataUrl || ph.url)}" alt="${i?'Nachher':'Vorher'} Foto">`).join('');
     return `<article class="item-card">
       <div class="item-top">
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
-        <div class="badges"><span class="badge ${done?'ok':j.status==='Abgesagt'?'danger':'warn'}">${esc(j.status)}</span>${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
+        <div class="badges"><span class="badge ${done?'ok':j.status==='Abgesagt'?'danger':'warn'}">${esc(j.status)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(fullAddressForPerson(p))}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
-      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!done?`<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button><button class="secondary" data-paid-job="${esc(j.id)}">Bezahlt</button>`:whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true)}</div>
+      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}${reviewLink(p, j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${j.status!=='Abgesagt' && !completed ? `<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button>` : ''}${j.status!=='Abgesagt' && !paid ? `<button class="secondary" data-paid-job="${esc(j.id)}">Zahlung bezahlt</button>` : ''}${completed ? whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true) : ''}</div>
     </article>`;
   }
 
@@ -548,7 +553,7 @@
     const warning = contactWarningText(p);
     const contactActions = blocked
       ? `<button class="secondary" data-show-contact-warning="${esc(p.id)}">Kontakt gesperrt</button>`
-      : `${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`;
+      : `${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${reviewLink(p)}${phoneLink(p.phone)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`;
     return `<article class="item-card ${blocked ? 'contact-blocked' : ''}">
       <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span> ${contactBadge(p)}</div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div>${warning ? `<div class="item-warning">${esc(warning)}</div>` : ''}</div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
       <div class="referral-link-line"><span>Empfehlungslink</span><strong>${esc(link)}</strong></div>
@@ -696,7 +701,7 @@
     $('[data-income-count]').textContent = `${incomes.length} Eintrag(e)`;
     $('[data-income-list]').innerHTML = incomes.length ? incomes.map(x => {
       const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
-      const editBtns = x.type === 'Manuell' && canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-manual-income="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-manual-income="${esc(x.id)}">Löschen</button></div>` : '';
+      const editBtns = x.type === 'Manuell' && canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-manual-income="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-manual-income="${esc(x.id)}">Löschen</button></div>` : (x.jobId ? `<div class="actions"><button class="secondary" data-edit-job="${esc(x.jobId)}">Job/Zahlung bearbeiten</button></div>` : '');
       return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.type)} · ${esc(ymd(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge ok">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
     }).join('') : '<div class="empty">Keine Einnahmen im Zeitraum.</div>';
 
@@ -745,7 +750,7 @@
       const status = r.last ? `Letzter Job: ${fmtDate(r.last)}${inactive ? ' · lange nicht kontaktiert' : ''}` : 'Noch kein erledigter Job';
       return `<article class="item-card mini">
         <div class="item-top"><div><div class="item-title">${esc(r.p.name || r.p.id)} <span class="badge">${esc(r.p.id)}</span></div><div class="item-sub">${esc(status)}</div></div><div class="badges"><span class="badge ok">${esc(money(r.revenue))}</span><span class="badge">${r.inRange.length} Job(s) im Zeitraum</span><span class="badge">${r.allJobs.length} total</span>${inactive ? '<span class="badge warn">Nachfassen</span>' : ''}</div></div>
-        <div class="actions">${phoneLink(r.p.phone)}${whatsappLink(r.p.phone, `Hoi ${r.p.name || ''}, wir hoffen, es geht Ihnen gut. Falls Fenster, Dachrinne, Terrasse oder Solaranlage wieder Reinigung brauchen, melden Sie sich gerne bei Lumian Services.`, 'WhatsApp Nachfassen')}<button class="secondary" data-open-person-job="${esc(r.p.id)}">Neuer Job</button></div>
+        <div class="actions">${phoneLink(r.p.phone)}${whatsappLink(r.p.phone, `Hoi ${r.p.name || ''}, wir hoffen, es geht Ihnen gut. Falls Fenster, Dachrinne, Terrasse oder Solaranlage wieder Reinigung brauchen, melden Sie sich gerne bei Lumian Services.`, 'WhatsApp Nachfassen')}${reviewLink(r.p)}<button class="secondary" data-open-person-job="${esc(r.p.id)}">Neuer Job</button></div>
       </article>`;
     }).join('') : '<div class="empty">Noch keine Kundenaktivität.</div>';
   }
@@ -773,9 +778,10 @@
   function waUrlFor(phone, text) { const p = parseSwissPhone(phone); if (!p.ok || p.empty || !p.wa) return ''; return `https://api.whatsapp.com/send?phone=${p.wa}&text=${encodeURIComponent(text)}`; }
   function whatsappLink(phone, text, label='WhatsApp', primary=false) { const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
   function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://api.whatsapp.com/send?phone=${n}&text=${encodeURIComponent(text)}` : '#'; }
-  function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'WhatsApp'); }
+  function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'Erinnerung senden', true); }
   function calendarButton(job) { return !['Erledigt','Bezahlt','Abgesagt'].includes(job.status) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
   function waLeadLink(p,l) { return whatsappLink(p.phone, newCustomerText(p,l), 'WhatsApp'); }
+  function reviewLink(p, job = {}) { const link = googleReviewLink(); return link ? whatsappLink(p?.phone, reviewText(p, job), 'Google Review') : ''; }
 
   function referralInviteText(p) {
     return fillTemplate(getSetting('referralTemplate'), { name:p.name||'', customerId:p.id||'', code:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), referralLink:referralLink(p.id) });
@@ -786,6 +792,9 @@
   function reminderText(j) {
     const p = personById(j.personId) || {};
     return fillTemplate(getSetting('reminderTemplate'), { name:p.name||'', customerId:p.id||'', date:fmtDate(j.appointmentAt), service:j.service||'', amount:j.amount||'', address:fullAddressForPerson(p)||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder') });
+  }
+  function reviewText(p = {}, j = {}) {
+    return fillTemplate(getSetting('reviewTemplate'), { name:p.name||'', customerId:p.id||'', date:j.appointmentAt ? fmtDate(j.appointmentAt) : '', service:j.service||'', amount:j.amount||'', address:fullAddressForPerson(p)||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), referralLink:referralLink(p.id||''), googleReviewLink:googleReviewLink() });
   }
 
   function openCustomerDialog(person = null) {
@@ -817,10 +826,35 @@
     $('[data-customer-dialog]').showModal();
   }
 
-  function openLeadDialog() {
-    const form = $('[data-lead-form]'); form.reset();
+  function openLeadDialog(lead = null) {
+    const form = $('[data-lead-form]');
+    if (!form) return;
+    form.reset();
     form.elements.source.value = 'WhatsApp';
     form.elements.referredById.value = '';
+    form.elements.leadId.value = '';
+    form.elements.personId.value = '';
+    $('[data-lead-modal-title]').textContent = 'Lead hinzufügen';
+    $('[data-lead-submit]').textContent = 'Lead speichern';
+    if (lead) {
+      const person = personById(lead.personId) || {};
+      form.elements.leadId.value = lead.id || '';
+      form.elements.personId.value = person.id || lead.personId || '';
+      form.elements.name.value = person.name || '';
+      form.elements.phone.value = person.phone || '';
+      form.elements.email.value = person.email || '';
+      form.elements.address.value = person.address || '';
+      form.elements.place.value = person.place || '';
+      form.elements.service.value = lead.service || form.elements.service.value;
+      form.elements.source.value = lead.source || person.source || 'Website';
+      form.elements.expectedValue.value = lead.expectedValue || '';
+      form.elements.appointmentAt.value = lead.appointmentAt || '';
+      form.elements.referredById.value = lead.referredById || person.referredById || '';
+      if (form.elements.referredById.value) setRefField('lead', form.elements.referredById.value);
+      form.elements.notes.value = lead.notes || '';
+      $('[data-lead-modal-title]').textContent = `Lead bearbeiten: ${person.name || lead.id}`;
+      $('[data-lead-submit]').textContent = 'Änderungen speichern';
+    }
     $('[data-ref-suggestions="lead"]').hidden = true;
     $('[data-lead-dialog]').showModal();
   }
@@ -886,7 +920,7 @@
     $('[data-job-dialog]').showModal();
   }
 
-  $$('[data-open-lead]').forEach(btn => btn.addEventListener('click', openLeadDialog));
+  $$('[data-open-lead]').forEach(btn => btn.addEventListener('click', () => openLeadDialog()));
   $$('[data-open-job]').forEach(btn => btn.addEventListener('click', () => openJobDialog()));
   $$('[data-open-customer]').forEach(btn => btn.addEventListener('click', openCustomerDialog));
   $$('[data-close-modal]').forEach(btn => btn.addEventListener('click', () => btn.closest('dialog')?.close()));
@@ -919,13 +953,29 @@
     if (!form.reportValidity() || !validateContactFields(form)) return;
     const fd = new FormData(form);
     const p = findOrCreatePerson({
-      name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById')
+      personId: fd.get('personId'), name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById')
     });
-    const lead = {
-      id: nextId('lead'), personId: p.id, service: fd.get('service'), source: fd.get('source'), expectedValue: fd.get('expectedValue'), appointmentAt: fd.get('appointmentAt'), referredById: fd.get('referredById'), status: 'Offen', notes: fd.get('notes'), createdAt: new Date().toISOString(), createdBy: currentUser
-    };
-    state.leads.push(lead);
-    saveState('lead'); form.closest('dialog').close(); setTab('leads'); toast(`Lead gespeichert: ${p.id}`);
+    const existingId = String(fd.get('leadId') || '').trim();
+    let lead = existingId ? leadById(existingId) : null;
+    if (!lead) {
+      lead = { id: nextId('lead'), createdAt: new Date().toISOString(), createdBy: currentUser, status: 'Offen' };
+      state.leads.push(lead);
+    } else {
+      lead.updatedAt = new Date().toISOString();
+      lead.updatedBy = currentUser;
+    }
+    Object.assign(lead, {
+      personId: p.id,
+      service: fd.get('service'),
+      source: fd.get('source'),
+      expectedValue: fd.get('expectedValue'),
+      appointmentAt: fd.get('appointmentAt'),
+      referredById: fd.get('referredById'),
+      status: lead.status || 'Offen',
+      notes: fd.get('notes'),
+      websiteLeadKey: lead.websiteLeadKey || p.websiteLeadKey || ''
+    });
+    saveState(existingId ? 'lead edit' : 'lead'); form.closest('dialog').close(); setTab('leads'); toast(existingId ? `Lead geändert: ${p.id}` : `Lead gespeichert: ${p.id}`);
   });
 
   $('[data-job-form]')?.addEventListener('submit', event => {
@@ -958,9 +1008,10 @@
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser
     });
+    if (job.status === 'Bezahlt') job.paidAt = job.paidAt || new Date().toISOString();
+    else if (job.paidAt && job.status !== 'Bezahlt') delete job.paidAt;
     if (lead) lead.status = 'Job erstellt';
     if (isCompletedJob(job)) completeJob(job.id, false);
-    if (isPaidJob(job)) job.paidAt = job.paidAt || new Date().toISOString();
     saveState('job'); form.closest('dialog').close(); setTab('jobs'); toast(`Job gespeichert: ${p.id}`);
   });
 
@@ -969,12 +1020,14 @@
     if (convert) { const lead = leadById(convert.dataset.convertLead); if (lead) openJobDialog(null, lead, personById(lead.personId)); }
     const lost = event.target.closest('[data-mark-lead-lost]');
     if (lost) { const lead = leadById(lost.dataset.markLeadLost); if (lead) { lead.status='Verloren'; saveState('lead lost'); renderAll(); } }
+    const editLead = event.target.closest('[data-edit-lead]');
+    if (editLead) { const lead = leadById(editLead.dataset.editLead); if (lead) openLeadDialog(lead); }
     const edit = event.target.closest('[data-edit-job]');
     if (edit) { const job = jobById(edit.dataset.editJob); if (job) openJobDialog(job); }
     const done = event.target.closest('[data-complete-job]');
     if (done) completeJob(done.dataset.completeJob, true);
     const paid = event.target.closest('[data-paid-job]');
-    if (paid) { const job = jobById(paid.dataset.paidJob); if (job) { job.status='Bezahlt'; completeJob(job.id, true); } }
+    if (paid) { const job = jobById(paid.dataset.paidJob); if (job) { job.status='Bezahlt'; job.paidAt = job.paidAt || new Date().toISOString(); completeJob(job.id, true); toast('Zahlung als bezahlt markiert. Der Betrag zählt jetzt in der Buchhaltung.'); } }
     const cal = event.target.closest('[data-calendar-job]');
     if (cal) addCalendar(jobById(cal.dataset.calendarJob));
     const copy = event.target.closest('[data-copy-ref]');
@@ -996,12 +1049,12 @@
     if (lead) lead.status = 'Kunde geworden';
     const amount = amountValue(job.amount || lead?.expectedValue || 0);
     const refId = job.referredById || lead?.referredById || p.referredById;
-    if (refId && refId !== p.id && amount >= Number(getSetting('minOrder'))) {
+    if (isPaidJob(job) && refId && refId !== p.id && amount >= Number(getSetting('minOrder'))) {
       const exists = state.rewards.some(r => r.jobId === job.id && r.customerId === refId);
       if (!exists) state.rewards.push({ id: nextId('reward'), customerId: refId, fromPersonId: p.id, jobId: job.id, amount: Number(getSetting('bonusAmount')), status: 'offen', createdAt: new Date().toISOString(), createdBy: currentUser });
     }
     saveState('complete'); renderAll();
-    if (showMessage) toast('Job erledigt. Person ist jetzt Kunde; Empfehlungslink ist verfügbar.');
+    if (showMessage) toast(isPaidJob(job) ? 'Job bezahlt. Person ist Kunde und der Betrag zählt in der Buchhaltung.' : 'Job erledigt. Zahlung ist noch offen und kann jederzeit markiert werden.');
   }
 
   async function compressImage(file) {
@@ -1739,6 +1792,13 @@
     return String(row.websiteLeadKey || row.WebsiteLeadKey || row.key || `${row.createdAt || ''}|${row.phone || ''}|${row.name || ''}|${row.referral || ''}`).trim();
   }
 
+  function normalizeAppointmentInput(value = '') {
+    const raw = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw + 'T09:00';
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return raw.slice(0,16);
+    return '';
+  }
+
   function importWebsiteLead(row = {}) {
     const key = websiteLeadKey(row);
     if (!key) return false;
@@ -1794,7 +1854,7 @@
       service: row.service || '',
       source,
       expectedValue: '',
-      appointmentAt: '',
+      appointmentAt: normalizeAppointmentInput(row.desiredDate || ''),
       referredById: referral,
       status: row.status || 'Offen',
       createdAt: now,

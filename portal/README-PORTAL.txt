@@ -111,7 +111,7 @@ V10 Workflow-Klarstellung
 V11 Buchhaltung
 ---------------
 - Neuer Tab "Buchhaltung".
-- Erledigte/bezahlte Jobs werden automatisch als Einnahmen gerechnet.
+- Nur bezahlte Jobs werden automatisch als Einnahmen gerechnet. Erledigte Jobs bleiben als offene Zahlung sichtbar und können später als bezahlt markiert werden.
 - Manuelle Einnahmen können mit Zeitraum von/bis ergänzt werden, z.B. bisherige Einnahmen vor Portal-Nutzung.
 - Ausgaben können mit Datum, Kategorie, Bezeichnung und Betrag erfasst werden.
 - Übersicht pro Woche, Monat, Jahr oder eigenem Zeitraum.
@@ -152,3 +152,16 @@ V14 Final polish
 - Buchhaltung cards show clearer creator/responsible info.
 - Setup / Login & Sicherheit spacing and paddings improved.
 - Additional overall polish for portal feel and responsiveness.
+
+
+V14 Lead-Bearbeitung, Zahlung & Google Review
+-------------------------------------------
+- Leads aus Website/Danke-Code können im Lead-Dialog nachbearbeitet und mit Betrag, Termin, Quelle, Empfehlung und Notizen ergänzt werden.
+- Jobs trennen Arbeit und Zahlung: „Erledigt“ macht die Person zum Kunden, aber Buchhaltung zählt erst bei „Zahlung bezahlt“/„Bezahlt“.
+- Erledigte, aber unbezahlte Jobs zeigen weiterhin einen Zahlungsbutton.
+- Google Review Link und WhatsApp-Text sind im Setup anpassbar; Review-Buttons erscheinen bei Jobs und Kunden.
+
+Update v61:
+- iPhone/PWA safe-area oben erweitert, damit Logo und Top-Buttons nicht unter Batterie/Notch liegen.
+- Job-Karte zeigt den WhatsApp-Button jetzt klar als „Erinnerung senden“.
+- Hauptseite: Gratis/kostenlos in unverbindlich geändert; Impressum-Adresse sauber ohne zusätzliche Einrückungen formatiert.

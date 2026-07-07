@@ -2968,3 +2968,33 @@ a.file-button{
     padding-right:3px;
   }
 }
+
+
+/* v61: iPhone safe-area fix + clearer job reminder button */
+@supports (-webkit-touch-callout: none){
+  @media(max-width:820px){
+    .app-shell{
+      padding-top:calc(54px + env(safe-area-inset-top, 0px)) !important;
+    }
+    .topbar{
+      margin-top:4px !important;
+      padding-top:22px !important;
+    }
+    .topbar-brand{
+      align-items:center !important;
+    }
+    .top-actions{
+      padding-top:2px !important;
+    }
+    body.nav-stuck .tabs{
+      top:calc(14px + env(safe-area-inset-top, 0px)) !important;
+    }
+  }
+}
+
+@media(max-width:760px){
+  [data-panel="jobs"] .actions .primary:first-child{
+    grid-column:1 / -1 !important;
+    min-height:50px !important;
+  }
+}

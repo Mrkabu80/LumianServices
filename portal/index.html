@@ -3,23 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="robots" content="noindex, nofollow">
-  <meta name="theme-color" content="#061018">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#0b2f3f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lumian Portal">
   <title>Lumian Portal | Intern</title>
-  <link rel="icon" href="../assets/img/favicon.ico" sizes="any">
-  <link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
-  <link rel="manifest" href="../site.webmanifest">
+  <link rel="icon" href="../assets/img/portal-icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/portal-apple-touch-icon.png">
+  <link rel="manifest" href="portal.webmanifest">
   <link rel="stylesheet" href="portal.css">
 </head>
 <body>
-  <div class="portal-bg"></div>
+  <div class="portal-bg" aria-hidden="true"></div>
 
   <main id="app" class="app-shell" aria-live="polite">
     <section class="login-card" data-login-view>
-      <img class="login-logo" src="../assets/img/lumian-logo-dark.png" alt="Lumian Services">
-      <p class="eyebrow">Internes Arbeitsportal</p>
-      <h1>Leads, Jobs, Kunden & Empfehlungen</h1>
-      <p class="muted">Einfach für unterwegs: Anfrage erfassen, Job planen, abschliessen und direkt WhatsApp senden.</p>
+      <button class="install-mini" type="button" data-install-portal>Als App speichern</button>
+      <div class="brand-lockup">
+        <div class="brand-mark"><img src="../assets/img/lumian-logo-dark.png" alt="Lumian Services"></div>
+        <div>
+          <p class="eyebrow">Internes Arbeitsportal</p>
+          <h1>Lumian Portal</h1>
+        </div>
+      </div>
+      <p class="muted">Für Noah und Timo: Leads, Jobs, Kunden, Empfehlungen, Fotos und WhatsApp – direkt auf dem Handy.</p>
 
       <form class="login-form" data-login-form>
         <label>Benutzer
@@ -32,7 +40,9 @@
           <input name="password" type="password" autocomplete="current-password" placeholder="Passwort" required>
         </label>
         <button class="primary" type="submit">Einloggen</button>
-        <p class="hint" data-login-hint>Beim ersten Login legt jeder sein Passwort selbst fest.</p>
+        <button class="secondary" type="button" data-biometric-login>Mit Face ID / Touch ID entsperren</button>
+        <button class="text-button" type="button" data-forgot-password>Passwort vergessen?</button>
+        <p class="hint" data-login-hint>Beim ersten Login legt jeder sein Passwort selbst fest. Biometrie kann danach in Setup aktiviert werden.</p>
       </form>
     </section>
 
@@ -40,9 +50,12 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Lumian Portal</p>
-          <h1 data-page-title>Dashboard</h1>
+          <h1 data-page-title>Übersicht</h1>
         </div>
-        <div class="user-pill" data-user-pill></div>
+        <div class="top-actions">
+          <button class="icon-button" type="button" data-install-portal title="Als App speichern">▣</button>
+          <div class="user-pill" data-user-pill></div>
+        </div>
       </header>
 
       <nav class="tabs" aria-label="Portal Navigation">
@@ -57,20 +70,21 @@
       <section class="panel active" data-panel="dashboard">
         <div class="stats-grid" data-stats></div>
         <div class="guide-card">
-          <h2>So bleibt es einfach</h2>
+          <h2>Einfacher Ablauf</h2>
           <ol class="flow-list">
-            <li><strong>Lead</strong> = jemand fragt an, aber es ist noch kein fixer Auftrag.</li>
-            <li><strong>Job</strong> = Termin/Offerte ist geplant oder bestätigt.</li>
-            <li><strong>Kunde</strong> = mindestens ein Job wurde erledigt. Erst dann bekommt er automatisch seinen Empfehlungslink.</li>
+            <li><strong>Lead</strong> = Anfrage, noch kein bestätigter Auftrag.</li>
+            <li><strong>Job</strong> = Termin, Besichtigung oder Reinigung ist geplant/bestätigt.</li>
+            <li><strong>Kunde</strong> = wird automatisch, sobald ein Job erledigt oder bezahlt ist.</li>
+            <li><strong>Empfehlung</strong> = nach Abschluss kann der Kunde seinen Empfehlungslink per WhatsApp erhalten.</li>
           </ol>
         </div>
         <div class="quick-actions">
           <button class="primary" data-open-lead>+ Lead hinzufügen</button>
-          <button class="secondary" data-tab-go="jobs">Jobs anzeigen</button>
-          <button class="secondary" data-sync-now>Mit Google Sheet syncen</button>
+          <button class="secondary" data-open-job>+ Job direkt erstellen</button>
+          <button class="secondary" data-sync-now>Google Sheet syncen</button>
         </div>
         <div class="today-card">
-          <h2>Nächste Termine</h2>
+          <div class="panel-head slim"><h2>Nächste Termine</h2><button class="secondary" data-tab-go="jobs">Alle Jobs</button></div>
           <div data-today-list class="list compact"></div>
         </div>
       </section>
@@ -79,12 +93,12 @@
         <div class="panel-head">
           <div>
             <h2>Leads</h2>
-            <p class="muted">Neue Anfrage speichern. Die Lumian-Nr. wird automatisch erstellt.</p>
+            <p class="muted">Anfragen speichern. Jede Person erhält sofort eine Lumian-Nr. wie LM1001.</p>
           </div>
           <button class="primary" data-open-lead>+ Lead hinzufügen</button>
         </div>
         <div class="search-row">
-          <input data-lead-search placeholder="Lead suchen: Name, Ort, Service, LM-Nr.">
+          <input data-lead-search placeholder="Lead suchen: M, Müller, Ort, Service, LM-Nr.">
           <select data-lead-filter>
             <option value="active">Offene Leads</option>
             <option value="all">Alle Leads</option>
@@ -99,12 +113,12 @@
         <div class="panel-head">
           <div>
             <h2>Jobs</h2>
-            <p class="muted">Termin, Betrag, Fotos, Navigation, Reminder und Abschluss.</p>
+            <p class="muted">Termin, Betrag, Fotos, Navigation, Kalender und WhatsApp-Reminder.</p>
           </div>
           <button class="primary" data-open-job>+ Job direkt erstellen</button>
         </div>
         <div class="search-row">
-          <input data-job-search placeholder="Job suchen: Name, Ort, Datum, Status">
+          <input data-job-search placeholder="Job suchen: Name, Ort, Datum, Status, LM-Nr.">
           <select data-job-filter>
             <option value="open">Offene Jobs</option>
             <option value="all">Alle Jobs</option>
@@ -118,12 +132,12 @@
         <div class="panel-head">
           <div>
             <h2>Kunden</h2>
-            <p class="muted">Alphabetisch, mit Kundennummer, Maps, WhatsApp und Empfehlungslink.</p>
+            <p class="muted">Kunden entstehen automatisch nach erledigtem oder bezahltem Job.</p>
           </div>
           <button class="secondary" data-export-csv>Excel Export</button>
         </div>
         <div class="search-row">
-          <input data-customer-search placeholder="Kunden suchen: z.B. M, Müller, Lenzburg, LM1001">
+          <input data-customer-search placeholder="Kunden suchen: M, Müller, Lenzburg, LM1001">
           <button class="secondary" data-show-all-customers>Alle anzeigen</button>
         </div>
         <div data-customer-list class="list"></div>
@@ -133,9 +147,9 @@
         <div class="panel-head">
           <div>
             <h2>Empfehlungsbonus</h2>
-            <p class="muted">Wer hat wen empfohlen und welcher Bonus ist offen oder gutgeschrieben?</p>
+            <p class="muted">Offene und gutgeschriebene Empfehlungsboni.</p>
           </div>
-          <button class="secondary" data-tab-go="settings">Bonus-Regeln ändern</button>
+          <button class="secondary" data-tab-go="settings">Regeln ändern</button>
         </div>
         <div data-reward-list class="list"></div>
       </section>
@@ -144,14 +158,14 @@
         <div class="panel-head">
           <div>
             <h2>Setup</h2>
-            <p class="muted">WhatsApp, Bonus, Google Sheet, Drive, Kalender und Texte.</p>
+            <p class="muted">Bonus, Texte, Google Sheet, Drive, Passwort, Biometrie und Backup.</p>
           </div>
           <button class="secondary danger" data-logout>Logout</button>
         </div>
 
         <form class="settings-grid" data-settings-form>
           <fieldset>
-            <legend>Aktionen & Empfehlungen</legend>
+            <legend>Aktionen & Bonus</legend>
             <label>Bonus in CHF
               <input name="bonusAmount" type="number" min="0" step="5">
             </label>
@@ -159,7 +173,7 @@
               <input name="minOrder" type="number" min="0" step="10">
             </label>
             <label>WhatsApp Nummer Lumian
-              <input name="businessPhone" placeholder="41772794707">
+              <input name="businessPhone" inputmode="tel" placeholder="077 279 47 07">
             </label>
             <label>Empfehlungslink Basis
               <input name="referralBase" placeholder="https://www.lumianservices.ch/?ref={{customerId}}#booking">
@@ -167,55 +181,64 @@
           </fieldset>
 
           <fieldset>
-            <legend>Google Sync</legend>
+            <legend>Google Sheet / Drive</legend>
             <label>Google Apps Script Web App URL
               <input name="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
             </label>
-            <label>Google Drive Folder ID für Fotos/Backup
-              <input name="driveFolderId" placeholder="optional, für Foto-Upload">
+            <label>Google Drive Folder ID für Fotos
+              <input name="driveFolderId" placeholder="optional, für Vorher/Nachher Fotos">
             </label>
             <label>Google Calendar ID optional
-              <input name="calendarId" placeholder="optional, z.B. primary oder Kalender-ID">
+              <input name="calendarId" placeholder="optional, z.B. primary">
             </label>
             <div class="button-row">
               <button class="secondary" type="button" data-sync-now>Sync senden</button>
               <button class="secondary" type="button" data-load-cloud>Cloud laden</button>
             </div>
-            <p class="hint">Für zwei Handys: gleiche Web-App-URL eintragen. Dann regelmässig „Sync senden“ und am anderen Handy „Cloud laden“.</p>
+            <p class="hint">Für zwei Handys: gleiche Web-App-URL eintragen. Fotos gehen in Google Drive, wenn die Folder ID gesetzt ist.</p>
           </fieldset>
 
           <fieldset class="wide">
             <legend>WhatsApp Texte</legend>
-            <label>Empfehlungstext an bestehenden Kunden
+            <label>Empfehlung an bestehenden Kunden
               <textarea name="referralTemplate" rows="5"></textarea>
             </label>
-            <label>Neukunden-Aktion
+            <label>Neukunden-Aktion / Anfrage-Antwort
               <textarea name="newCustomerTemplate" rows="4"></textarea>
             </label>
-            <label>Termin-Erinnerung
+            <label>Termin-Erinnerung an Kunden
               <textarea name="reminderTemplate" rows="4"></textarea>
             </label>
             <p class="hint">Platzhalter: {{name}}, {{customerId}}, {{bonus}}, {{minOrder}}, {{referralLink}}, {{date}}, {{service}}, {{amount}}, {{address}}</p>
           </fieldset>
 
           <fieldset>
-            <legend>Passwort</legend>
+            <legend>Login & Sicherheit</legend>
             <label>Aktuelles Passwort
               <input name="currentPassword" type="password" autocomplete="current-password">
             </label>
             <label>Neues Passwort
               <input name="newPassword" type="password" autocomplete="new-password">
             </label>
-            <button class="secondary" type="button" data-change-password>Passwort ändern</button>
+            <label>Reset-Code für Passwort vergessen
+              <input name="recoveryCode" autocomplete="off" placeholder="z.B. Lumian-Reset-2026">
+            </label>
+            <div class="button-row vertical">
+              <button class="secondary" type="button" data-change-password>Passwort ändern</button>
+              <button class="secondary" type="button" data-enable-biometric>Face ID / Touch ID auf diesem Gerät aktivieren</button>
+              <button class="secondary" type="button" data-disable-biometric>Biometrie entfernen</button>
+            </div>
+            <p class="hint">Biometrie funktioniert nur auf HTTPS und nur auf dem jeweiligen Handy. Der Reset-Code ersetzt keine echte E-Mail-Passwortfunktion, ist aber für diese einfache statische App der schnellste Weg.</p>
           </fieldset>
 
           <fieldset>
-            <legend>Daten</legend>
+            <legend>Daten & Backup</legend>
             <div class="button-row vertical">
               <button class="secondary" type="button" data-export-json>Backup JSON</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
-              <button class="secondary danger" type="button" data-reset-demo>Testdaten löschen</button>
+              <button class="secondary danger" type="button" data-reset-demo>Lokale Daten löschen</button>
             </div>
+            <p class="hint">Lokale Daten löschen nur auf diesem Gerät. Vorher JSON exportieren oder Google Sheet syncen.</p>
           </fieldset>
 
           <button class="primary wide" type="submit">Setup speichern</button>
@@ -225,12 +248,13 @@
   </main>
 
   <dialog data-lead-dialog class="modal">
-    <form method="dialog" class="modal-card" data-lead-form>
+    <form method="dialog" class="modal-card" data-lead-form novalidate>
       <header><h2>Lead hinzufügen</h2><button type="button" data-close-modal>×</button></header>
-      <p class="hint">Lead = Anfrage. Beim Speichern wird automatisch eine Lumian-Nr. erstellt.</p>
+      <p class="hint">Lead = Anfrage. Beim Speichern bekommt die Person automatisch eine Lumian-Nr.</p>
       <div class="form-grid">
         <label>Name<input name="name" required autocomplete="name" placeholder="z.B. Maria Müller"></label>
-        <label>Telefon<input name="phone" inputmode="tel" autocomplete="tel" placeholder="079 ..."></label>
+        <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
+        <label>E-Mail optional<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
         <label class="wide">Adresse<input name="address" autocomplete="street-address" placeholder="Strasse, PLZ Ort"></label>
         <label>Ort<input name="place" autocomplete="address-level2" placeholder="Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination / weiss noch nicht</option></select></label>
@@ -238,9 +262,9 @@
         <label>Betrag/Schätzung CHF<input name="expectedValue" type="number" min="0" step="10" placeholder="350"></label>
         <label>Besichtigung/Termin<input name="appointmentAt" type="datetime-local"></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
-          <input name="referredBySearch" data-ref-search autocomplete="off" placeholder="Name oder LM-Nr. tippen">
+          <input name="referredBySearch" data-ref-search="lead" autocomplete="off" placeholder="Name oder LM-Nr. tippen">
           <input name="referredById" type="hidden">
-          <div class="suggestions" data-ref-suggestions hidden></div>
+          <div class="suggestions" data-ref-suggestions="lead" hidden></div>
         </label>
         <label class="wide">Notizen<textarea name="notes" rows="3" placeholder="Fotos per WhatsApp, Zugang, Besonderheiten..."></textarea></label>
       </div>
@@ -252,20 +276,29 @@
   </dialog>
 
   <dialog data-job-dialog class="modal">
-    <form method="dialog" class="modal-card" data-job-form>
+    <form method="dialog" class="modal-card" data-job-form novalidate>
       <header><h2 data-job-modal-title>Job erstellen</h2><button type="button" data-close-modal>×</button></header>
       <input type="hidden" name="jobId">
       <input type="hidden" name="leadId">
       <input type="hidden" name="personId">
+      <p class="hint">Job = Termin/Besichtigung/Reinigung. Wenn der Job erledigt oder bezahlt ist, wird die Person automatisch Kunde.</p>
       <div class="form-grid">
         <label>Name<input name="name" required autocomplete="name"></label>
-        <label>Telefon<input name="phone" inputmode="tel" autocomplete="tel"></label>
+        <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
+        <label>E-Mail optional<input name="email" type="email" autocomplete="email"></label>
         <label class="wide">Adresse<input name="address" autocomplete="street-address"></label>
+        <label>Ort<input name="place" autocomplete="address-level2"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination</option></select></label>
         <label>Termin<input name="appointmentAt" type="datetime-local"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
         <label>Status<select name="status"><option>Geplant</option><option>Bestätigt</option><option>Erledigt</option><option>Bezahlt</option><option>Abgesagt</option></select></label>
         <label>Zuständig<select name="assignedTo"><option value="noah">Noah</option><option value="timo">Timo</option></select></label>
+        <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
+        <label class="wide autocomplete-wrap">Empfohlen von Kunde
+          <input name="referredBySearch" data-ref-search="job" autocomplete="off" placeholder="Name oder LM-Nr. tippen">
+          <input name="referredById" type="hidden">
+          <div class="suggestions" data-ref-suggestions="job" hidden></div>
+        </label>
         <label class="wide">Notizen<textarea name="notes" rows="3"></textarea></label>
         <label>Vorher Foto<input name="beforePhoto" type="file" accept="image/*" capture="environment"></label>
         <label>Nachher Foto<input name="afterPhoto" type="file" accept="image/*" capture="environment"></label>
@@ -276,6 +309,32 @@
         <button class="primary" type="submit">Job speichern</button>
       </footer>
     </form>
+  </dialog>
+
+  <dialog data-reset-dialog class="modal">
+    <form method="dialog" class="modal-card small" data-reset-form novalidate>
+      <header><h2>Passwort zurücksetzen</h2><button type="button" data-close-modal>×</button></header>
+      <p class="hint">Für diese einfache statische App funktioniert Reset über den im Setup gespeicherten Reset-Code.</p>
+      <label>Benutzer
+        <select name="user" required><option value="noah">Noah</option><option value="timo">Timo</option></select>
+      </label>
+      <label>Reset-Code<input name="code" autocomplete="off" required></label>
+      <label>Neues Passwort<input name="newPassword" type="password" autocomplete="new-password" required></label>
+      <footer>
+        <button type="button" class="secondary" data-close-modal>Abbrechen</button>
+        <button class="primary" type="submit">Passwort neu setzen</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog data-install-dialog class="modal">
+    <div class="modal-card small">
+      <header><h2>Portal als App speichern</h2><button type="button" data-close-modal>×</button></header>
+      <p><strong>iPhone:</strong> Safari öffnen → Teilen-Symbol → „Zum Home-Bildschirm“.</p>
+      <p><strong>Android/Chrome:</strong> Menü ⋮ → „App installieren“ oder „Zum Startbildschirm hinzufügen“.</p>
+      <p class="hint">Die App öffnet danach direkt das Portal unter /portal/.</p>
+      <footer><button class="primary" type="button" data-close-modal>Verstanden</button></footer>
+    </div>
   </dialog>
 
   <div class="toast" data-toast hidden></div>

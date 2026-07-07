@@ -97,14 +97,14 @@ function loadState_() {
 
 function writeSheets_(state) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  writeSheet_(ss, 'People', ['LumianNr','Status','Name','Phone','Address','Place','Source','CreatedAt','CreatedBy','CustomerSince'], (state.people || []).map(function(p) {
-    return [p.id,p.status,p.name,p.phone,p.address,p.place,p.source,p.createdAt,p.createdBy,p.customerSince];
+  writeSheet_(ss, 'People', ['LumianNr','Status','Name','Phone','Email','Address','Place','Source','ReferredBy','CreatedAt','CreatedBy','CustomerSince'], (state.people || []).map(function(p) {
+    return [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.createdAt,p.createdBy,p.customerSince];
   }));
   writeSheet_(ss, 'Leads', ['LeadId','LumianNr','Service','Source','ExpectedValue','AppointmentAt','ReferredBy','Status','CreatedAt','CreatedBy','Notes'], (state.leads || []).map(function(l) {
     return [l.id,l.personId,l.service,l.source,l.expectedValue,l.appointmentAt,l.referredById,l.status,l.createdAt,l.createdBy,l.notes];
   }));
-  writeSheet_(ss, 'Jobs', ['JobId','LumianNr','LeadId','Service','AppointmentAt','Amount','Status','AssignedTo','BeforePhoto','AfterPhoto','CreatedAt','CreatedBy','Notes'], (state.jobs || []).map(function(j) {
-    return [j.id,j.personId,j.leadId,j.service,j.appointmentAt,j.amount,j.status,j.assignedTo,photoLink_(j.beforePhoto),photoLink_(j.afterPhoto),j.createdAt,j.createdBy,j.notes];
+  writeSheet_(ss, 'Jobs', ['JobId','LumianNr','LeadId','Service','AppointmentAt','Amount','Status','AssignedTo','Source','ReferredBy','BeforePhoto','AfterPhoto','CreatedAt','CreatedBy','Notes'], (state.jobs || []).map(function(j) {
+    return [j.id,j.personId,j.leadId,j.service,j.appointmentAt,j.amount,j.status,j.assignedTo,j.source,j.referredById,photoLink_(j.beforePhoto),photoLink_(j.afterPhoto),j.createdAt,j.createdBy,j.notes];
   }));
   writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','CreatedAt','CreatedBy'], (state.rewards || []).map(function(r) {
     return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,r.createdAt,r.createdBy];

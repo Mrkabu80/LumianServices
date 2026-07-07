@@ -1,81 +1,66 @@
-Lumian Services Portal v3
-=========================
+Lumian Portal v5 — einfache interne Handy-App
+==============================================
 
-URL after upload:
+URL nach Upload:
 https://www.lumianservices.ch/portal/
 
-Important:
-- This portal is hidden from Google with noindex and robots.txt Disallow.
-- It is a static GitHub Pages tool. Passwords are local browser protection, not bank-level security.
-- For real access control later, use Cloudflare Access, Firebase Auth, Supabase Auth, or another backend login.
+Wichtig:
+- Das Portal ist in robots.txt blockiert und hat noindex/nofollow.
+- Es ist eine einfache statische Web-App für GitHub Pages.
+- Login/Passwort schützen lokal auf dem Gerät, sind aber keine echte Server-Security.
+- Für echte Sicherheit später: Cloudflare Access, Firebase/Supabase Login oder Google Login.
 
-Simple workflow
----------------
-1) Login as Noah or Timo.
-   First login: choose your own password.
+Was neu ist in v5:
+- Separates Portal-App-Icon und eigener PWA-Start unter /portal/.
+- Button "Als App speichern" mit iPhone/Android Anleitung.
+- Noah und Timo setzen beim ersten Login ihr eigenes Passwort.
+- Passwortänderung im Setup.
+- Passwort vergessen über Reset-Code im Setup.
+- Face ID / Touch ID / Passkey kann pro Gerät im Setup aktiviert werden, wenn Browser und Handy es unterstützen.
+- Leads, Jobs und Kunden sind klar getrennt:
+  Lead = Anfrage.
+  Job = geplanter/bestätigter Termin oder Auftrag.
+  Kunde = automatisch nach erledigtem oder bezahltem Job.
+- Bei Lead oder direktem Job wird sofort eine Lumian-Nr. erstellt, z.B. LM1001.
+- Wenn ein direkter Job noch nicht erledigt ist, bleibt die Person als Lead/Kontakt geführt.
+- Telefonnummern werden auf Schweizer Format geprüft.
+- WhatsApp nutzt automatisch +41 ohne die erste 0.
+- Wenn keine Telefonnummer vorhanden ist, erscheinen keine Anruf-/WhatsApp-Buttons.
+- E-Mail-Felder werden validiert.
+- "Reminder an Kunden" ist klar als Kunden-WhatsApp bezeichnet.
+- Kalender-Button erzeugt eine .ics Datei für Apple/Google Kalender.
+- Vorher/Nachher Fotos werden im Browser komprimiert.
+- Mit Google Apps Script + Drive Folder ID werden Fotos beim Sync in Google Drive gespeichert.
 
-2) Add Lead.
-   A Lead is only an inquiry. When saved, the system automatically creates a Lumian number, for example LM1001.
+Google Sheet/Drive Setup:
+1. Google Sheet erstellen, z.B. "Lumian Portal".
+2. Extensions / Erweiterungen -> Apps Script.
+3. Inhalt aus /portal/GOOGLE-APPS-SCRIPT.gs komplett einfügen.
+4. Deploy -> New deployment -> Web App.
+5. Execute as: Me.
+6. Access: Anyone with the link.
+7. Web App URL kopieren.
+8. Im Portal -> Setup -> Google Apps Script Web App URL einfügen.
+9. Optional Google Drive Ordner erstellen und Folder ID einfügen.
+10. Auf Noah/Timo Handy: Sync senden / Cloud laden nutzen.
 
-3) Convert Lead to Job.
-   In the Leads list, tap "In Job umwandeln".
-   A Job is a planned/confirmed cleaning appointment.
-
-4) Complete Job.
-   When the job is completed, tap "Erledigt".
-   The person becomes an active customer.
-   If the customer came through a referral and the order value is at least the configured minimum, the referrer gets a bonus entry.
-
-5) Send referral message.
-   Open Customers.
-   Tap "Empfehlung senden".
-   WhatsApp opens with the configured message and referral link.
-
-Referral logic
---------------
-- The customer's Lumian number is also their referral code.
-- Example: LM1001
-- Default referral link:
+Empfehlungssystem:
+- Jede Person bekommt sofort eine Lumian-Nr.
+- Diese Lumian-Nr. ist später auch der Empfehlungs-Code.
+- Empfehlungslink wird automatisch erzeugt:
   https://www.lumianservices.ch/?ref=LM1001#booking
-- The public booking form reads ?ref=LM1001 and fills the Danke-Code field automatically.
+- Bonusbetrag und Mindestauftrag sind im Setup änderbar.
+- WhatsApp-Texte sind im Setup komplett anpassbar.
 
-Google Sheets + Drive setup
----------------------------
-1) Create a Google Sheet named "Lumian Portal".
-2) Open Extensions -> Apps Script.
-3) Paste the content of /portal/GOOGLE-APPS-SCRIPT.gs.
-4) Deploy -> New deployment -> Web app.
-   Execute as: Me
-   Who has access: Anyone with the link
-5) Copy the Web App URL.
-6) Open Lumian Portal -> Setup -> paste the Web App URL.
-7) Optional for photos:
-   Create a Google Drive folder for Lumian job photos.
-   Copy the folder ID from the URL.
-   Paste it into Setup -> Google Drive Folder ID.
+Passwort vergessen:
+- Im Login auf "Passwort vergessen?" klicken.
+- Benutzer wählen.
+- Reset-Code eingeben.
+- Neues Passwort setzen.
+- Den Reset-Code kann man im Setup ändern.
 
-Two phones
-----------
-- Each phone should use the same Apps Script Web App URL.
-- After changes, tap "Sync senden".
-- On the other phone, tap "Cloud laden".
-- This is a simple mini-cloud workflow, not a complex live multi-user database.
-
-Photos
-------
-- Before/after photos are compressed in the browser before saving.
-- If a Google Drive Folder ID is set and Sync is sent, the Apps Script uploads photos into Google Drive and writes the links into Google Sheets.
-
-Calendar
---------
-- Every job with a date has a Kalender button.
-- It downloads an .ics calendar file that can be opened on iPhone/Android/desktop.
-- WhatsApp reminder text can be changed under Setup.
-
-Exports
--------
-- Excel Export creates a CSV file that opens in Excel/Numbers.
-- JSON Backup exports the full local portal data.
-
-Do not add portal to sitemap.
-It is intentionally not in sitemap.xml.
+Biometrie:
+- Erst normal einloggen.
+- Setup -> "Face ID / Touch ID auf diesem Gerät aktivieren".
+- Danach kann der Benutzer auf diesem Gerät mit Biometrie entsperren.
+- Es funktioniert nur unter HTTPS und nicht in jedem Browser gleich gut.

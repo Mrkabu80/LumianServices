@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=45">
+  <link rel="stylesheet" href="portal.css?v=47">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -101,10 +101,11 @@
             <button class="secondary" type="button" data-download-leads-template>Vorlage herunterladen</button>
             <label class="file-button small">Leads importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
-            <button class="secondary small-inline" type="button" data-check-website-leads>Web-Anfragen laden</button>
+            <button class="secondary small-inline" type="button" data-check-website-leads>Web-Leads prüfen</button>
           </div>
         </div>
         <div class="import-hint">CSV-Vorlage: Strasse/Nr. und PLZ/Ort getrennt ausfüllen.</div>
+        <div class="web-leads-status" data-web-leads-status hidden></div>
         <div class="search-row">
           <input data-lead-search placeholder="Lead suchen: M, Müller, Ort, Service, LM-Nr.">
           <select data-lead-filter>
@@ -547,6 +548,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=45"></script>
+  <script src="portal.js?v=47"></script>
 </body>
 </html>

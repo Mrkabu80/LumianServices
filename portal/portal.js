@@ -1634,6 +1634,15 @@
     return count;
   }
 
+
+  function setWebLeadsStatus(message, tone = '') {
+    const box = $('[data-web-leads-status]');
+    if (!box) return;
+    box.textContent = message || '';
+    box.dataset.tone = tone || '';
+    box.hidden = !message;
+  }
+
   function currentScriptUrl() {
     const formUrl = $('[data-settings-form]')?.elements?.scriptUrl?.value;
     return String(formUrl || getSetting('scriptUrl') || '').trim();
@@ -1643,23 +1652,47 @@
     saveSettingsFromForm(false);
     const url = currentScriptUrl();
     if (!url) {
-      if (!silent) toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+      const msg = 'Bitte zuerst Google Apps Script URL im Setup eintragen.';
+      if (!silent) { toast(msg); setWebLeadsStatus(msg, 'error'); }
       return;
     }
+
+    const btn = document.activeElement?.matches?.('[data-check-website-leads]') ? document.activeElement : null;
+    const oldText = btn?.textContent || '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Prüfe...'; }
+    if (!silent) setWebLeadsStatus('Web-Leads werden geprüft...', 'loading');
+
     const callbackName = `lumianWebsiteLeads_${Date.now()}`;
     const script = document.createElement('script');
+    let done = false;
+
+    const finish = (message, tone = '') => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (btn) { btn.disabled = false; btn.textContent = oldText || 'Web-Leads prüfen'; }
+      try { delete window[callbackName]; } catch {}
+      script.remove();
+      if (!silent && message) { toast(message); setWebLeadsStatus(message, tone); }
+    };
+
     window[callbackName] = data => {
       try {
-        const count = importWebsiteLeads(data?.leads || []);
-        if (count) toast(`${count} neue Website-Anfrage(n) importiert.`);
-        else if (!silent) toast('Keine neuen Website-Anfragen.');
-      } catch {
-        if (!silent) toast('Website-Anfragen konnten nicht importiert werden.');
+        const rows = data?.leads || [];
+        const count = importWebsiteLeads(rows);
+        if (count) finish(`${count} neue Website-/Danke-Code-Anfrage(n) importiert.`, 'ok');
+        else finish(`Keine neuen Web-Leads gefunden. Gesamt in Cloud: ${rows.length}.`, rows.length ? 'ok' : '');
+      } catch (err) {
+        finish('Web-Leads konnten nicht importiert werden: ' + String(err).slice(0,120), 'error');
       }
-      delete window[callbackName]; script.remove();
     };
-    script.src = `${url}${url.includes('?')?'&':'?'}action=websiteLeads&callback=${callbackName}`;
-    script.onerror = () => { if (!silent) toast('Website-Anfragen laden fehlgeschlagen.'); delete window[callbackName]; script.remove(); };
+
+    const timer = setTimeout(() => {
+      finish('Keine Antwort vom Google Script. Deployment/Access prüfen: Web App, Execute as Me, Anyone with link.', 'error');
+    }, 12000);
+
+    script.onerror = () => finish('Google Script konnte nicht geladen werden. URL oder Zugriff prüfen.', 'error');
+    script.src = `${url}${url.includes('?')?'&':'?'}action=websiteLeads&callback=${callbackName}&t=${Date.now()}`;
     document.body.appendChild(script);
   }
 

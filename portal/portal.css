@@ -2641,3 +2641,40 @@ input,select,textarea{max-width:100% !important}
   -webkit-appearance:checkbox !important;
   accent-color:#22d3ee;
 }
+
+
+/* v46: final checkbox/radio alignment in portal labels */
+.modal-card label:has(input[type="checkbox"]),
+.portal label:has(input[type="checkbox"]),
+.modal-card label:has(input[type="radio"]),
+.portal label:has(input[type="radio"]){
+  display:flex !important;
+  align-items:flex-start !important;
+  gap:10px !important;
+}
+
+
+/* v47: visible Web-Leads load status */
+.web-leads-status{
+  margin:10px 0 14px;
+  padding:11px 14px;
+  border-radius:16px;
+  border:1px solid rgba(35,200,255,.28);
+  background:rgba(35,200,255,.08);
+  color:var(--muted);
+  font-weight:700;
+}
+.web-leads-status[data-tone="ok"]{
+  border-color:rgba(94,234,168,.35);
+  background:rgba(94,234,168,.10);
+  color:#b8f7d9;
+}
+.web-leads-status[data-tone="error"]{
+  border-color:rgba(255,92,92,.35);
+  background:rgba(255,92,92,.10);
+  color:#ffd7d7;
+}
+.web-leads-status[data-tone="loading"]{
+  border-color:rgba(35,200,255,.45);
+  color:#b9efff;
+}

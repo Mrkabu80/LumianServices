@@ -2,7 +2,7 @@
   "name": "Lumian Portal",
   "short_name": "Lumian Portal",
   "description": "Internes Lumian Portal für Leads, Jobs, Kunden, Empfehlungen und Fotos.",
-  "start_url": "/portal/?v=45",
+  "start_url": "/portal/?v=47",
   "scope": "/portal/",
   "display": "standalone",
   "background_color": "#071827",

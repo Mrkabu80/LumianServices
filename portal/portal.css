@@ -2899,3 +2899,5 @@ a.file-button{
     margin:0 !important;
   }
 }
+
+/* v57: dependency-free Excel .xls import/export; no visual changes */

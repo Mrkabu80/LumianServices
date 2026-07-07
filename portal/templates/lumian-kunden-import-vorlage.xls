@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Styles>
+<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="16" ss:Color="#FFFFFF"/><Interior ss:Color="#031A24" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#031A24" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="Hint"><Font ss:Bold="1"/><Interior ss:Color="#EAF8FC" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Text"><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+<Style ss:ID="Money"><NumberFormat ss:Format="#,##0.00"/></Style>
+</Styles>
+<Worksheet ss:Name="Kunden Import"><Table>
+<Column ss:Width="72.0"/>
+<Column ss:Width="150.0"/>
+<Column ss:Width="100.0"/>
+<Column ss:Width="170.0"/>
+<Column ss:Width="170.0"/>
+<Column ss:Width="120.0"/>
+<Column ss:Width="110.0"/>
+<Column ss:Width="100.0"/>
+<Column ss:Width="100.0"/>
+<Column ss:Width="240.0"/>
+<Row>
+<Cell ss:StyleID="Header"><Data ss:Type="String">LumianNr</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Name</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Telefon</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Email</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Strasse/Nr</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">PLZ/Ort</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Quelle</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">EmpfohlenVon</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">KundeSeit</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Notizen</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Maria Müller</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">077 535 05 71</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">maria@email.ch</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Musterstrasse 1</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">5600 Lenzburg</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Empfehlung</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">LM1001</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">bestehender Kunde</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
+</Row>
+</Table></Worksheet>
+<Worksheet ss:Name="Anleitung"><Table>
+<Column ss:Width="110.0"/>
+<Column ss:Width="420.0"/>
+<Row>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Lumian Kunden-Import Vorlage</Data></Cell>
+</Row>
+<Row>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">So nutzen</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Kunden unter der Kopfzeile eintragen. Kopfzeile nicht ändern.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Strasse/Nr</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Nur Strasse und Hausnummer, z.B. Musterstrasse 1.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">PLZ/Ort</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Postleitzahl und Ort zusammen, z.B. 5600 Lenzburg.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">LumianNr</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Leer lassen, wenn das Portal automatisch eine LM-Nummer vergeben soll.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">EmpfohlenVon</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Optional: LM-Nummer des empfehlenden Kunden, z.B. LM1001.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Import</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Diese Excel-Datei nach dem Ausfüllen im Portal wieder importieren.</Data></Cell>
+</Row>
+</Table></Worksheet>
+</Workbook>

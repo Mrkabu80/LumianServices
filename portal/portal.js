@@ -1178,18 +1178,72 @@
   }
 
 
+
+  function excelXmlEscape(value) {
+    return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function excelXmlCell(value, rowIndex = 0) {
+    const style = rowIndex === 0 ? 'Header' : 'Text';
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return `<Cell ss:StyleID="${style}"><Data ss:Type="Number">${value}</Data></Cell>`;
+    }
+    return `<Cell ss:StyleID="${style}"><Data ss:Type="String">${excelXmlEscape(value)}</Data></Cell>`;
+  }
+  function excelXmlWorkbook(sheets) {
+    const styles = `<Styles>
+<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="16" ss:Color="#FFFFFF"/><Interior ss:Color="#031A24" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#031A24" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="Text"><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+</Styles>`;
+    const body = sheets.map(([name, rows, widths = []]) => {
+      const cols = widths.map(w => `<Column ss:Width="${Number(w) || 100}"/>`).join('');
+      const tableRows = rows.map((row, ri) => `<Row>${row.map(cell => excelXmlCell(cell, ri)).join('')}</Row>`).join('');
+      return `<Worksheet ss:Name="${excelXmlEscape(String(name).slice(0,31))}"><Table>${cols}${tableRows}</Table></Worksheet>`;
+    }).join('');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${styles}${body}</Workbook>`;
+  }
+  function downloadExcelXml(filename, sheets) {
+    const xml = excelXmlWorkbook(sheets);
+    downloadText(filename, xml, 'application/vnd.ms-excel;charset=utf-8');
+  }
+  function parseExcelXml(text) {
+    const doc = new DOMParser().parseFromString(String(text || ''), 'application/xml');
+    if (doc.querySelector('parsererror')) throw new Error('Excel XML konnte nicht gelesen werden.');
+    const worksheets = Array.from(doc.getElementsByTagName('*')).filter(el => el.localName === 'Worksheet');
+    const ws = worksheets.find(s => /import/i.test(s.getAttribute('ss:Name') || s.getAttribute('Name') || '')) || worksheets[0];
+    if (!ws) return [];
+    const rowEls = Array.from(ws.getElementsByTagName('*')).filter(el => el.localName === 'Row');
+    return rowEls.map(rowEl => {
+      const cells = Array.from(rowEl.children).filter(el => el.localName === 'Cell');
+      const row = [];
+      cells.forEach(cell => {
+        const idx = Number(cell.getAttribute('ss:Index') || cell.getAttribute('Index') || 0);
+        if (idx > 0) while (row.length < idx - 1) row.push('');
+        const data = Array.from(cell.children).find(el => el.localName === 'Data');
+        row.push(data ? data.textContent.trim() : '');
+      });
+      return row;
+    }).filter(r => r.some(v => String(v || '').trim() !== ''));
+  }
+  function isExcelXmlFile(file) {
+    return /\.(xls|xml)$/i.test(file?.name || '');
+  }
+
   function isExcelFile(file) {
     return /\.(xlsx|xls)$/i.test(file?.name || '');
   }
   function requireXlsx() {
     if (window.XLSX) return true;
-    toast('Excel-Modul lädt noch oder ist offline. Bitte kurz warten und nochmals importieren.');
+    toast('XLSX-Modul lädt noch oder ist offline. Bitte die heruntergeladene .xls-Vorlage verwenden oder kurz warten.');
     return false;
   }
   async function importFile(file, type) {
     if (!file) return;
     let objects = [];
-    if (isExcelFile(file)) {
+    if (isExcelXmlFile(file)) {
+      const rows = parseExcelXml(await file.text());
+      objects = rowObjects(rows);
+    } else if (isExcelFile(file)) {
       if (!requireXlsx()) return;
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { type:'array', cellDates:true, raw:false });
@@ -1552,7 +1606,6 @@
       ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
       ['Gewinn grob', s.profit, 'bezahlte Einnahmen minus Ausgaben']
     ];
-
     const incomeRows = [
       ['Typ','Datum','Bis','Kunde/Titel','Service/Kategorie','Betrag CHF','Eingetragen von','Notiz','ID'],
       ...s.jobs.map(x => ['Einnahme Job bezahlt', ymd(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
@@ -1577,12 +1630,12 @@
       }).filter(r => r[4] || r[7] || r[1])
     ];
 
-    writeWorkbook(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.xlsx`, [
-      ['Zusammenfassung', summary, [36,20,44]],
-      ['Einnahmen', incomeRows, [24,14,14,34,22,14,18,36,16]],
-      ['Voraussichtlich', forecastRows, [20,14,34,20,14,18,16]],
-      ['Ausgaben', expenseRows, [14,22,34,14,18,36,16]],
-      ['Kundenaktivität', customerRows, [14,26,18,20,16,14,16,12]]
+    downloadExcelXml(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.xls`, [
+      ['Zusammenfassung', summary, [220,130,280]],
+      ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100]],
+      ['Voraussichtlich', forecastRows, [130,90,220,130,90,130,100]],
+      ['Ausgaben', expenseRows, [90,140,220,90,130,240,100]],
+      ['Kundenaktivität', customerRows, [90,170,120,130,100,90,100,80]]
     ]);
   }
   $('[data-finance-export]')?.addEventListener('click', exportFinanceExcel);
@@ -1591,8 +1644,8 @@
   function exportCsv() {
     const rows = [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen']]
       .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '',p.notes || '']));
-    writeWorkbook(`lumian-kunden-export-${new Date().toISOString().slice(0,10)}.xlsx`, [
-      ['Kunden', rows, [14,14,26,18,28,28,20,18,16,18,38]]
+    downloadExcelXml(`lumian-kunden-export-${new Date().toISOString().slice(0,10)}.xls`, [
+      ['Kunden', rows, [90,90,170,120,180,180,130,120,110,110,240]]
     ]);
   }
   function exportJson() { downloadText(`lumian-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,2), 'application/json'); }

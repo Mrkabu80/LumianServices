@@ -27,10 +27,12 @@ function doPost(e) {
     settings.driveFolderId = settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
     settings.calendarId = settings.calendarId || DEFAULT_CALENDAR_ID;
     state.settings = settings;
+    state.lastSyncRunId = payload.syncRunId || ('sync-' + new Date().getTime());
     var folderId = settings.driveFolderId;
     var photoFolder = null;
     state.photoSyncLog = [];
     state.syncDiagnostics = [];
+    state.syncDiagnostics.push(['Sync ID', state.lastSyncRunId || '', '', '']);
     state.syncDiagnostics.push(['Sync gestartet', new Date().toISOString(), '', '']);
     state.syncDiagnostics.push(['Drive Folder ID', folderId || '', '', '']);
     state.syncDiagnostics.push(['Calendar ID input', settings.calendarId || '', 'parsed: ' + parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID), '']);
@@ -74,7 +76,7 @@ function doPost(e) {
 
     writeSheets_(state);
     saveState_(state, photoFolder);
-    return json_({ ok: true, savedAt: new Date().toISOString(), photoSyncLog: state.photoSyncLog || [], calendarSyncLog: state.calendarSyncLog || [] });
+    return json_({ ok: true, savedAt: new Date().toISOString(), syncRunId: state.lastSyncRunId || '', photoSyncLog: state.photoSyncLog || [], calendarSyncLog: state.calendarSyncLog || [] });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
@@ -224,18 +226,21 @@ function cleanCode_(value) {
 
 
 function doGet(e) {
-  var action = (e.parameter.action || '').toLowerCase();
-  var callback = e.parameter.callback || 'callback';
+  e = e || { parameter: {} };
+  var action = String((e.parameter && e.parameter.action) || '').toLowerCase();
+  var callback = String((e.parameter && e.parameter.callback) || 'callback').replace(/[^a-zA-Z0-9_$\.]/g, '');
   if (action === 'load') {
     var state = loadState_();
-    return ContentService
-      .createTextOutput(callback + '(' + JSON.stringify({ ok: true, state: state }) + ');')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    return jsonp_(callback, { ok: true, state: state });
   }
   if (action === 'websiteleads') {
-    return ContentService
-      .createTextOutput(callback + '(' + JSON.stringify({ ok: true, leads: readWebsiteLeads_() }) + ');')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    return jsonp_(callback, { ok: true, leads: readWebsiteLeads_() });
+  }
+  if (action === 'syncdiagnostics') {
+    return jsonp_(callback, { ok: true, diagnostics: getSyncDiagnostics_(), at: new Date().toISOString() });
+  }
+  if (action === 'testsync') {
+    return jsonp_(callback, { ok: true, test: runSyncTest_(e.parameter || {}), at: new Date().toISOString() });
   }
   return json_({ ok: true, message: 'Lumian Portal backend is running.' });
 }
@@ -695,6 +700,71 @@ function getOrCreateSheet_(ss, name, headers) {
   return sh;
 }
 
+
+
+function getSyncDiagnostics_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var out = { syncDiagnostics: [], photoSync: [], calendarSync: [] };
+  out.syncDiagnostics = readSheetRows_(ss, 'Sync Diagnostics');
+  out.photoSync = readSheetRows_(ss, 'Photo Sync');
+  out.calendarSync = readSheetRows_(ss, 'Calendar Sync');
+  return out;
+}
+
+function readSheetRows_(ss, name) {
+  var sh = ss.getSheetByName(name);
+  if (!sh || sh.getLastRow() < 1) return [];
+  var values = sh.getDataRange().getDisplayValues();
+  return values.slice(0, 25);
+}
+
+function runSyncTest_(params) {
+  var state = loadState_() || {};
+  var settings = state.settings || {};
+  var folderId = String((params && params.driveFolderId) || settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID || '').trim();
+  var calendarInput = String((params && params.calendarId) || settings.calendarId || DEFAULT_CALENDAR_ID || '').trim();
+  var calendarId = parseCalendarId_(calendarInput || DEFAULT_CALENDAR_ID);
+  var result = {
+    driveFolderId: folderId,
+    calendarInput: calendarInput,
+    calendarId: calendarId,
+    drive: { ok: false, message: '' },
+    calendar: { ok: false, message: '' }
+  };
+
+  try {
+    if (!folderId) throw new Error('Keine Drive Folder ID vorhanden.');
+    var folder = DriveApp.getFolderById(folderId);
+    var file = folder.createFile('lumian-sync-test-' + new Date().getTime() + '.txt', 'Lumian Sync Test ' + new Date().toISOString(), 'text/plain');
+    var fileName = file.getName();
+    file.setTrashed(true);
+    result.drive = { ok: true, message: 'OK: Drive Ordner erreichbar und Testdatei konnte erstellt werden: ' + folder.getName() + ' / ' + fileName };
+  } catch (driveErr) {
+    result.drive = { ok: false, message: 'FEHLER: Drive Ordner nicht beschreibbar. Folder ID/Berechtigung prüfen. Details: ' + String(driveErr) };
+  }
+
+  try {
+    if (!calendarId) throw new Error('Keine Calendar ID vorhanden.');
+    var calendar = calendarId === 'primary' ? CalendarApp.getDefaultCalendar() : CalendarApp.getCalendarById(calendarId);
+    if (!calendar) throw new Error('CalendarApp.getCalendarById returned null');
+    var start = new Date(new Date().getTime() + 15 * 60 * 1000);
+    var end = new Date(start.getTime() + 10 * 60 * 1000);
+    var event = calendar.createEvent('Lumian Sync Test - bitte ignorieren', start, end, { description: 'Automatischer Test aus Lumian Portal. Der Termin wird sofort wieder gelöscht.' });
+    var eventId = event.getId();
+    event.deleteEvent();
+    result.calendar = { ok: true, message: 'OK: Kalender beschreibbar: ' + calendar.getName() + ' / Testevent erstellt und gelöscht / ' + eventId };
+  } catch (calErr) {
+    result.calendar = { ok: false, message: 'FEHLER: Kalender nicht beschreibbar. iCal-Link reicht nicht; der Kalender muss dem Apps-Script-Konto mit „Änderungen an Terminen vornehmen“ freigegeben sein. Details: ' + String(calErr) };
+  }
+  return result;
+}
+
+function jsonp_(callback, obj) {
+  callback = String(callback || 'callback').replace(/[^a-zA-Z0-9_$\.]/g, '');
+  return ContentService
+    .createTextOutput(callback + '(' + JSON.stringify(obj) + ');')
+    .setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);

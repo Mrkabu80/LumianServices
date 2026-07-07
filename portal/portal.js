@@ -2207,7 +2207,24 @@
     return (s.jobs || []).some(j => j?.beforePhoto?.dataUrl || j?.afterPhoto?.dataUrl || j?.beforePhoto?.localOnly || j?.afterPhoto?.localOnly);
   }
 
-  function refreshCloudAfterSync(expectedUpdatedAt = '', silent = true) {
+  function mergeCloudStatePreserveLocalMedia(localState, cloudState) {
+    const merged = JSON.parse(JSON.stringify(cloudState || {}));
+    const localJobs = new Map((localState?.jobs || []).map(j => [String(j.id || ''), j]));
+    (merged.jobs || []).forEach(job => {
+      const local = localJobs.get(String(job.id || ''));
+      if (!local) return;
+      ['beforePhoto','afterPhoto'].forEach(key => {
+        const cloudPhoto = job[key];
+        const localPhoto = local[key];
+        if (localPhoto?.dataUrl && (!cloudPhoto || cloudPhoto.localOnly || cloudPhoto.error || (!cloudPhoto.driveUrl && !cloudPhoto.url && !cloudPhoto.fileId))) {
+          job[key] = Object.assign({}, cloudPhoto || {}, localPhoto, { localOnly: true });
+        }
+      });
+    });
+    return merged;
+  }
+
+  function refreshCloudAfterSync(expectedSyncRunId = '', silent = true) {
     const url = currentScriptUrl();
     if (!url) return;
     const callbackName = `lumianAfterPhotoSync_${Date.now()}`;
@@ -2216,15 +2233,19 @@
     window[callbackName] = data => {
       try {
         const cloudState = data?.state;
-        if (cloudState && (!expectedUpdatedAt || cloudState.updatedAt === expectedUpdatedAt)) {
+        const sameRun = !expectedSyncRunId || cloudState?.lastSyncRunId === expectedSyncRunId;
+        if (cloudState && sameRun) {
           suppressAutoCloudSync = true;
-          state = migrateState(cloudState);
+          const merged = mergeCloudStatePreserveLocalMedia(state, cloudState);
+          state = migrateState(merged);
           localStorage.setItem(STORE_KEY, JSON.stringify(state));
           suppressAutoCloudSync = false;
           renderAll();
-          if (!silent) toast('Sync geprüft. Drive-/Kalender-Status ist jetzt auf den Job-Karten sichtbar.');
+          const failedPhoto = (state.jobs || []).some(j => j?.beforePhoto?.error || j?.afterPhoto?.error);
+          const failedCal = (state.jobs || []).some(j => String(j?.calendarSyncStatus || '').toLowerCase().includes('fehler'));
+          if (!silent) toast(failedPhoto || failedCal ? 'Sync fertig, aber es gibt Fehler-Badges. Bitte Drive/Kalender testen.' : 'Sync fertig. Fotos/Kalender-Status ist aktualisiert.');
         } else if (!silent) {
-          toast('Sync nicht bestätigt. Apps Script Deployment, Drive-Ordner und Kalender-Berechtigung prüfen.');
+          toast('Sync nicht bestätigt. Bitte Drive/Kalender testen oder Apps Script Deployment prüfen.');
         }
       } catch { if (!silent) toast('Sync-Antwort konnte nicht gelesen werden.'); }
       cleanup();
@@ -2243,7 +2264,7 @@
     return !!calendarSyncTarget(s) && (s.jobs || []).some(j => j && j.appointmentAt && !isCancelledJob(j));
   }
 
-  function makeCloudPayload() { saveState('before sync', { cloud: false }); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
+  function makeCloudPayload() { const syncRunId = `sync-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; saveState('before sync', { cloud: false }); return { action:'syncFull', syncRunId, sentAt:new Date().toISOString(), by:currentUser, state }; }
   async function syncCloud(silent = false) {
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
@@ -2258,7 +2279,7 @@
     try {
       await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(payload) });
       if (!silent) toast(refreshPhotos ? 'Sync gesendet. Fotos/Termine werden gespeichert...' : (refreshCalendar ? 'Sync gesendet. Google Calendar wird aktualisiert...' : 'Sync gesendet. Google Sheet/Drive prüfen.'));
-      if (refreshAfterSync || !silent) setTimeout(() => refreshCloudAfterSync(payload.state.updatedAt, silent), 8500);
+      if (refreshAfterSync || !silent) setTimeout(() => refreshCloudAfterSync(payload.syncRunId, silent), 6500);
     }
     catch { if (!silent) toast('Sync konnte nicht gesendet werden.'); }
     finally { cloudSyncInProgress = false; }
@@ -2282,6 +2303,42 @@
     script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}`;
     script.onerror = () => { toast('Cloud laden fehlgeschlagen.'); delete window[callbackName]; script.remove(); };
     document.body.appendChild(script);
+  }
+
+  function jsonpRequest(url, action, params = {}) {
+    return new Promise((resolve, reject) => {
+      const callbackName = `lumianJsonp_${action}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+      const script = document.createElement('script');
+      const cleanup = () => { try { delete window[callbackName]; } catch {} script.remove(); };
+      const qs = new URLSearchParams(Object.assign({}, params, { action, callback: callbackName, t: Date.now() }));
+      window[callbackName] = data => { cleanup(); resolve(data); };
+      script.onerror = () => { cleanup(); reject(new Error('Apps Script konnte nicht geladen werden. URL/Deployment prüfen.')); };
+      script.src = `${url}${url.includes('?')?'&':'?'}${qs.toString()}`;
+      document.body.appendChild(script);
+    });
+  }
+
+  async function testGoogleSync() {
+    suppressAutoCloudSync = true;
+    saveSettingsFromForm(false);
+    suppressAutoCloudSync = false;
+    const url = currentScriptUrl();
+    if (!url) return toast('Bitte zuerst Google Apps Script URL speichern.');
+    toast('Drive/Kalender Test läuft...');
+    try {
+      const data = await jsonpRequest(url, 'testsync', {
+        driveFolderId: getSetting('driveFolderId') || DEFAULT_SETTINGS.driveFolderId,
+        calendarId: getSetting('calendarId') || DEFAULT_SETTINGS.calendarId
+      });
+      const test = data?.test || {};
+      const driveMsg = test.drive?.message || 'Drive: keine Antwort';
+      const calMsg = test.calendar?.message || 'Kalender: keine Antwort';
+      alert(`Lumian Sync Test\n\nDrive Folder ID:\n${test.driveFolderId || ''}\n\nKalender ID:\n${test.calendarId || ''}\n\nDrive:\n${driveMsg}\n\nKalender:\n${calMsg}`);
+      toast(test.drive?.ok && test.calendar?.ok ? 'Drive/Kalender Test OK.' : 'Test zeigt Fehler. Siehe Meldung.');
+    } catch (err) {
+      alert('Sync-Test fehlgeschlagen:\n' + (err?.message || err));
+      toast('Sync-Test fehlgeschlagen.');
+    }
   }
 
   async function resetCloudAndLocal() {
@@ -2309,6 +2366,7 @@
   }
 
   $$('[data-sync-now]').forEach(btn => btn.addEventListener('click', syncCloud));
+  $$('[data-test-sync]').forEach(btn => btn.addEventListener('click', testGoogleSync));
   $('[data-load-cloud]')?.addEventListener('click', loadCloud);
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
 

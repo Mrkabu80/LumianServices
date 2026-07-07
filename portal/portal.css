@@ -2680,12 +2680,12 @@ input,select,textarea{max-width:100% !important}
 }
 
 
-/* v48: portal app containment */
-html, body, .portal, .portal-shell, .panel, .modal-card{
-  max-width:100%;
-  overflow-x:hidden;
-}
-img, svg, canvas, video{
-  max-width:100%;
-  height:auto;
+/* v49: Excel template download links styled like buttons */
+a.secondary,
+a.primary,
+a.file-button{
+  text-decoration:none !important;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
 }

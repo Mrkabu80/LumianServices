@@ -35,6 +35,16 @@ document.querySelectorAll('.reveal').forEach(element => {
 
 const form = document.querySelector('[data-booking-form]');
 if (form) {
+  // Referral support for Lumian Portal links, e.g. /?ref=LM1001#booking
+  try {
+    const ref = new URLSearchParams(window.location.search).get('ref');
+    if (ref && form.elements.referral) {
+      form.elements.referral.value = ref.toUpperCase();
+      const booking = document.getElementById('booking');
+      if (booking) setTimeout(() => booking.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    }
+  } catch (error) {}
+
   form.addEventListener('submit', event => {
     event.preventDefault();
     const data = new FormData(form);

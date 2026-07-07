@@ -321,6 +321,7 @@
     const u = state.users.find(x => x.id === currentUser);
     $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)}${u?.role==='admin'?' · Admin':''}`;
     setTab(activeTab);
+    setTimeout(setupSmartStickyNav, 120);
   }
 
   $('[data-login-form]')?.addEventListener('submit', async event => {
@@ -1445,6 +1446,35 @@
     }
   }));
 
+
+  function setupSmartStickyNav() {
+    const tabs = $('.tabs');
+    const topbar = $('.topbar');
+    if (!tabs || !topbar) return;
+
+    const update = () => {
+      if (!currentUser || window.innerWidth > 1100) {
+        document.body.classList.remove('nav-stuck');
+        document.documentElement.style.setProperty('--tabs-height', '0px');
+        return;
+      }
+
+      const topOffset = 6 + (window.visualViewport?.offsetTop || 0);
+      const tabsHeight = Math.ceil(tabs.getBoundingClientRect().height || 56);
+      document.documentElement.style.setProperty('--tabs-height', `${tabsHeight}px`);
+
+      const topbarBottom = topbar.getBoundingClientRect().bottom;
+      document.body.classList.toggle('nav-stuck', topbarBottom <= topOffset);
+    };
+
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
+    setTimeout(update, 80);
+    setTimeout(update, 400);
+  }
+
   function b64url(buffer) {
     const bytes = new Uint8Array(buffer);
     let str = ''; bytes.forEach(b => str += String.fromCharCode(b));
@@ -1491,4 +1521,5 @@
 
   setDefaultFinanceDates();
   renderLogin();
+  setupSmartStickyNav();
 })();

@@ -1,16 +1,16 @@
 {
   "name": "Lumian Portal",
-  "short_name": "Portal",
+  "short_name": "Lumian Portal",
   "description": "Internes Lumian Portal für Leads, Jobs, Kunden, Empfehlungen und Fotos.",
   "start_url": "/portal/",
   "scope": "/portal/",
   "display": "standalone",
-  "background_color": "#061018",
-  "theme_color": "#061018",
+  "background_color": "#081a2f",
+  "theme_color": "#081a2f",
   "orientation": "portrait-primary",
   "lang": "de-CH",
   "icons": [
-    { "src": "/assets/img/portal-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/assets/img/portal-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/assets/img/app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/assets/img/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

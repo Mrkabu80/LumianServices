@@ -1,6 +1,6 @@
-const CACHE_NAME='lumian-static-v4';
+const CACHE_NAME='lumian-static-v8';
 const OFFLINE_URL='/offline.html';
-const ASSETS=['/','/index.html','/styles.css','/script.js','/assets/js/gallery-data.js','/offline.html','/assets/img/favicon.ico','/assets/img/app-icon-192.png','/assets/img/app-icon-512.png','/assets/img/lumian-logo-dark.png','/assets/img/lumian-logo-hero.png'];
+const ASSETS=['/','/index.html','/styles.css','/script.js','/assets/js/gallery-data.js','/offline.html','/assets/img/favicon.ico','/assets/img/app-icon-192.png','/assets/img/app-icon-512.png','/assets/img/lumian-logo-dark.png','/assets/img/lumian-logo-hero.png','/portal/','/portal/index.html','/portal/portal.css','/portal/portal.js','/portal/portal.webmanifest','/assets/img/app-icon-192.png','/assets/img/app-icon-512.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(ASSETS)).catch(()=>{}));self.skipWaiting();});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE_NAME).map(key=>caches.delete(key)))));self.clients.claim();});
 self.addEventListener('fetch',event=>{if(event.request.method!=='GET')return;event.respondWith(fetch(event.request).then(response=>{const copy=response.clone();caches.open(CACHE_NAME).then(cache=>cache.put(event.request,copy)).catch(()=>{});return response;}).catch(()=>caches.match(event.request).then(cached=>cached||((event.request.mode==='navigate')?caches.match(OFFLINE_URL):undefined))));});

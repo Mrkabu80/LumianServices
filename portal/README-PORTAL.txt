@@ -81,3 +81,6 @@ Biometrie:
 - Setup -> "Face ID / Touch ID auf diesem Gerät aktivieren".
 - Danach kann der Benutzer auf diesem Gerät mit Biometrie entsperren.
 - Es funktioniert nur unter HTTPS und nicht in jedem Browser gleich gut.
+
+
+v8 Hinweis: Nach Upload alte Portal-App vom Home-Screen löschen und neu hinzufügen. Falls altes Design bleibt: Safari/Chrome Cache leeren oder einmal /portal/?v=8 öffnen.

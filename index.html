@@ -40,15 +40,15 @@
 
 
 
-<link href="https://www.lumianservices.ch/assets/img/favicon.ico" rel="icon" sizes="any"/>
-<link href="https://www.lumianservices.ch/assets/img/favicon-192.png" rel="icon" sizes="192x192" type="image/png"/>
-<link href="https://www.lumianservices.ch/assets/img/apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180"/>
+<link href="https://www.lumianservices.ch/favicon.ico" rel="icon" sizes="any"/>
+<link href="https://www.lumianservices.ch/favicon-192.png" rel="icon" sizes="192x192" type="image/png"/>
+<link href="https://www.lumianservices.ch/apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180"/>
 <link href="https://www.lumianservices.ch/site.webmanifest" rel="manifest"/>
 <meta content="yes" name="apple-mobile-web-app-capable"/>
 <meta content="Lumian" name="apple-mobile-web-app-title"/>
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
-<link as="style" href="styles.css?v=52" rel="preload"/>
-<link href="styles.css?v=52" rel="stylesheet"/>
+<link as="style" href="styles.css?v=53" rel="preload"/>
+<link href="styles.css?v=53" rel="stylesheet"/>
 
 <script type="application/ld+json">{
   "@context": "https://schema.org",
@@ -534,36 +534,7 @@
 </div>
 <script defer="" src="assets/js/gallery-data.js"></script>
 
-<script>
-(function(){
-  function initLumianMenuFallback(){
-    var btn = document.querySelector('[data-nav-toggle]');
-    var nav = document.querySelector('[data-nav]');
-    if(!btn || !nav || btn.dataset.menuFallbackReady === 'yes') return;
-    btn.dataset.menuFallbackReady = 'yes';
-    btn.addEventListener('click', function(e){
-      e.preventDefault();
-      var open = nav.classList.toggle('is-open');
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      document.body.classList.toggle('nav-open', open);
-    });
-    nav.querySelectorAll('a').forEach(function(link){
-      link.addEventListener('click', function(){
-        nav.classList.remove('is-open');
-        btn.setAttribute('aria-expanded','false');
-        document.body.classList.remove('nav-open');
-      });
-    });
-  }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', initLumianMenuFallback);
-  } else {
-    initLumianMenuFallback();
-  }
-})();
-</script>
-
-<script defer="" src="lead-config.js?v=52"></script>
-<script defer="" src="script.js?v=52"></script>
+<script defer="" src="lead-config.js?v=53"></script>
+<script defer="" src="script.js?v=53"></script>
 </body>
 </html>

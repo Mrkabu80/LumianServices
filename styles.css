@@ -1781,3 +1781,38 @@ label.consent span{
     line-height:1.55 !important;
   }
 }
+
+
+/* v53: final hamburger menu fix — no double toggle */
+@media (max-width:760px){
+  body.page-home .site-header,
+  .site-header{
+    position:sticky;
+    top:0;
+    z-index:10000 !important;
+    overflow:visible !important;
+  }
+  body.page-home .nav-wrap,
+  .nav-wrap{
+    position:relative !important;
+    overflow:visible !important;
+    z-index:10001 !important;
+  }
+  body.page-home .nav-toggle,
+  .nav-toggle{
+    position:relative !important;
+    z-index:10003 !important;
+    pointer-events:auto !important;
+    cursor:pointer !important;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body.page-home .main-nav,
+  .main-nav{
+    z-index:10002 !important;
+    pointer-events:auto !important;
+  }
+  body.page-home .main-nav.is-open,
+  .main-nav.is-open{
+    display:flex !important;
+  }
+}

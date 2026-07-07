@@ -7,15 +7,27 @@ const business = {
 const navToggle = document.querySelector('[data-nav-toggle]');
 const nav = document.querySelector('[data-nav]');
 if (navToggle && nav) {
-  navToggle.addEventListener('click', () => {
-    const isOpen = nav.classList.toggle('is-open');
+  const closeMenu = () => {
+    nav.classList.remove('is-open');
+    navToggle.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('nav-open');
+  };
+  const toggleMenu = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const isOpen = !nav.classList.contains('is-open');
+    nav.classList.toggle('is-open', isOpen);
     navToggle.setAttribute('aria-expanded', String(isOpen));
-  });
+    document.body.classList.toggle('nav-open', isOpen);
+  };
+  navToggle.addEventListener('click', toggleMenu);
   nav.addEventListener('click', event => {
-    if (event.target.tagName === 'A') {
-      nav.classList.remove('is-open');
-      navToggle.setAttribute('aria-expanded', 'false');
-    }
+    if (event.target.matches('a')) closeMenu();
+  });
+  document.addEventListener('click', event => {
+    if (!nav.classList.contains('is-open')) return;
+    if (nav.contains(event.target) || navToggle.contains(event.target)) return;
+    closeMenu();
   });
 }
 

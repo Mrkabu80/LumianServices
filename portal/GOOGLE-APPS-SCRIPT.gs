@@ -16,6 +16,7 @@ function doPost(e) {
   try {
     var payload = JSON.parse(e.postData.contents || '{}');
     if (payload.action === 'websiteLead') return saveWebsiteLead_(payload.lead || {});
+    if (payload.action === 'resetAll') return resetAll_(payload.confirm || '');
     if (payload.action !== 'syncFull') return json_({ ok: false, error: 'Unknown action' });
 
     var state = payload.state || {};
@@ -37,6 +38,44 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
+}
+
+
+
+function emptyState_() {
+  var now = new Date().toISOString();
+  return {
+    version: 6,
+    createdAt: now,
+    updatedAt: now,
+    users: [],
+    settings: {},
+    counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
+    people: [],
+    leads: [],
+    jobs: [],
+    rewards: [],
+    finance: { manualIncome: [], expenses: [] },
+    audit: []
+  };
+}
+
+function resetAll_(confirmText) {
+  if (confirmText !== 'RESET-LUMIAN-PORTAL') {
+    return json_({ ok: false, error: 'Reset confirmation missing' });
+  }
+  var state = emptyState_();
+  writeSheets_(state);
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var website = getOrCreateSheet_(ss, 'Website Leads', [
+    'websiteLeadKey','createdAt','leadId','lumianNr','name','phone','Strasse/Nr','PLZ/Ort','service','desiredDate','referral','message','source','status'
+  ]);
+  website.clearContents();
+  website.appendRow(['websiteLeadKey','createdAt','leadId','lumianNr','name','phone','Strasse/Nr','PLZ/Ort','service','desiredDate','referral','message','source','status']);
+
+  PropertiesService.getScriptProperties().setProperty('LUMIAN_STATE', JSON.stringify(state));
+  return json_({ ok: true, resetAt: new Date().toISOString() });
 }
 
 

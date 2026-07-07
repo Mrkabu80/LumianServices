@@ -1350,3 +1350,96 @@ button[disabled]{
     justify-content:center;
   }
 }
+
+
+/* v42: hard responsive form-control fix across public forms */
+*, *::before, *::after{
+  box-sizing:border-box;
+}
+.booking-form,
+.referral-form,
+.booking-form label,
+.referral-form label,
+.booking-form .full,
+.referral-form .full{
+  min-width:0 !important;
+}
+.booking-form input,
+.booking-form select,
+.booking-form textarea,
+.referral-form input,
+.referral-form select,
+.referral-form textarea{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+}
+.booking-form input[type="date"],
+.referral-form input[type="date"]{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+  appearance:auto !important;
+  -webkit-appearance:none !important;
+  padding-inline:18px 44px !important;
+}
+.booking-form input[type="date"]::-webkit-date-and-time-value,
+.referral-form input[type="date"]::-webkit-date-and-time-value{
+  text-align:left;
+  min-height:1.4em;
+}
+.booking-form input[type="date"]::-webkit-calendar-picker-indicator,
+.referral-form input[type="date"]::-webkit-calendar-picker-indicator{
+  opacity:.85;
+}
+@media(max-width:760px){
+  .booking-section,
+  .referral-page .referral-hero{
+    overflow:hidden !important;
+  }
+  .booking-grid,
+  .referral-page .referral-layout{
+    width:100% !important;
+    max-width:100% !important;
+    overflow:hidden !important;
+  }
+  .booking-form,
+  .referral-page .booking-form.referral-form{
+    width:100% !important;
+    max-width:100% !important;
+    padding:16px !important;
+    border-radius:22px !important;
+    gap:12px !important;
+  }
+  .booking-form input,
+  .booking-form select,
+  .booking-form textarea,
+  .referral-form input,
+  .referral-form select,
+  .referral-form textarea{
+    font-size:16px !important; /* stops iPhone zoom and keeps date field sane */
+    min-height:52px !important;
+  }
+  .booking-form textarea,
+  .referral-form textarea{
+    min-height:110px !important;
+  }
+}
+@media(min-width:761px) and (max-width:1100px){
+  .booking-form,
+  .referral-page .booking-form.referral-form{
+    max-width:100% !important;
+  }
+  .booking-form input,
+  .booking-form select,
+  .booking-form textarea,
+  .referral-form input,
+  .referral-form select,
+  .referral-form textarea{
+    width:100% !important;
+    max-width:100% !important;
+  }
+}

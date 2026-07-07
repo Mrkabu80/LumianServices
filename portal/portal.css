@@ -2506,3 +2506,116 @@ input,select,textarea{max-width:100% !important}
     width:100%;
   }
 }
+
+
+/* v40: reset buttons */
+.button-row .danger{
+  border-color:rgba(255,92,92,.35) !important;
+}
+
+
+/* v41: customer contact stop / status */
+.badge.danger{
+  border-color:rgba(255,92,92,.48) !important;
+  background:rgba(255,92,92,.16) !important;
+  color:#ffd7d7 !important;
+}
+.badge.warn{
+  border-color:rgba(255,190,80,.48) !important;
+  background:rgba(255,190,80,.15) !important;
+  color:#ffe4b6 !important;
+}
+.item-card.contact-blocked{
+  border-color:rgba(255,92,92,.22) !important;
+  background:linear-gradient(135deg,rgba(255,92,92,.08),rgba(255,255,255,.035)) !important;
+}
+.item-warning{
+  margin-top:7px;
+  color:#ffd7d7;
+  font-weight:750;
+  line-height:1.35;
+}
+.panel-actions .small-inline{
+  padding:11px 16px !important;
+  min-height:42px !important;
+  border-radius:16px !important;
+  font-size:.92rem !important;
+  white-space:nowrap;
+}
+
+
+/* v42: hard responsive form-control fix across portal */
+*, *::before, *::after{
+  box-sizing:border-box;
+}
+.portal input,
+.portal select,
+.portal textarea,
+.modal-card input,
+.modal-card select,
+.modal-card textarea{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+}
+.form-grid,
+.form-grid label,
+.search-row,
+.search-row input,
+.search-row select,
+.panel-actions{
+  min-width:0 !important;
+}
+.modal-card{
+  max-width:min(980px,calc(100vw - 20px)) !important;
+  overflow-x:hidden !important;
+}
+.modal-card input[type="date"],
+.modal-card input[type="datetime-local"],
+.portal input[type="date"],
+.portal input[type="datetime-local"]{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  overflow:hidden !important;
+  -webkit-appearance:none !important;
+  appearance:auto !important;
+  padding-inline:18px 42px !important;
+}
+.modal-card input[type="date"]::-webkit-date-and-time-value,
+.modal-card input[type="datetime-local"]::-webkit-date-and-time-value,
+.portal input[type="date"]::-webkit-date-and-time-value,
+.portal input[type="datetime-local"]::-webkit-date-and-time-value{
+  text-align:left;
+  min-height:1.4em;
+}
+@media(max-width:760px){
+  .modal{
+    padding:10px !important;
+  }
+  .modal-card{
+    width:100% !important;
+    max-width:calc(100vw - 20px) !important;
+    border-radius:24px !important;
+  }
+  .modal-card .form-grid{
+    grid-template-columns:1fr !important;
+    gap:12px !important;
+  }
+  .modal-card input,
+  .modal-card select,
+  .modal-card textarea,
+  .portal input,
+  .portal select,
+  .portal textarea{
+    font-size:16px !important;
+    min-height:50px !important;
+  }
+  .panel-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+}

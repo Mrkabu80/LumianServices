@@ -158,7 +158,7 @@
 
   function personSearchText(p) {
     const lead = leadForPerson(p.id);
-    return [p.id, p.name, p.phone, p.email, p.address, p.place, p.source, p.status, lead?.id, lead?.service, lead?.status].join(' ').toLowerCase();
+    return [p.id, p.name, p.phone, p.email, p.address, p.place, p.source, p.status, p.contactStatus, p.contactReason, p.contactNote, lead?.id, lead?.service, lead?.status].join(' ').toLowerCase();
   }
 
   function searchPeople(q, limit = 8) {
@@ -175,6 +175,24 @@
   }
 
   function personStatusLabel(p) { return p.status === 'customer' ? 'Kunde' : 'Lead'; }
+
+  function contactStatus(p = {}) {
+    return p.contactStatus || 'Aktiv';
+  }
+  function isContactBlocked(p = {}) {
+    return ['Nicht kontaktieren','Problemfall'].includes(contactStatus(p));
+  }
+  function contactBadge(p = {}) {
+    const status = contactStatus(p);
+    if (!status || status === 'Aktiv') return '';
+    const cls = status === 'Nicht kontaktieren' ? 'badge danger' : (status === 'Problemfall' ? 'badge warn' : 'badge');
+    return `<span class="${cls}">${esc(status)}</span>`;
+  }
+  function contactWarningText(p = {}) {
+    if (!isContactBlocked(p)) return '';
+    return [contactStatus(p), p.contactReason, p.contactNote].filter(Boolean).join(' · ');
+  }
+
 
   function fillTemplate(template, data) {
     return String(template || '').replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key) => data[key] ?? '');
@@ -512,7 +530,7 @@
   function renderCustomers() {
     const q = ($('[data-customer-search]')?.value || '').toLowerCase().trim();
     let customers = activeCustomers();
-    if (q) customers = customers.filter(p => [p.id,p.name,p.phone,p.email,p.address,p.place,p.source].join(' ').toLowerCase().includes(q));
+    if (q) customers = customers.filter(p => [p.id,p.name,p.phone,p.email,p.address,p.place,p.source,p.contactStatus,p.contactReason,p.contactNote].join(' ').toLowerCase().includes(q));
     const pageData = paginateItems(customers, 'customers');
     renderPager('customers', pageData);
     $('[data-customer-list]').innerHTML = pageData.slice.length ? pageData.slice.map(customerCard).join('') : '<div class="empty">Noch keine Kunden gefunden. Kunde manuell hinzufügen, importieren oder Job als erledigt markieren.</div>';
@@ -521,10 +539,15 @@
   function customerCard(p) {
     const jobs = state.jobs.filter(j => j.personId === p.id);
     const link = referralLink(p.id);
-    return `<article class="item-card">
-      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span></div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div></div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
+    const blocked = isContactBlocked(p);
+    const warning = contactWarningText(p);
+    const contactActions = blocked
+      ? `<button class="secondary" data-show-contact-warning="${esc(p.id)}">Kontakt gesperrt</button>`
+      : `${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`;
+    return `<article class="item-card ${blocked ? 'contact-blocked' : ''}">
+      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span> ${contactBadge(p)}</div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div>${warning ? `<div class="item-warning">${esc(warning)}</div>` : ''}</div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
       <div class="referral-link-line"><span>Empfehlungslink</span><strong>${esc(link)}</strong></div>
-      <div class="actions">${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
+      <div class="actions">${contactActions}${mapLink(p)}<button class="secondary" data-edit-customer="${esc(p.id)}">Bearbeiten</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
     </article>`;
   }
 
@@ -724,11 +747,32 @@
     return fillTemplate(getSetting('reminderTemplate'), { name:p.name||'', customerId:p.id||'', date:fmtDate(j.appointmentAt), service:j.service||'', amount:j.amount||'', address:fullAddressForPerson(p)||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder') });
   }
 
-  function openCustomerDialog() {
+  function openCustomerDialog(person = null) {
     const form = $('[data-customer-form]');
     if (!form) return;
     form.reset();
     form.elements.source.value = 'Import / Manuell';
+    form.elements.contactStatus.value = 'Aktiv';
+    form.elements.contactReason.value = '';
+    if (person) {
+      form.elements.personId.value = person.id || '';
+      form.elements.name.value = person.name || '';
+      form.elements.phone.value = person.phone || '';
+      form.elements.email.value = person.email || '';
+      form.elements.address.value = person.address || '';
+      form.elements.place.value = person.place || '';
+      form.elements.source.value = person.source || 'Import / Manuell';
+      form.elements.contactStatus.value = person.contactStatus || 'Aktiv';
+      form.elements.contactReason.value = person.contactReason || '';
+      form.elements.contactNote.value = person.contactNote || '';
+      form.elements.notes.value = person.notes || '';
+      $('[data-customer-modal-title]').textContent = `Kunde bearbeiten: ${person.name || person.id}`;
+      $('[data-customer-submit]').textContent = 'Änderungen speichern';
+    } else {
+      form.elements.personId.value = '';
+      $('[data-customer-modal-title]').textContent = 'Kunde manuell hinzufügen';
+      $('[data-customer-submit]').textContent = 'Kunde speichern';
+    }
     $('[data-customer-dialog]').showModal();
   }
 
@@ -742,6 +786,7 @@
 
   function fillJobPerson(form, person, lead = null) {
     if (!form || !person) return;
+    if (isContactBlocked(person)) toast(`Achtung: ${person.name || person.id} ist als ${contactStatus(person)} markiert.`);
     form.elements.personId.value = person.id || '';
     form.elements.personSearch.value = `${person.name || 'Ohne Name'} · ${person.id || ''} · ${personStatusLabel(person)}`;
     form.elements.name.value = person.name || '';
@@ -812,12 +857,16 @@
     if (!form.reportValidity() || !validateContactFields(form)) return;
     const fd = new FormData(form);
     const p = findOrCreatePerson({
+      personId: fd.get('personId'),
       name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: ''
     });
     p.status = 'customer';
     p.customerSince = p.customerSince || new Date().toISOString();
+    p.contactStatus = fd.get('contactStatus') || 'Aktiv';
+    p.contactReason = fd.get('contactReason') || '';
+    p.contactNote = fd.get('contactNote') || '';
     p.notes = fd.get('notes') || p.notes || '';
-    saveState('customer manual');
+    saveState('customer manual/edit');
     form.closest('dialog').close();
     setTab('customers');
     toast(`Kunde gespeichert: ${p.id}`);
@@ -1003,7 +1052,7 @@
     if (!hits.length) { box.hidden = true; box.innerHTML = ''; return; }
     box.innerHTML = hits.map(p => {
       const lead = leadForPerson(p.id);
-      return `<button type="button" data-pick-person="${esc(p.id)}"><strong>${esc(p.name || 'Ohne Name')}</strong> · ${esc(p.id)} · ${esc(personStatusLabel(p))}${lead ? ` · offener Lead: ${esc(lead.service || lead.id)}` : ''}<br><small>${esc(p.address || p.phone || '')}</small></button>`;
+      return `<button type="button" data-pick-person="${esc(p.id)}"><strong>${esc(p.name || 'Ohne Name')}</strong> · ${esc(p.id)} · ${esc(personStatusLabel(p))}${contactStatus(p) !== 'Aktiv' ? ` · ${esc(contactStatus(p))}` : ''}${lead ? ` · offener Lead: ${esc(lead.service || lead.id)}` : ''}<br><small>${esc(fullAddressForPerson(p) || p.phone || '')}</small></button>`;
     }).join('');
     box.hidden = false;
   });
@@ -1482,9 +1531,10 @@
     try { const imported = migrateState(JSON.parse(await file.text())); localStorage.setItem(STORE_KEY, JSON.stringify(imported)); location.reload(); }
     catch { toast('Backup konnte nicht gelesen werden.'); }
   });
+  $('[data-reset-cloud]')?.addEventListener('click', resetCloudAndLocal);
   $('[data-reset-demo]')?.addEventListener('click', async () => {
-    if (!(await confirmSensitiveAction('Lokale Daten wirklich löschen?'))) return;
-    if (confirm('Letzte Bestätigung: Alle lokalen Portal-Daten auf diesem Gerät werden gelöscht.')) {
+    if (!(await confirmSensitiveAction('Lokale Testdaten auf diesem Gerät wirklich löschen?'))) return;
+    if (confirm('Letzte Bestätigung: Nur die lokalen Portal-Daten auf diesem Gerät werden gelöscht. Cloud/Website-Anfragen bleiben bestehen.')) {
       localStorage.removeItem(STORE_KEY);
       OLD_KEYS.forEach(k => localStorage.removeItem(k));
       location.reload();
@@ -1623,6 +1673,30 @@
     script.onerror = () => { toast('Cloud laden fehlgeschlagen.'); delete window[callbackName]; script.remove(); };
     document.body.appendChild(script);
   }
+
+  async function resetCloudAndLocal() {
+    if (!isAdmin()) return toast('Nur Admins können Cloud-Daten löschen.');
+    const url = getSetting('scriptUrl');
+    if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+    if (!(await confirmSensitiveAction('Cloud + Website-Anfragen wirklich löschen?'))) return;
+    const typed = prompt('Letzte Bestätigung: Schreibe RESET, um Google Sheet, Cloud-State und Website-Anfragen zu leeren.');
+    if (typed !== 'RESET') return toast('Löschen abgebrochen.');
+    try {
+      await fetch(url, {
+        method:'POST',
+        mode:'no-cors',
+        headers:{ 'Content-Type':'text/plain' },
+        body: JSON.stringify({ action:'resetAll', confirm:'RESET-LUMIAN-PORTAL' })
+      });
+      localStorage.removeItem(STORE_KEY);
+      OLD_KEYS.forEach(k => localStorage.removeItem(k));
+      toast('Reset gesendet. Portal lädt neu...');
+      setTimeout(() => location.reload(), 900);
+    } catch {
+      toast('Cloud-Reset konnte nicht gesendet werden.');
+    }
+  }
+
   $$('[data-sync-now]').forEach(btn => btn.addEventListener('click', syncCloud));
   $('[data-load-cloud]')?.addEventListener('click', loadCloud);
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));

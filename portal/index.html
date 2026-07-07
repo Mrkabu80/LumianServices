@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=39">
+  <link rel="stylesheet" href="portal.css?v=42">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -82,7 +82,6 @@
         </div>
         <div class="quick-actions">
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
-            <button class="secondary small-inline" type="button" data-check-website-leads>Neue Anfragen prüfen</button>
           <button class="secondary" data-open-job>+ Job erstellen</button>
           <button class="secondary" data-sync-now>Google Sheet syncen</button>
         </div>
@@ -102,6 +101,7 @@
             <button class="secondary" type="button" data-download-leads-template>Vorlage herunterladen</button>
             <label class="file-button small">Leads importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
+            <button class="secondary small-inline" type="button" data-check-website-leads>Web-Anfragen laden</button>
           </div>
         </div>
         <div class="import-hint">CSV-Vorlage: Strasse/Nr. und PLZ/Ort getrennt ausfüllen.</div>
@@ -414,9 +414,10 @@
               <label class="file-button">Leads importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
               <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
-              <button class="secondary danger" type="button" data-reset-demo>Lokale Daten löschen</button>
+              <button class="secondary danger" type="button" data-reset-demo>Lokale Testdaten löschen</button>
+              <button class="secondary danger" type="button" data-reset-cloud>Cloud + Website-Anfragen löschen</button>
             </div>
-            <p class="hint">CSV ist für Excel-Import/Export. JSON Backup ist eine komplette Sicherung aller lokalen Portal-Daten auf diesem Gerät: Kunden, Leads, Jobs, Fotos als komprimierte Daten, Einstellungen und Benutzer. Backup-Import und lokale Daten löschen müssen mit Face ID/Touch ID oder Passwort bestätigt werden.</p>
+            <p class="hint">Lokale Testdaten löschen leert nur dieses Gerät. Cloud + Website-Anfragen löschen leert zusätzlich Google Sheet / Apps Script inkl. Website- und Danke-Code-Anfragen. Beide Aktionen müssen mit Face ID/Touch ID oder Passwort bestätigt werden.</p>
           </fieldset>
             </div>
           </div>
@@ -434,7 +435,7 @@
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
         <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
-        <label>PLZ / PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
+        <label>PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination / weiss noch nicht</option></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label>Betrag/Schätzung CHF<input name="expectedValue" type="number" min="0" step="10" placeholder="350"></label>
@@ -456,20 +457,24 @@
 
   <dialog data-customer-dialog class="modal">
     <form method="dialog" class="modal-card" data-customer-form novalidate>
-      <header><h2>Kunde manuell hinzufügen</h2><button type="button" data-close-modal>×</button></header>
+      <header><h2 data-customer-modal-title>Kunde manuell hinzufügen</h2><button type="button" data-close-modal>×</button></header>
+      <input type="hidden" name="personId">
       <p class="hint">Für bestehende Kunden aus der Vergangenheit. Neue Anfragen zuerst als Lead erfassen; ein Kunde bekommt automatisch eine Lumian-Nr.</p>
       <div class="form-grid">
         <label>Name<input name="name" required autocomplete="name" placeholder="z.B. Maria Müller"></label>
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
         <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
-        <label>PLZ / PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
+        <label>PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Quelle<select name="source"><option>Import / Manuell</option><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Andere</option></select></label>
-        <label class="wide">Notizen<textarea name="notes" rows="3" placeholder="z.B. Stammkunde, bevorzugte Zeiten, Besonderheiten..."></textarea></label>
+        <label>Kundenstatus<select name="contactStatus"><option>Aktiv</option><option>Inaktiv / Pause</option><option>Nicht kontaktieren</option><option>Problemfall</option></select></label>
+        <label>Grund<select name="contactReason"><option></option><option>Kundenwunsch</option><option>Offene Zahlung</option><option>Reklamation / Problem</option><option>Falsche Nummer</option><option>Kein Interesse mehr</option><option>Sonstiges</option></select></label>
+        <label class="wide">Kontakt-Notiz<textarea name="contactNote" rows="2" placeholder="z.B. Bitte nicht mehr kontaktieren. Datum / Grund kurz notieren."></textarea></label>
+        <label class="wide">Allgemeine Notizen<textarea name="notes" rows="3" placeholder="z.B. Stammkunde, bevorzugte Zeiten, Besonderheiten..."></textarea></label>
       </div>
       <footer>
         <button type="button" class="secondary" data-close-modal>Abbrechen</button>
-        <button class="primary" type="submit">Kunde speichern</button>
+        <button class="primary" type="submit" data-customer-submit>Kunde speichern</button>
       </footer>
     </form>
   </dialog>
@@ -491,7 +496,7 @@
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email"></label>
         <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
-        <label>PLZ / PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
+        <label>PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination</option></select></label>
         <label>Termin<input name="appointmentAt" type="datetime-local"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
@@ -542,6 +547,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=39"></script>
+  <script src="portal.js?v=42"></script>
 </body>
 </html>

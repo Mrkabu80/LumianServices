@@ -1694,3 +1694,90 @@ label.consent span{
     min-height:48px !important;
   }
 }
+
+
+/* v51: homepage hamburger menu click/open safeguard */
+@media (max-width:760px){
+  body.page-home .nav-wrap{
+    position:relative !important;
+    z-index:10020 !important;
+    overflow:visible !important;
+  }
+  body.page-home .nav-toggle{
+    position:relative !important;
+    z-index:10030 !important;
+    cursor:pointer !important;
+    pointer-events:auto !important;
+    touch-action:manipulation !important;
+  }
+  body.page-home .main-nav{
+    z-index:10025 !important;
+    pointer-events:auto !important;
+  }
+  body.page-home .main-nav.is-open{
+    display:flex !important;
+  }
+}
+
+
+/* v52: homepage mobile headline/title correction only */
+@media (max-width: 760px){
+  body.page-home .hero-copy{
+    width:100% !important;
+    max-width:100% !important;
+    overflow:hidden !important;
+  }
+  body.page-home .hero-copy .eyebrow{
+    font-size:11px !important;
+    line-height:1.45 !important;
+    letter-spacing:.14em !important;
+    display:flex !important;
+    flex-wrap:wrap !important;
+    max-width:100% !important;
+    overflow-wrap:normal !important;
+  }
+  body.page-home .hero-copy .eyebrow span{
+    width:34px !important;
+    flex:0 0 34px !important;
+  }
+  body.page-home h1{
+    font-size:clamp(36px, 10.2vw, 48px) !important;
+    line-height:1.02 !important;
+    letter-spacing:-.055em !important;
+    max-width:100% !important;
+    margin-bottom:18px !important;
+    word-break:normal !important;
+    overflow-wrap:break-word !important;
+    hyphens:auto !important;
+  }
+  body.page-home .hero-lead{
+    font-size:18px !important;
+    line-height:1.55 !important;
+    max-width:100% !important;
+    overflow-wrap:break-word !important;
+    margin-bottom:0 !important;
+  }
+  body.page-home .hero-actions{
+    gap:12px !important;
+    margin:26px 0 22px !important;
+  }
+  body.page-home .hero-actions .btn{
+    width:100% !important;
+    max-width:100% !important;
+    min-height:52px !important;
+    padding-left:18px !important;
+    padding-right:18px !important;
+    text-align:center !important;
+  }
+}
+@media (max-width: 420px){
+  body.page-home h1{
+    font-size:clamp(34px, 9.8vw, 42px) !important;
+    line-height:1.04 !important;
+    letter-spacing:-.05em !important;
+  }
+  body.page-home .hero-lead{
+    font-size:17px !important;
+    line-height:1.55 !important;
+  }
+}

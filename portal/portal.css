@@ -2901,3 +2901,41 @@ a.file-button{
 }
 
 /* v57: dependency-free Excel .xls import/export; no visual changes */
+
+
+/* v58: Web-Leads prüfen full width on mobile, desktop stays compact/outlined */
+@media(max-width:760px){
+  [data-panel="leads"] .panel-actions{
+    display:grid !important;
+    grid-template-columns:1fr 1fr !important;
+    gap:12px !important;
+    width:100% !important;
+    max-width:100% !important;
+  }
+  [data-panel="leads"] .panel-actions > *{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+  [data-panel="leads"] .panel-actions [data-open-lead],
+  [data-panel="leads"] .panel-actions .web-leads-button,
+  [data-panel="leads"] .panel-actions [data-check-website-leads]{
+    grid-column:1 / -1 !important;
+    width:100% !important;
+    max-width:100% !important;
+    flex:0 0 100% !important;
+    min-height:58px !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    margin:0 !important;
+  }
+  [data-panel="leads"] .panel-actions .web-leads-button,
+  [data-panel="leads"] .panel-actions [data-check-website-leads]{
+    border-color:rgba(72,255,165,.70) !important;
+    background:rgba(72,255,165,.08) !important;
+    color:#dfffee !important;
+    box-shadow:0 0 0 1px rgba(72,255,165,.14), 0 14px 36px rgba(72,255,165,.09) !important;
+  }
+}

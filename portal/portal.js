@@ -1590,6 +1590,7 @@
     }
   });
   function exportFinanceExcel() {
+    renderFinance();
     const range = getFinanceRange();
     const s = financeSummary(range);
     const now = new Date().toLocaleString('de-CH');
@@ -1637,6 +1638,7 @@
       ['Ausgaben', expenseRows, [90,140,220,90,130,240,100]],
       ['Kundenaktivität', customerRows, [90,170,120,130,100,90,100,80]]
     ]);
+    toast('Excel-Report erstellt.');
   }
   $('[data-finance-export]')?.addEventListener('click', exportFinanceExcel);
 

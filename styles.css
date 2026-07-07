@@ -1443,3 +1443,51 @@ button[disabled]{
     max-width:100% !important;
   }
 }
+
+
+/* v45: checkbox/radio must not inherit full-width text input styling */
+.booking-form input[type="checkbox"],
+.booking-form input[type="radio"],
+.referral-form input[type="checkbox"],
+.referral-form input[type="radio"],
+.consent input[type="checkbox"],
+.consent input[type="radio"]{
+  width:22px !important;
+  max-width:22px !important;
+  min-width:22px !important;
+  height:22px !important;
+  min-height:22px !important;
+  max-height:22px !important;
+  padding:0 !important;
+  margin:0 12px 0 0 !important;
+  flex:0 0 22px !important;
+  display:inline-block !important;
+  box-sizing:border-box !important;
+  appearance:auto !important;
+  -webkit-appearance:checkbox !important;
+  accent-color:#22d3ee;
+}
+.consent{
+  display:flex !important;
+  align-items:flex-start !important;
+  gap:12px !important;
+}
+.consent span{
+  flex:1 1 auto !important;
+}
+@media(max-width:760px){
+  .booking-form input[type="checkbox"],
+  .booking-form input[type="radio"],
+  .referral-form input[type="checkbox"],
+  .referral-form input[type="radio"],
+  .consent input[type="checkbox"],
+  .consent input[type="radio"]{
+    width:24px !important;
+    max-width:24px !important;
+    min-width:24px !important;
+    height:24px !important;
+    min-height:24px !important;
+    max-height:24px !important;
+    flex-basis:24px !important;
+  }
+}

@@ -24,8 +24,9 @@ function parseSwissDate(value) {
 }
 
 function isPastSwissDate(value) {
-  const raw = String(value || '').trim();
-  const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  const formatted = parseSwissDate(value);
+  if (!formatted) return false;
+  const m = formatted.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   if (!m) return false;
   const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   const today = new Date(); today.setHours(0,0,0,0);
@@ -47,50 +48,15 @@ function nativeDateToSwiss(value) {
   return `${m[3]}.${m[2]}.${m[1]}`;
 }
 
-function openNativeDatePicker(native) {
-  if (!native) return;
-  try { native.showPicker ? native.showPicker() : native.click(); }
-  catch { native.focus(); native.click(); }
-}
-
 function enhanceDateInput(input) {
   if (!input || input.dataset.calendarEnhanced === '1') return;
   input.dataset.calendarEnhanced = '1';
-  try { input.type = 'text'; } catch {}
-  input.placeholder = input.placeholder || 'TT.MM.JJJJ';
+  input.lang = 'de-CH';
+  try { input.type = 'date'; } catch {}
+  input.placeholder = 'TT.MM.JJJJ';
   input.autocomplete = 'off';
-  input.inputMode = 'numeric';
-  input.classList.add('calendar-display-input');
-
-  const wrap = document.createElement('span');
-  wrap.className = 'calendar-field-wrap';
-  input.parentNode.insertBefore(wrap, input);
-  wrap.appendChild(input);
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'calendar-picker-button';
-  btn.setAttribute('aria-label', 'Kalender öffnen');
-  btn.textContent = '📅';
-  wrap.appendChild(btn);
-
-  const native = document.createElement('input');
-  native.type = 'date';
-  native.className = 'calendar-native-input';
-  native.tabIndex = -1;
-  native.setAttribute('aria-hidden', 'true');
-  native.value = swissDateToNative(input.value);
-  wrap.appendChild(native);
-
-  btn.addEventListener('click', () => { native.value = swissDateToNative(input.value); openNativeDatePicker(native); });
-  native.addEventListener('change', () => {
-    if (!native.value) return;
-    input.value = nativeDateToSwiss(native.value);
-    input.classList.remove('invalid');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-  input.addEventListener('blur', () => { native.value = swissDateToNative(input.value); });
+  const native = swissDateToNative(input.value);
+  if (native) input.value = native;
 }
 
 
@@ -224,7 +190,6 @@ if (form) {
       const formattedDate = parseSwissDate(dateInput.value);
       if (!formattedDate) { dateInput.classList.add('invalid'); dateInput.focus(); alert('Bitte Wunsch-Datum im Format TT.MM.JJJJ eingeben.'); return; }
       if (isPastSwissDate(formattedDate)) { dateInput.classList.add('invalid'); dateInput.focus(); alert('Bitte kein Datum in der Vergangenheit wählen.'); return; }
-      dateInput.value = formattedDate;
       data.set('date', formattedDate);
     }
     const referral = currentReferralCode();
@@ -278,15 +243,8 @@ if (form) {
 function initDateInputs() {
   document.querySelectorAll('[data-date-input][data-ch-date]').forEach(input => {
     enhanceDateInput(input);
-    input.placeholder = input.placeholder || 'TT.MM.JJJJ';
     input.addEventListener('input', () => input.classList.remove('invalid'));
-    input.addEventListener('blur', () => {
-      if (!input.value.trim()) return;
-      const formatted = parseSwissDate(input.value);
-      if (formatted) input.value = formatted;
-      const native = input.closest('.calendar-field-wrap')?.querySelector('.calendar-native-input');
-      if (native) native.value = swissDateToNative(input.value);
-    });
+    input.addEventListener('change', () => input.classList.remove('invalid'));
   });
 }
 initDateInputs();

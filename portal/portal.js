@@ -363,6 +363,8 @@
   function isValidSwissDateField(value, withTime = false) {
     const raw = String(value || '').trim();
     if (!raw) return true;
+    if (withTime && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return !!parseDateValue(raw);
+    if (!withTime && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return !!parseDateValue(raw);
     const re = withTime ? /^\d{1,2}\.\d{1,2}\.\d{4}(?:[,\s]+\d{1,2}:\d{2})$/ : /^\d{1,2}\.\d{1,2}\.\d{4}$/;
     return re.test(raw) && !!parseDateValue(raw);
   }
@@ -371,7 +373,7 @@
     if (!input || isValidSwissDateField(input.value, withTime)) { input?.classList?.remove('invalid'); return false; }
     input.classList.add('invalid');
     input.focus();
-    toast(`${label}: Bitte im Format ${withTime ? 'TT.MM.JJJJ HH:MM' : 'TT.MM.JJJJ'} eingeben.`);
+    toast(`${label}: Bitte ${withTime ? 'Datum und Uhrzeit' : 'Datum'} auswählen.`);
     return true;
   }
 
@@ -382,73 +384,33 @@
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
-  function timeValueFromField(value) {
+  function nativeDateTimeValueFromField(value) {
     const d = parseDateValue(value);
     if (!d) return '';
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-  }
-
-  function syncCalendarNative(input) {
-    if (!input) return;
-    const wrap = input.closest('.calendar-field-wrap');
-    const native = wrap?.querySelector('input[type="date"].calendar-native-input');
-    if (native) native.value = nativeDateValueFromField(input.value);
-  }
-
-  function syncAllCalendarControls(root = document) {
-    $$('[data-ch-date],[data-ch-datetime]', root).forEach(syncCalendarNative);
-  }
-
-  function openNativeDatePicker(native) {
-    if (!native) return;
-    try { native.showPicker ? native.showPicker() : native.click(); }
-    catch { native.focus(); native.click(); }
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   }
 
   function enhanceCalendarField(input) {
     if (!input || input.dataset.calendarEnhanced === '1') return;
     input.dataset.calendarEnhanced = '1';
-    try { input.type = 'text'; } catch {}
-    input.placeholder = input.matches('[data-ch-datetime]') ? 'TT.MM.JJJJ HH:MM' : 'TT.MM.JJJJ';
+    input.lang = 'de-CH';
     input.autocomplete = 'off';
-    input.inputMode = 'numeric';
-    input.classList.add('calendar-display-input');
-
-    const wrap = document.createElement('span');
-    wrap.className = 'calendar-field-wrap';
-    input.parentNode.insertBefore(wrap, input);
-    wrap.appendChild(input);
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'calendar-picker-button';
-    btn.setAttribute('aria-label', 'Kalender öffnen');
-    btn.textContent = '📅';
-    wrap.appendChild(btn);
-
-    const native = document.createElement('input');
-    native.type = 'date';
-    native.className = 'calendar-native-input';
-    native.tabIndex = -1;
-    native.setAttribute('aria-hidden', 'true');
-    native.value = nativeDateValueFromField(input.value);
-    wrap.appendChild(native);
-
-    btn.addEventListener('click', () => { syncCalendarNative(input); openNativeDatePicker(native); });
-    native.addEventListener('change', () => {
-      if (!native.value) return;
-      if (input.matches('[data-ch-datetime]')) {
-        const t = timeValueFromField(input.value) || '09:00';
-        input.value = `${fmtDateOnlyForField(native.value)} ${t}`;
-      } else {
-        input.value = fmtDateOnlyForField(native.value);
-      }
-      input.classList.remove('invalid');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    input.addEventListener('blur', () => syncCalendarNative(input));
+    if (input.matches('[data-ch-datetime]')) {
+      try { input.type = 'datetime-local'; } catch {}
+      input.placeholder = 'TT.MM.JJJJ HH:MM';
+      const native = nativeDateTimeValueFromField(input.value);
+      if (native) input.value = native;
+    } else {
+      try { input.type = 'date'; } catch {}
+      input.placeholder = 'TT.MM.JJJJ';
+      const native = nativeDateValueFromField(input.value);
+      if (native) input.value = native;
+    }
   }
+
+  function syncCalendarNative(input) { enhanceCalendarField(input); }
+  function syncAllCalendarControls(root = document) { $$('[data-ch-date],[data-ch-datetime]', root).forEach(enhanceCalendarField); }
+
 
   function photoPreviewSrc(photo) {
     if (!photo) return '';
@@ -972,8 +934,8 @@
     [fromWrap, toWrap].filter(Boolean).forEach(el => { el.hidden = !isCustom; });
     if (applyBtn) applyBtn.hidden = !isCustom;
     if (!isCustom) {
-      if (fromInput) fromInput.value = range.from ? fmtDateOnlyForField(range.from) : '';
-      if (toInput) toInput.value = range.to ? fmtDateOnlyForField(range.to) : '';
+      if (fromInput) fromInput.value = range.from ? nativeDateValueFromField(range.from) : '';
+      if (toInput) toInput.value = range.to ? nativeDateValueFromField(range.to) : '';
     }
     if (range.period === 'todate') {
       if (fromInput) fromInput.value = '';
@@ -1156,7 +1118,7 @@
       form.elements.service.value = lead.service || form.elements.service.value;
       form.elements.source.value = lead.source || person.source || 'Website';
       form.elements.expectedValue.value = lead.expectedValue || '';
-      form.elements.appointmentAt.value = fmtDateTimeForField(lead.appointmentAt) || '';
+      form.elements.appointmentAt.value = nativeDateTimeValueFromField(lead.appointmentAt) || '';
       form.elements.referredById.value = lead.referredById || person.referredById || '';
       if (form.elements.referredById.value) setRefField('lead', form.elements.referredById.value);
       form.elements.notes.value = lead.notes || '';
@@ -1184,7 +1146,7 @@
     if (linkedLead) {
       form.elements.leadId.value = linkedLead.id || '';
       form.elements.service.value = linkedLead.service || form.elements.service.value;
-      form.elements.appointmentAt.value = fmtDateTimeForField(linkedLead.appointmentAt) || form.elements.appointmentAt.value || '';
+      form.elements.appointmentAt.value = nativeDateTimeValueFromField(linkedLead.appointmentAt) || form.elements.appointmentAt.value || '';
       form.elements.amount.value = linkedLead.expectedValue || form.elements.amount.value || '';
       form.elements.source.value = linkedLead.source || form.elements.source.value;
       if (linkedLead.referredById) setRefField('job', linkedLead.referredById);
@@ -1199,7 +1161,7 @@
     if (lead) {
       form.elements.leadId.value = lead.id;
       form.elements.service.value = lead.service || form.elements.service.value;
-      form.elements.appointmentAt.value = fmtDateTimeForField(lead.appointmentAt) || '';
+      form.elements.appointmentAt.value = nativeDateTimeValueFromField(lead.appointmentAt) || '';
       form.elements.amount.value = lead.expectedValue || '';
       form.elements.source.value = lead.source || form.elements.source.value;
       if (lead.referredById) setRefField('job', lead.referredById);
@@ -1208,7 +1170,7 @@
       form.elements.jobId.value = job.id;
       form.elements.leadId.value = job.leadId || '';
       form.elements.service.value = job.service || form.elements.service.value;
-      form.elements.appointmentAt.value = fmtDateTimeForField(job.appointmentAt) || '';
+      form.elements.appointmentAt.value = nativeDateTimeValueFromField(job.appointmentAt) || '';
       form.elements.amount.value = job.amount || '';
       form.elements.status.value = job.status || 'Geplant';
       form.elements.assignedTo.value = job.assignedTo || currentUser || 'noah';
@@ -1614,19 +1576,19 @@
   function csvLine(values) {
     return values.map(csvEscape).join(';');
   }
+  function downloadStaticFile(path, filename) {
+    const a = document.createElement('a');
+    a.href = path;
+    a.download = filename || '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
   function downloadCustomersTemplate() {
-    const rows = [
-      ['LumianNr','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen'],
-      ['', 'Maria Müller', '077 535 05 71', 'maria@email.ch', 'Musterstrasse 1', '5600 Lenzburg', 'Empfehlung', 'LM1001', '', 'bestehender Kunde']
-    ];
-    downloadText('lumian-kunden-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
+    downloadStaticFile('templates/lumian-kunden-import-vorlage.xlsx', 'lumian-kunden-import-vorlage.xlsx');
   }
   function downloadLeadsTemplate() {
-    const rows = [
-      ['Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Service','Quelle','Betrag','Termin','EmpfohlenVon','Notizen'],
-      ['Peter Beispiel', '079 123 45 67', '', 'Beispielweg 2', '5400 Baden', 'Fensterreinigung', 'Google', '350', '20.07.2026 14:00', 'LM1001', 'Besichtigung nötig']
-    ];
-    downloadText('lumian-leads-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
+    downloadStaticFile('templates/lumian-leads-import-vorlage.xlsx', 'lumian-leads-import-vorlage.xlsx');
   }
   function parseCsv(text) {
     const rows = [];
@@ -2009,12 +1971,12 @@
 
   function setDefaultFinanceDates() {
     const today = ymd(new Date());
-    $$('[data-manual-income-form] [data-ch-date], [data-expense-form] [data-ch-date]').forEach(input => { if (!input.value) input.value = fmtDateOnlyForField(today); });
+    $$('[data-manual-income-form] [data-ch-date], [data-expense-form] [data-ch-date]').forEach(input => { if (!input.value) input.value = nativeDateValueFromField(today); });
     const range = getFinanceRange();
     updateFinanceDateControls(range);
     if (range.period === 'custom') {
-      if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = fmtDateOnlyForField(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
-      if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = fmtDateOnlyForField(ymd(new Date()));
+      if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = nativeDateValueFromField(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+      if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = nativeDateValueFromField(ymd(new Date()));
     }
     syncAllCalendarControls();
   }
@@ -2024,13 +1986,7 @@
   $$('[data-ch-date],[data-ch-datetime]').forEach(el => {
     enhanceCalendarField(el);
     el.addEventListener('input', () => el.classList.remove('invalid'));
-    el.addEventListener('blur', () => {
-      const withTime = el.matches('[data-ch-datetime]');
-      if (withTime && el.value && /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(el.value.trim())) el.value = el.value.trim() + ' 09:00';
-      if (!withTime && el.value) { const iso = isoDateOnlyFromField(el.value); if (iso) el.value = fmtDateOnlyForField(iso); }
-      if (withTime && el.value) { const iso = isoDateTimeFromField(el.value); if (iso) el.value = fmtDateTimeForField(iso); }
-      syncCalendarNative(el);
-    });
+    el.addEventListener('change', () => el.classList.remove('invalid'));
   });
   syncAllCalendarControls();
   $('[data-finance-apply]')?.addEventListener('click', renderFinance);
@@ -2044,8 +2000,8 @@
       const form = $('[data-manual-income-form]');
       form.elements.entryId.value = entry.id;
       form.elements.title.value = entry.title || '';
-      form.elements.from.value = fmtDateOnlyForField(entry.from || ymd(entry.createdAt));
-      form.elements.to.value = fmtDateOnlyForField(entry.to || entry.from || ymd(entry.createdAt));
+      form.elements.from.value = nativeDateValueFromField(entry.from || ymd(entry.createdAt));
+      form.elements.to.value = nativeDateValueFromField(entry.to || entry.from || ymd(entry.createdAt));
       form.elements.amount.value = entry.amount || '';
       form.elements.notes.value = entry.notes || '';
       form.scrollIntoView({ behavior:'smooth', block:'center' });
@@ -2070,7 +2026,7 @@
       if (!(await confirmSensitiveAction('Ausgabe bearbeiten?'))) return;
       const form = $('[data-expense-form]');
       form.elements.entryId.value = entry.id;
-      form.elements.date.value = fmtDateOnlyForField(entry.date || ymd(entry.createdAt));
+      form.elements.date.value = nativeDateValueFromField(entry.date || ymd(entry.createdAt));
       form.elements.category.value = entry.category || 'Sonstiges';
       form.elements.title.value = entry.title || '';
       form.elements.amount.value = entry.amount || '';
@@ -2131,7 +2087,7 @@
       }).filter(r => r[4] || r[7] || r[1])
     ];
 
-    downloadExcelXml(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.xls`, [
+    downloadExcelXml(`lumian-buchhaltung-${(range.from || 'start').replaceAll('-','')}-${(range.to || 'heute').replaceAll('-','')}.xls`, [
       ['Zusammenfassung', summary, [220,130,280]],
       ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100]],
       ['Pipeline offen', forecastRows, [130,90,220,130,90,130,100]],
@@ -2522,15 +2478,11 @@
     const typed = prompt('Letzte Bestätigung: Schreibe RESET, um Google Sheet, Cloud-State und Website-Anfragen zu leeren.');
     if (typed !== 'RESET') return toast('Löschen abgebrochen.');
     try {
-      await fetch(url, {
-        method:'POST',
-        mode:'no-cors',
-        headers:{ 'Content-Type':'text/plain' },
-        body: JSON.stringify({ action:'resetAll', confirm:'RESET-LUMIAN-PORTAL' })
-      });
+      const data = await jsonpRequest(url, 'resetall', { confirm:'RESET-LUMIAN-PORTAL' });
+      if (!data?.ok) throw new Error(data?.error || 'Cloud-Reset nicht bestätigt.');
       localStorage.removeItem(STORE_KEY);
       OLD_KEYS.forEach(k => localStorage.removeItem(k));
-      toast('Reset gesendet. Portal lädt neu...');
+      toast('Cloud und lokale Daten gelöscht. Portal lädt neu...');
       setTimeout(() => location.reload(), 900);
     } catch {
       toast('Cloud-Reset konnte nicht gesendet werden.');

@@ -244,6 +244,11 @@ function doGet(e) {
   if (action === 'testsync') {
     return jsonp_(callback, { ok: true, test: runSyncTest_(e.parameter || {}), at: new Date().toISOString() });
   }
+  if (action === 'resetall') {
+    var confirmText = String((e.parameter && e.parameter.confirm) || '');
+    var result = JSON.parse(resetAll_(confirmText).getContent());
+    return jsonp_(callback, result);
+  }
   return json_({ ok: true, message: 'Lumian Portal backend is running.' });
 }
 

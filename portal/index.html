@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=75">
+  <link rel="stylesheet" href="portal.css?v=76">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -99,7 +99,7 @@
             <p class="muted">Anfragen speichern. Jede Person erhält sofort eine Lumian-Nr. wie LM1001.</p>
           </div>
           <div class="panel-actions">
-            <a class="secondary" href="templates/lumian-leads-import-vorlage.xls" download>Vorlage herunterladen</a>
+            <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Vorlage herunterladen</a>
             <label class="file-button small">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
             <button class="secondary small-inline web-leads-button" type="button" data-check-website-leads>Web-Leads prüfen</button>
@@ -192,10 +192,10 @@
             </select>
           </label>
           <label data-finance-from-wrap>Von
-            <input type="text" data-finance-from data-ch-date placeholder="TT.MM.JJJJ" inputmode="numeric" autocomplete="off">
+            <input type="date" data-finance-from data-ch-date lang="de-CH">
           </label>
           <label data-finance-to-wrap>Bis
-            <input type="text" data-finance-to data-ch-date placeholder="TT.MM.JJJJ" inputmode="numeric" autocomplete="off">
+            <input type="date" data-finance-to data-ch-date lang="de-CH">
           </label>
           <button class="secondary" type="button" data-finance-apply>Aktualisieren</button>
         </div>
@@ -220,8 +220,8 @@
                 <input name="title" placeholder="z.B. Einnahmen Juni bisher" required>
               </label>
               <div class="form-pair">
-                <label>Von<input name="from" type="text" data-ch-date placeholder="TT.MM.JJJJ" inputmode="numeric" autocomplete="off" required></label>
-                <label>Bis<input name="to" type="text" data-ch-date placeholder="TT.MM.JJJJ" inputmode="numeric" autocomplete="off" required></label>
+                <label>Von<input name="from" type="date" data-ch-date lang="de-CH" required></label>
+                <label>Bis<input name="to" type="date" data-ch-date lang="de-CH" required></label>
               </div>
               <label>Betrag CHF
                 <input name="amount" type="number" min="0" step="0.05" inputmode="decimal" required>
@@ -238,7 +238,7 @@
             <p class="hint">Maschinen, Seife, Mops, Tücher, Benzin oder anderes Material. Wird vom Gewinn abgezogen.</p>
             <form class="finance-mini-form" data-expense-form>
               <input type="hidden" name="entryId">
-              <label>Datum<input name="date" type="text" data-ch-date placeholder="TT.MM.JJJJ" inputmode="numeric" autocomplete="off" required></label>
+              <label>Datum<input name="date" type="date" data-ch-date lang="de-CH" required></label>
               <label>Kategorie
                 <select name="category">
                   <option>Maschine / Gerät</option>
@@ -431,9 +431,9 @@
               <fieldset data-admin-only>
             <legend>Daten, Import & Backup</legend>
             <div class="button-row vertical">
-              <a class="secondary" href="templates/lumian-kunden-import-vorlage.xls" download>Kunden-Vorlage herunterladen</a>
+              <a class="secondary" href="templates/lumian-kunden-import-vorlage.xlsx" download>Kunden-Vorlage herunterladen</a>
               <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-customers hidden></label>
-              <a class="secondary" href="templates/lumian-leads-import-vorlage.xls" download>Lead-Vorlage herunterladen</a>
+              <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Lead-Vorlage herunterladen</a>
               <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
               <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
@@ -464,7 +464,7 @@
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination / weiss noch nicht</option></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label>Betrag/Schätzung CHF<input name="expectedValue" type="number" min="0" step="10" placeholder="350"></label>
-        <label>Besichtigung/Termin<input name="appointmentAt" type="text" data-ch-datetime placeholder="TT.MM.JJJJ HH:MM" inputmode="numeric" autocomplete="off"></label>
+        <label>Besichtigung/Termin<input name="appointmentAt" type="datetime-local" data-ch-datetime lang="de-CH"></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
           <input name="referredBySearch" data-ref-search="lead" autocomplete="off" placeholder="Name oder LM-Nr. tippen">
           <input name="referredById" type="hidden">
@@ -523,7 +523,7 @@
         <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
         <label>PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination</option></select></label>
-        <label>Termin<input name="appointmentAt" type="text" data-ch-datetime placeholder="TT.MM.JJJJ HH:MM" inputmode="numeric" autocomplete="off"></label>
+        <label>Termin<input name="appointmentAt" type="datetime-local" data-ch-datetime lang="de-CH"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
         <label>Status<select name="status"><option value="Geplant">Geplant</option><option value="Bestätigt">Bestätigt</option><option value="Bezahlt">Bezahlt / Job abgeschlossen / wird Kunde</option><option value="Abgesagt">Abgesagt</option></select></label>
         <label>Zuständig<select name="assignedTo" data-assigned-select></select></label>
@@ -572,6 +572,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=75"></script>
+  <script src="portal.js?v=76"></script>
 </body>
 </html>

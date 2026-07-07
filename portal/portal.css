@@ -3065,41 +3065,12 @@ a.file-button{
   .pager-actions,.pager-actions button{width:100%}
 }
 
-/* v75: Swiss visible date format with a real native calendar picker button */
-.calendar-field-wrap{
-  position:relative;
-  display:grid;
-  grid-template-columns:minmax(0,1fr) 48px;
-  align-items:center;
-  gap:8px;
-  width:100%;
-  margin-top:6px;
+/* v76: native browser date/datetime pickers, no extra custom calendar button */
+input[type="date"], input[type="datetime-local"]{
+  color-scheme: dark;
 }
-.calendar-field-wrap .calendar-display-input{
-  width:100%;
-  margin-top:0 !important;
-}
-.calendar-picker-button{
-  min-height:48px;
-  border-radius:14px;
-  border:1px solid rgba(35,200,255,.35);
-  background:rgba(35,200,255,.13);
-  color:#ecfbff;
-  font-weight:950;
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator{
   cursor:pointer;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);
-}
-.calendar-picker-button:hover{background:rgba(35,200,255,.22)}
-.calendar-native-input{
-  position:absolute;
-  right:0;
-  bottom:0;
-  width:48px;
-  height:48px;
-  opacity:.001;
-  pointer-events:none;
-}
-@media(max-width:760px){
-  .calendar-field-wrap{grid-template-columns:minmax(0,1fr) 52px;gap:10px}
-  .calendar-picker-button{min-height:52px}
+  opacity:.9;
 }

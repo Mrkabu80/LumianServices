@@ -123,16 +123,17 @@
         <div class="panel-head">
           <div>
             <h2>Jobs</h2>
-            <p class="muted">Job aus bestehendem Lead/Kunden erstellen oder neue Person erfassen. Solange nicht erledigt/bezahlt, bleibt die Person Lead.</p>
+            <p class="muted">Job aus bestehendem Lead/Kunden erstellen oder neue Person erfassen. Solange die Zahlung offen ist, bleibt der Job unter offenen Jobs. Erst bezahlte Jobs zählen als echte Einnahme in der Buchhaltung.</p>
           </div>
           <button class="primary" data-open-job>+ Job erstellen</button>
         </div>
         <div class="search-row">
           <input data-job-search placeholder="Job suchen: Name, Ort, Datum, Status, LM-Nr.">
           <select data-job-filter>
-            <option value="open">Offene Jobs</option>
+            <option value="open">Offen / Zahlung offen</option>
+            <option value="unpaid">Nur Zahlung offen</option>
             <option value="all">Alle Jobs</option>
-            <option value="done">Erledigt/bezahlt</option>
+            <option value="done">Erledigt / Bezahlt</option>
           </select>
         </div>
         <div data-job-list class="list"></div>
@@ -501,7 +502,7 @@
       <input type="hidden" name="jobId">
       <input type="hidden" name="leadId">
       <input type="hidden" name="personId">
-      <p class="hint">Job = Termin/Besichtigung/Reinigung. Bestehenden Lead/Kunden oben suchen oder neue Person unten erfassen. Erst bei Erledigt/Bezahlt wird sie Kunde.</p>
+      <p class="hint">Job = Termin/Besichtigung/Reinigung. Offene und erledigte, aber noch unbezahlte Jobs bleiben als voraussichtlich in der Buchhaltung. Erst Zahlung bezahlt zählt als echte Einnahme.</p>
       <div class="form-grid">
         <label class="wide autocomplete-wrap">Bestehenden Lead/Kunden suchen
           <input name="personSearch" data-person-search="job" autocomplete="off" placeholder="Name, Telefon oder LM-Nr. tippen – z.B. Müller oder LM1001">
@@ -516,7 +517,7 @@
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination</option></select></label>
         <label>Termin<input name="appointmentAt" type="datetime-local"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
-        <label>Status<select name="status"><option>Geplant</option><option>Bestätigt</option><option>Erledigt</option><option>Bezahlt</option><option>Abgesagt</option></select></label>
+        <label>Status<select name="status"><option value="Geplant">Geplant</option><option value="Bestätigt">Bestätigt</option><option value="Erledigt">Erledigt / Zahlung offen</option><option value="Bezahlt">Bezahlt</option><option value="Abgesagt">Abgesagt</option></select></label>
         <label>Zuständig<select name="assignedTo" data-assigned-select></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde

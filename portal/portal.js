@@ -52,11 +52,14 @@
   let customerListMode = 'search';
   let stagedPhotos = { before: null, after: null };
   let deferredInstallPrompt = null;
+  let cloudSyncTimer = null;
+  let cloudSyncInProgress = false;
+  let suppressAutoCloudSync = false;
   let state = loadState();
 
   function newState() {
     return {
-      version: 7,
+      version: 8,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       users: USERS.map(u => ({ ...u, role: 'admin', active: true, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '', recoveryCode: `${u.name}-Reset-2026` })),
@@ -87,7 +90,7 @@
   function migrateState(s) {
     const base = newState();
     const merged = { ...base, ...s };
-    merged.version = 7;
+    merged.version = 8;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     // v27: move default referral links from homepage booking anchor to dedicated referral page.
     if (String(merged.settings.referralBase || '').includes('#booking')) merged.settings.referralBase = DEFAULT_SETTINGS.referralBase;
@@ -122,11 +125,25 @@
     return merged;
   }
 
-  function saveState(reason = 'save') {
+  function saveState(reason = 'save', options = {}) {
     state.updatedAt = new Date().toISOString();
     if (currentUser) state.audit.push({ at: state.updatedAt, by: currentUser, reason });
     state.audit = state.audit.slice(-400);
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    if (options.cloud !== false) queueCloudSync(reason);
+  }
+
+  function hasBusinessData(s = state) {
+    return !!s && [s.people, s.leads, s.jobs, s.rewards, s.finance?.manualIncome, s.finance?.expenses].some(arr => Array.isArray(arr) && arr.length);
+  }
+
+  function queueCloudSync(reason = '') {
+    if (suppressAutoCloudSync || !currentUser || cloudSyncInProgress) return;
+    if (String(reason || '').startsWith('before sync')) return;
+    const url = String(getSetting('scriptUrl') || '').trim();
+    if (!url) return;
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(() => syncCloud(true), 1400);
   }
 
   function toast(message) {
@@ -365,7 +382,7 @@
     setTimeout(setupSmartStickyNav, 120);
     if (!renderLogin._checkedWebsiteLeads && getSetting('scriptUrl')) {
       renderLogin._checkedWebsiteLeads = true;
-      setTimeout(() => checkWebsiteLeads(true), 900);
+      setTimeout(() => autoLoadCloudThenCheckWebsiteLeads(), 900);
     }
   }
 
@@ -420,7 +437,7 @@
 
   function renderStats() {
     const openLeadCount = activeLeads().length;
-    const openJobCount = state.jobs.filter(j => !['Erledigt','Bezahlt','Abgesagt'].includes(j.status)).length;
+    const openJobCount = state.jobs.filter(isOpenJob).length;
     const customerCount = activeCustomers().length;
     const openRewards = state.rewards.filter(r => r.status === 'offen').reduce((s,r)=>s+Number(r.amount||0),0);
     const cards = [['Offene Leads', openLeadCount], ['Offene Jobs', openJobCount], ['Kunden', customerCount]];
@@ -503,8 +520,9 @@
     const q = ($('[data-job-search]')?.value || '').toLowerCase().trim();
     const filter = $('[data-job-filter]')?.value || 'open';
     let jobs = [...state.jobs].sort((a,b)=>new Date(a.appointmentAt || a.createdAt)-new Date(b.appointmentAt || b.createdAt));
-    if (filter === 'open') jobs = jobs.filter(j => !['Erledigt','Bezahlt','Abgesagt'].includes(j.status));
-    if (filter === 'done') jobs = jobs.filter(j => ['Erledigt','Bezahlt'].includes(j.status));
+    if (filter === 'open') jobs = jobs.filter(isOpenJob);
+    if (filter === 'unpaid') jobs = jobs.filter(j => isOpenJob(j) && amountValue(j.amount) > 0);
+    if (filter === 'done') jobs = jobs.filter(isCompletedJob);
     if (q) jobs = jobs.filter(j => {
       const p = personById(j.personId) || {};
       return [j.id,j.service,j.status,j.amount,j.appointmentAt,j.source,p.id,p.name,p.phone,p.email,p.address,p.place].join(' ').toLowerCase().includes(q);
@@ -518,17 +536,18 @@
     const p = personById(j.personId) || {};
     const completed = isCompletedJob(j);
     const paid = isPaidJob(j);
-    const done = completed;
+    const statusLabel = completed && !paid ? `${j.status || 'Erledigt'} · Zahlung offen` : (j.status || 'Geplant');
+    const statusClass = paid ? 'ok' : (j.status === 'Abgesagt' ? 'danger' : 'warn');
     const ref = personById(j.referredById || p.referredById);
     const photos = [j.beforePhoto, j.afterPhoto].filter(Boolean).map((ph,i)=>`<img class="thumb" src="${esc(ph.dataUrl || ph.url)}" alt="${i?'Nachher':'Vorher'} Foto">`).join('');
     return `<article class="item-card">
       <div class="item-top">
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
-        <div class="badges"><span class="badge ${done?'ok':j.status==='Abgesagt'?'danger':'warn'}">${esc(j.status)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
+        <div class="badges"><span class="badge ${statusClass}">${esc(statusLabel)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(fullAddressForPerson(p))}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
-      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}${reviewLink(p, j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${j.status!=='Abgesagt' && !completed ? `<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button>` : ''}${j.status!=='Abgesagt' && !paid ? `<button class="secondary" data-paid-job="${esc(j.id)}">Zahlung bezahlt</button>` : ''}${completed ? whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true) : ''}</div>
+      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}${reviewLink(p, j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!isCancelledJob(j) && !completed ? `<button class="primary" data-complete-job="${esc(j.id)}">Arbeit erledigt</button>` : ''}${!isCancelledJob(j) && !paid ? `<button class="${completed ? 'primary' : 'secondary'}" data-paid-job="${esc(j.id)}">Zahlung bezahlt</button>` : ''}${completed ? whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true) : ''}</div>
     </article>`;
   }
 
@@ -570,13 +589,14 @@
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
     let s = String(value ?? '').trim();
     if (!s) return 0;
-    s = s
-      .replace(/CHF/ig,'')
-      .replace(/Fr\.?/ig,'')
-      .replace(/'/g,'')
-      .replace(/\s/g,'')
-      .replace(/,/g,'.')
-      .replace(/[^0-9.\-]/g,'');
+    s = s.replace(/CHF/ig,'').replace(/Fr\.?/ig,'').replace(/'/g,'').replace(/\s/g,'').replace(/[^0-9,.-]/g,'');
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma > -1 && lastDot > -1) {
+      s = lastComma > lastDot ? s.replace(/\./g,'').replace(',', '.') : s.replace(/,/g,'');
+    } else {
+      s = s.replace(/,/g,'.');
+    }
     const n = Number(s);
     return Number.isFinite(n) ? n : 0;
   }
@@ -588,9 +608,23 @@
     const status = String(job.status || '').toLowerCase();
     return isPaidJob(job) || status === 'erledigt' || status.includes('erledigt');
   }
+  function isCancelledJob(job = {}) {
+    const status = String(job.status || '').toLowerCase();
+    return status === 'abgesagt' || status.includes('abgesagt');
+  }
+  function isOpenJob(job = {}) {
+    return !isPaidJob(job) && !isCancelledJob(job);
+  }
 
   function ymd(d) {
     if (!d) return '';
+    if (typeof d === 'string') {
+      const raw = d.trim();
+      const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+      const swiss = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      if (swiss) return `${swiss[3]}-${swiss[2].padStart(2,'0')}-${swiss[1].padStart(2,'0')}`;
+    }
     const dt = d instanceof Date ? d : new Date(d);
     if (Number.isNaN(dt.getTime())) return '';
     return dt.toISOString().slice(0,10);
@@ -631,7 +665,7 @@
   }
   function forecastJobs(range) {
     return state.jobs
-      .filter(j => j.status !== 'Bezahlt' && j.status !== 'Abgesagt')
+      .filter(isOpenJob)
       .filter(j => amountValue(j.amount) > 0)
       .filter(j => dateInRange(j.appointmentAt || j.createdAt, range.from, range.to))
       .map(j => {
@@ -779,7 +813,7 @@
   function whatsappLink(phone, text, label='WhatsApp', primary=false) { const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
   function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://api.whatsapp.com/send?phone=${n}&text=${encodeURIComponent(text)}` : '#'; }
   function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'Erinnerung senden', true); }
-  function calendarButton(job) { return !['Erledigt','Bezahlt','Abgesagt'].includes(job.status) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
+  function calendarButton(job) { return (!isCompletedJob(job) && !isCancelledJob(job)) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
   function waLeadLink(p,l) { return whatsappLink(p.phone, newCustomerText(p,l), 'WhatsApp'); }
   function reviewLink(p, job = {}) { const link = googleReviewLink(); return link ? whatsappLink(p?.phone, reviewText(p, job), 'Google Review') : ''; }
 
@@ -1027,7 +1061,7 @@
     const done = event.target.closest('[data-complete-job]');
     if (done) completeJob(done.dataset.completeJob, true);
     const paid = event.target.closest('[data-paid-job]');
-    if (paid) { const job = jobById(paid.dataset.paidJob); if (job) { job.status='Bezahlt'; job.paidAt = job.paidAt || new Date().toISOString(); completeJob(job.id, true); toast('Zahlung als bezahlt markiert. Der Betrag zählt jetzt in der Buchhaltung.'); } }
+    if (paid) { const job = jobById(paid.dataset.paidJob); if (job) { job.status='Bezahlt'; job.paidAt = job.paidAt || new Date().toISOString(); completeJob(job.id, true); toast('Zahlung als bezahlt markiert. Der Betrag zählt jetzt in der Buchhaltung.'); } return; }
     const cal = event.target.closest('[data-calendar-job]');
     if (cal) addCalendar(jobById(cal.dataset.calendarJob));
     const copy = event.target.closest('[data-copy-ref]');
@@ -1894,8 +1928,51 @@
     return String(formUrl || getSetting('scriptUrl') || '').trim();
   }
 
+  function autoLoadCloudThenCheckWebsiteLeads() {
+    const url = currentScriptUrl();
+    if (!url) return;
+    if (hasBusinessData(state)) { checkWebsiteLeads(true); return; }
+
+    const callbackName = `lumianAutoCloud_${Date.now()}`;
+    const script = document.createElement('script');
+    let finished = false;
+    let timer = null;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      try { delete window[callbackName]; } catch {}
+      script.remove();
+    };
+
+    window[callbackName] = data => {
+      try {
+        const cloudState = data?.state;
+        if (hasBusinessData(cloudState)) {
+          suppressAutoCloudSync = true;
+          const imported = migrateState(cloudState);
+          localStorage.setItem(STORE_KEY, JSON.stringify(imported));
+          suppressAutoCloudSync = false;
+          toast('Cloud-Daten geladen. Portal wird neu geladen...');
+          setTimeout(() => location.reload(), 500);
+          done();
+          return;
+        }
+      } catch {}
+      done();
+      checkWebsiteLeads(true);
+    };
+
+    timer = setTimeout(() => { done(); checkWebsiteLeads(true); }, 8000);
+    script.onerror = () => { done(); checkWebsiteLeads(true); };
+    script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}&t=${Date.now()}`;
+    document.body.appendChild(script);
+  }
+
   function checkWebsiteLeads(silent = false) {
+    suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
+    suppressAutoCloudSync = false;
     const url = currentScriptUrl();
     if (!url) {
       const msg = 'Bitte zuerst Google Apps Script URL im Setup eintragen.';
@@ -1942,15 +2019,25 @@
     document.body.appendChild(script);
   }
 
-  function makeCloudPayload() { saveState('before sync'); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
-  async function syncCloud() {
+  function makeCloudPayload() { saveState('before sync', { cloud: false }); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
+  async function syncCloud(silent = false) {
+    suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
-    const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
-    try { await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(makeCloudPayload()) }); toast('Sync gesendet. Google Sheet/Drive prüfen.'); }
-    catch { toast('Sync konnte nicht gesendet werden.'); }
+    suppressAutoCloudSync = false;
+    const url = currentScriptUrl(); if (!url) { if (!silent) toast('Bitte zuerst Google Apps Script URL im Setup eintragen.'); return; }
+    if (cloudSyncInProgress) return;
+    cloudSyncInProgress = true;
+    try {
+      await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(makeCloudPayload()) });
+      if (!silent) toast('Sync gesendet. Google Sheet/Drive prüfen.');
+    }
+    catch { if (!silent) toast('Sync konnte nicht gesendet werden.'); }
+    finally { cloudSyncInProgress = false; }
   }
   function loadCloud() {
+    suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
+    suppressAutoCloudSync = false;
     const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
     const callbackName = `lumianCloud_${Date.now()}`;
     const script = document.createElement('script');

@@ -45,7 +45,7 @@ function doPost(e) {
 function emptyState_() {
   var now = new Date().toISOString();
   return {
-    version: 7,
+    version: 8,
     createdAt: now,
     updatedAt: now,
     users: [],
@@ -89,7 +89,7 @@ function normalizeAppointmentInput_(value) {
 function saveWebsiteLead_(lead) {
   var now = lead.createdAt || new Date().toISOString();
   var state = loadState_() || {
-    version: 7,
+    version: 8,
     createdAt: now,
     updatedAt: now,
     users: [],
@@ -283,9 +283,78 @@ function writeSheets_(state) {
   writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','CreatedAt','CreatedBy'], (state.rewards || []).map(function(r) {
     return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,r.createdAt,r.createdBy];
   }));
+
+  var finance = calculateFinance_(state);
+  writeSheet_(ss, 'Finance Summary', ['Kennzahl','CHF','Info'], [
+    ['Bezahlte Jobs', finance.paidJobsTotal, finance.paidJobsCount + ' kassierte Jobs'],
+    ['Manuell ergänzt', finance.manualIncomeTotal, finance.manualIncomeCount + ' Eintrag(e)'],
+    ['Voraussichtlich', finance.forecastTotal, finance.forecastJobsCount + ' Job(s) + ' + finance.forecastLeadsCount + ' Lead(s)'],
+    ['Ausgaben', finance.expenseTotal, finance.expenseCount + ' Kostenposition(en)'],
+    ['Gewinn', finance.paidJobsTotal + finance.manualIncomeTotal - finance.expenseTotal, 'bezahlte Einnahmen minus Ausgaben']
+  ]);
+
+  writeSheet_(ss, 'Finance Manual Income', ['IncomeId','Title','From','To','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.manualIncome) || []).map(function(x) {
+    return [x.id,x.title,x.from,x.to,x.amount,x.notes,x.createdAt,x.createdBy];
+  }));
+  writeSheet_(ss, 'Finance Expenses', ['ExpenseId','Date','Category','Title','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.expenses) || []).map(function(x) {
+    return [x.id,x.date,x.category,x.title,x.amount,x.notes,x.createdAt,x.createdBy];
+  }));
+
   writeSheet_(ss, 'Settings', ['Key','Value'], Object.keys(state.settings || {}).map(function(k) {
     return [k, state.settings[k]];
   }));
+}
+
+function amountValue_(value) {
+  if (typeof value === 'number') return isFinite(value) ? value : 0;
+  var s = String(value || '').trim();
+  if (!s) return 0;
+  s = s.replace(/CHF/ig, '').replace(/Fr\.?/ig, '').replace(/'/g, '').replace(/\s/g, '').replace(/[^0-9,.\-]/g, '');
+  var lastComma = s.lastIndexOf(',');
+  var lastDot = s.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else {
+    s = s.replace(/,/g, '.');
+  }
+  var n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+
+function isPaidJob_(job) {
+  var status = String((job && job.status) || '').toLowerCase();
+  return status === 'bezahlt' || status.indexOf('bezahlt') >= 0 || !!(job && job.paidAt);
+}
+
+function isCancelledJob_(job) {
+  var status = String((job && job.status) || '').toLowerCase();
+  return status === 'abgesagt' || status.indexOf('abgesagt') >= 0;
+}
+
+function calculateFinance_(state) {
+  var jobs = state.jobs || [];
+  var leads = state.leads || [];
+  var finance = state.finance || { manualIncome: [], expenses: [] };
+  var paidJobs = jobs.filter(function(j) { return isPaidJob_(j); });
+  var forecastJobs = jobs.filter(function(j) { return !isPaidJob_(j) && !isCancelledJob_(j) && amountValue_(j.amount) > 0; });
+  var forecastLeads = leads.filter(function(l) {
+    var status = String(l.status || '');
+    return ['Job erstellt','Kunde geworden','Verloren'].indexOf(status) < 0 && amountValue_(l.expectedValue) > 0;
+  });
+  var manualIncome = finance.manualIncome || [];
+  var expenses = finance.expenses || [];
+
+  return {
+    paidJobsCount: paidJobs.length,
+    paidJobsTotal: paidJobs.reduce(function(sum, j) { return sum + amountValue_(j.amount); }, 0),
+    manualIncomeCount: manualIncome.length,
+    manualIncomeTotal: manualIncome.reduce(function(sum, x) { return sum + amountValue_(x.amount); }, 0),
+    forecastJobsCount: forecastJobs.length,
+    forecastLeadsCount: forecastLeads.length,
+    forecastTotal: forecastJobs.reduce(function(sum, j) { return sum + amountValue_(j.amount); }, 0) + forecastLeads.reduce(function(sum, l) { return sum + amountValue_(l.expectedValue); }, 0),
+    expenseCount: expenses.length,
+    expenseTotal: expenses.reduce(function(sum, x) { return sum + amountValue_(x.amount); }, 0)
+  };
 }
 
 function photoLink_(photo) {

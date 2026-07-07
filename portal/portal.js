@@ -506,11 +506,7 @@
     const link = referralLink(p.id);
     return `<article class="item-card">
       <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span></div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div></div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
-      <div class="referral-box">
-        <span>Empfehlungslink</span>
-        <strong>${esc(link)}</strong>
-        <small>Diesen Link kann der Kunde weiterleiten. Neue Kunden kommen damit mit Code ${esc(p.id)} ins Formular; der Bonus wird später über den erledigten Empfehlungs-Job getrackt.</small>
-      </div>
+      <div class="referral-link-line"><span>Empfehlungslink</span><strong>${esc(link)}</strong></div>
       <div class="actions">${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
     </article>`;
   }
@@ -697,11 +693,11 @@
   function whatsappLink(phone, text, label='WhatsApp', primary=false) { const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
   function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://api.whatsapp.com/send?phone=${n}&text=${encodeURIComponent(text)}` : '#'; }
   function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'WhatsApp'); }
-  function calendarButton(job) { return job.appointmentAt && !['Erledigt','Bezahlt','Abgesagt'].includes(job.status) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
+  function calendarButton(job) { return !['Erledigt','Bezahlt','Abgesagt'].includes(job.status) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
   function waLeadLink(p,l) { return whatsappLink(p.phone, newCustomerText(p,l), 'WhatsApp'); }
 
   function referralInviteText(p) {
-    return fillTemplate(getSetting('referralTemplate'), { name:p.name||'', customerId:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), referralLink:referralLink(p.id) });
+    return fillTemplate(getSetting('referralTemplate'), { name:p.name||'', customerId:p.id||'', code:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), referralLink:referralLink(p.id) });
   }
   function newCustomerText(p,l={}) {
     return fillTemplate(getSetting('newCustomerTemplate'), { name:p.name||'', customerId:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), service:l.service||'', amount:l.expectedValue||'', address:p.address||'' });
@@ -924,7 +920,7 @@
   });
 
   function addCalendar(job) {
-    if (!job?.appointmentAt) return toast('Kein Termin im Job eingetragen.');
+    if (!job?.appointmentAt) return toast('Kein Termin im Job eingetragen. Bitte Job bearbeiten und Datum/Zeit setzen.');
     const p = personById(job.personId) || {};
     const start = new Date(job.appointmentAt);
     if (Number.isNaN(start.getTime())) return toast('Termin ist ungültig.');

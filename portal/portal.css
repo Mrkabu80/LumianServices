@@ -2415,3 +2415,34 @@ input,select,textarea{max-width:100% !important}
     font-size:.9rem;
   }
 }
+
+
+/* v26 compact customer referral link */
+.referral-link-line{
+  margin:10px 0 12px;
+  padding:10px 12px;
+  border:1px solid rgba(35,200,255,.32);
+  border-radius:14px;
+  background:rgba(35,200,255,.08);
+  display:grid;
+  gap:4px;
+}
+.referral-link-line span{
+  color:var(--brand-2);
+  font-size:.76rem;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.referral-link-line strong{
+  color:#e7f7ff;
+  font-size:.94rem;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+/* old big box fallback is made smaller if older cards exist */
+.referral-box{
+  padding:10px 12px !important;
+  border-radius:14px !important;
+}
+.referral-box small{display:none !important;}

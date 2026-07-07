@@ -15,6 +15,7 @@
 function doPost(e) {
   try {
     var payload = JSON.parse(e.postData.contents || '{}');
+    if (payload.action === 'websiteLead') return saveWebsiteLead_(payload.lead || {});
     if (payload.action !== 'syncFull') return json_({ ok: false, error: 'Unknown action' });
 
     var state = payload.state || {};
@@ -36,6 +37,27 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
+}
+
+
+function saveWebsiteLead_(lead) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateSheet_(ss, 'Website Leads', [
+    'createdAt','name','phone','place','service','desiredDate','referral','message','source','status'
+  ]);
+  sheet.appendRow([
+    lead.createdAt || new Date().toISOString(),
+    lead.name || '',
+    lead.phone || '',
+    lead.place || '',
+    lead.service || '',
+    lead.desiredDate || '',
+    lead.referral || '',
+    lead.message || '',
+    lead.source || 'Website Anfrage',
+    'Neu'
+  ]);
+  return json_({ ok: true, savedAt: new Date().toISOString() });
 }
 
 function doGet(e) {

@@ -2872,3 +2872,30 @@ a.file-button{
     grid-template-columns:minmax(170px,220px) minmax(0,1fr) minmax(86px,110px) !important;
   }
 }
+
+
+/* v56: Web-Leads prüfen button styling */
+.web-leads-button{
+  border-color:rgba(72, 255, 165, .58) !important;
+  background:rgba(72, 255, 165, .07) !important;
+  color:#d9ffeb !important;
+  box-shadow:0 0 0 1px rgba(72,255,165,.12), 0 12px 30px rgba(72,255,165,.08) !important;
+}
+.web-leads-button:hover{
+  border-color:rgba(72, 255, 165, .82) !important;
+  background:rgba(72, 255, 165, .12) !important;
+}
+@media(max-width:760px){
+  .panel-actions .web-leads-button,
+  .web-leads-button{
+    width:100% !important;
+    max-width:100% !important;
+    flex:1 1 100% !important;
+    display:flex !important;
+    justify-content:center !important;
+    align-items:center !important;
+    min-height:54px !important;
+    border-radius:20px !important;
+    margin:0 !important;
+  }
+}

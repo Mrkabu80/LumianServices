@@ -35,32 +35,77 @@ document.querySelectorAll('.reveal').forEach(element => {
 
 const form = document.querySelector('[data-booking-form]');
 if (form) {
+  const detectedRefEl = document.querySelector('[data-referral-detected]');
+  const normalizeReferral = value => String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+  const currentReferralCode = () => normalizeReferral(form.elements.referral?.value || new URLSearchParams(window.location.search).get('ref') || '');
+
   // Referral support for Lumian Portal links, e.g. /?ref=LM1001#booking
   try {
-    const ref = new URLSearchParams(window.location.search).get('ref');
+    const ref = normalizeReferral(new URLSearchParams(window.location.search).get('ref'));
     if (ref && form.elements.referral) {
-      form.elements.referral.value = ref.toUpperCase();
+      form.elements.referral.value = ref;
+      if (detectedRefEl) detectedRefEl.hidden = false;
       const booking = document.getElementById('booking');
       if (booking) setTimeout(() => booking.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
     }
   } catch (error) {}
 
-  form.addEventListener('submit', event => {
+  form.elements.referral?.addEventListener('input', () => {
+    const code = currentReferralCode();
+    if (detectedRefEl) detectedRefEl.hidden = !code;
+  });
+
+  async function sendLeadWebhook(lead) {
+    // Optional: set window.LUMIAN_LEAD_WEBHOOK to the Google Apps Script URL if direct website-to-sheet capture is wanted.
+    const webhook = window.LUMIAN_LEAD_WEBHOOK || form.dataset.leadWebhook || '';
+    if (!webhook) return { skipped: true };
+    try {
+      const response = await fetch(webhook, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'websiteLead', lead })
+      });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error };
+    }
+  }
+
+  form.addEventListener('submit', async event => {
     event.preventDefault();
     const data = new FormData(form);
+    const referral = currentReferralCode();
+    const lead = {
+      name: data.get('name') || '',
+      phone: data.get('phone') || '',
+      place: data.get('place') || '',
+      service: data.get('service') || '',
+      desiredDate: data.get('date') || '',
+      referral,
+      message: data.get('message') || '',
+      source: referral ? 'Website Empfehlung' : 'Website Anfrage',
+      createdAt: new Date().toISOString()
+    };
+
+    // Store in webhook if configured, but always open WhatsApp so the Anfrage is not lost.
+    sendLeadWebhook(lead);
+
     const lines = [
       'Hoi Lumian Services, ich möchte eine Reinigung anfragen:',
       '',
-      `Name: ${data.get('name') || '-'}`,
-      `Ort: ${data.get('place') || '-'}`,
-      `Service: ${data.get('service') || '-'}`,
-      `Wunsch-Termin: ${data.get('date') || '-'}`,
-      `Danke-Code: ${data.get('referral') || '-'}`,
+      `Name: ${lead.name || '-'}`,
+      `Telefon / WhatsApp: ${lead.phone || '-'}`,
+      `Ort / Adresse: ${lead.place || '-'}`,
+      `Service: ${lead.service || '-'}`,
+      `Wunsch-Termin: ${lead.desiredDate || '-'}`,
+      referral ? `Empfehlungscode: ${referral}` : 'Empfehlungscode: -',
       '',
-      `Beschreibung: ${data.get('message') || '-'}`,
+      `Beschreibung: ${lead.message || '-'}`,
       '',
       'Fotos kann ich direkt hier senden.'
     ];
+
     const url = `https://wa.me/${business.phoneWhatsApp}?text=${encodeURIComponent(lines.join('\n'))}`;
     window.open(url, '_blank', 'noopener');
   });

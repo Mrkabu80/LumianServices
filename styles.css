@@ -923,3 +923,21 @@ details p { padding: 0 22px 20px; margin: 0; }
   .cookie-actions { justify-content: flex-start; }
   .app-card .btn { width: 100%; justify-content: center; }
 }
+
+
+/* v26 referral form clarity */
+.referral-detected{
+  display:block;
+  margin-top:8px;
+  color:var(--cyan);
+  font-size:13px;
+  font-weight:850;
+}
+.referral-detected[hidden]{display:none}
+.booking-form input[name="referral"]:not(:placeholder-shown){
+  border-color:rgba(19,200,243,.55);
+  box-shadow:0 0 0 4px rgba(19,200,243,.10);
+}
+@media (max-width: 720px){
+  .booking-form{grid-template-columns:1fr}
+}

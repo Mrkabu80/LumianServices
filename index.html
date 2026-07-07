@@ -383,8 +383,12 @@
             <input autocomplete="name" name="name" placeholder="Ihr Name" required="" type="text"/>
 </label>
 <label>
-            Ort
-            <input autocomplete="address-level2" name="place" placeholder="z.B. Zug, Luzern, Cham" required="" type="text"/>
+            Telefon / WhatsApp
+            <input autocomplete="tel" inputmode="tel" name="phone" placeholder="z.B. 077 123 45 67" required="" type="tel"/>
+</label>
+<label>
+            Ort / Adresse
+            <input autocomplete="street-address" name="place" placeholder="z.B. Lenzburg, Musterstrasse 8" required="" type="text"/>
 </label>
 <label>
             Service
@@ -407,15 +411,16 @@
             <textarea name="message" placeholder="z.B. 8 Fenster, 2 Storen, Balkon, Fotos sende ich gleich." rows="4"></textarea>
 </label>
 <label class="full referral-line">
-            Danke-Code optional
-            <input name="referral" placeholder="z.B. DANKE-ANNA" type="text"/>
+            Empfehlungscode / Danke-Code
+            <input name="referral" placeholder="z.B. LM1001" type="text"/>
+            <small class="referral-detected" data-referral-detected hidden>Empfehlung erkannt. Der Code wird automatisch mit der Anfrage gesendet.</small>
 </label>
 <label class="consent full">
 <input required="" type="checkbox"/>
 <span>Ich habe die <a href="datenschutz.html">Datenschutzerklärung</a> gelesen und bin einverstanden, dass Lumian Services meine Anfrage beantwortet.</span>
 </label>
-<button class="btn btn-primary full" type="submit">WhatsApp-Anfrage erstellen</button>
-<p class="form-note full">Die Anfrage ist kostenlos. Ein Termin gilt erst nach Bestätigung durch Lumian Services als fix.</p>
+<button class="btn btn-primary full" type="submit">Anfrage per WhatsApp senden</button>
+<p class="form-note full">Die Anfrage ist kostenlos. Wenn ein Empfehlungscode vorhanden ist, wird er automatisch mitgesendet.</p>
 </form>
 </div>
 </section>
@@ -530,6 +535,6 @@
 <p data-install-help-text="">Auf dem iPhone: Teilen-Symbol in Safari öffnen und «Zum Home-Bildschirm» wählen. Auf Android: Menü öffnen und «App installieren» oder «Zum Startbildschirm hinzufügen» wählen.</p>
 </div>
 <script defer="" src="assets/js/gallery-data.js"></script>
-<script defer="" src="script.js"></script>
+<script defer="" src="script.js?v=26"></script>
 </body>
 </html>

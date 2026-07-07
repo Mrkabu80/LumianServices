@@ -2941,3 +2941,30 @@ a.file-button{
 }
 
 /* v59: finance calculation includes open lead estimates; wording cleaned */
+
+
+/* v60: customer filter + large list scrollbars */
+[data-panel="leads"] [data-lead-list],
+[data-panel="customers"] [data-customer-list]{
+  max-height:min(72vh, 900px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-right:6px;
+  scroll-behavior:smooth;
+}
+[data-panel="leads"] [data-lead-list]::-webkit-scrollbar,
+[data-panel="customers"] [data-customer-list]::-webkit-scrollbar{
+  width:8px;
+}
+[data-panel="leads"] [data-lead-list]::-webkit-scrollbar-thumb,
+[data-panel="customers"] [data-customer-list]::-webkit-scrollbar-thumb{
+  background:rgba(35,200,255,.28);
+  border-radius:999px;
+}
+@media(max-width:760px){
+  [data-panel="leads"] [data-lead-list],
+  [data-panel="customers"] [data-customer-list]{
+    max-height:68vh;
+    padding-right:3px;
+  }
+}

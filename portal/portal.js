@@ -529,7 +529,12 @@
 
   function renderCustomers() {
     const q = ($('[data-customer-search]')?.value || '').toLowerCase().trim();
+    const filter = $('[data-customer-filter]')?.value || 'all';
     let customers = activeCustomers();
+    if (filter === 'active') customers = customers.filter(p => contactStatus(p) === 'Aktiv');
+    if (filter === 'inactive') customers = customers.filter(p => contactStatus(p) === 'Inaktiv / Pause');
+    if (filter === 'blocked') customers = customers.filter(p => contactStatus(p) === 'Nicht kontaktieren');
+    if (filter === 'problem') customers = customers.filter(p => contactStatus(p) === 'Problemfall');
     if (q) customers = customers.filter(p => [p.id,p.name,p.phone,p.email,p.address,p.place,p.source,p.contactStatus,p.contactReason,p.contactNote].join(' ').toLowerCase().includes(q));
     const pageData = paginateItems(customers, 'customers');
     renderPager('customers', pageData);
@@ -553,8 +558,32 @@
 
 
   function money(value) {
-    return `CHF ${Number(value || 0).toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `CHF ${amountValue(value).toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
+
+  function amountValue(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    let s = String(value ?? '').trim();
+    if (!s) return 0;
+    s = s
+      .replace(/CHF/ig,'')
+      .replace(/Fr\.?/ig,'')
+      .replace(/'/g,'')
+      .replace(/\s/g,'')
+      .replace(/,/g,'.')
+      .replace(/[^0-9.\-]/g,'');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function isPaidJob(job = {}) {
+    const status = String(job.status || '').toLowerCase();
+    return status === 'bezahlt' || status.includes('bezahlt') || !!job.paidAt;
+  }
+  function isCompletedJob(job = {}) {
+    const status = String(job.status || '').toLowerCase();
+    return isPaidJob(job) || status === 'erledigt' || status.includes('erledigt');
+  }
+
   function ymd(d) {
     if (!d) return '';
     const dt = d instanceof Date ? d : new Date(d);
@@ -590,35 +619,35 @@
     return { period, from, to, label };
   }
   function completedJobs() {
-    return state.jobs.filter(j => ['Erledigt','Bezahlt'].includes(j.status));
+    return state.jobs.filter(isCompletedJob);
   }
   function paidJobs() {
-    return state.jobs.filter(j => j.status === 'Bezahlt');
+    return state.jobs.filter(isPaidJob);
   }
   function forecastJobs(range) {
     return state.jobs
       .filter(j => j.status !== 'Bezahlt' && j.status !== 'Abgesagt')
-      .filter(j => Number(j.amount || 0) > 0)
+      .filter(j => amountValue(j.amount) > 0)
       .filter(j => dateInRange(j.appointmentAt || j.createdAt, range.from, range.to))
       .map(j => {
         const p = personById(j.personId) || {};
-        return { type:'Forecast', id:j.id, date:j.appointmentAt || j.createdAt, title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, status:j.status, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
+        return { type:'Forecast', id:j.id, date:j.appointmentAt || j.createdAt, title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:amountValue(j.amount), personId:j.personId, jobId:j.id, status:j.status, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
       });
   }
   function forecastLeadItems(range) {
     return state.leads
       .filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status))
-      .filter(l => Number(l.expectedValue || 0) > 0)
+      .filter(l => amountValue(l.expectedValue) > 0)
       .filter(l => dateInRange(l.appointmentAt || l.createdAt, range.from, range.to))
       .map(l => {
         const p = personById(l.personId) || {};
-        return { type:'Lead Schätzung', id:l.id, date:l.appointmentAt || l.createdAt, title:`${p.name || l.personId} · ${l.service || 'Reinigung'}`, amount:Number(l.expectedValue || 0), personId:l.personId, leadId:l.id, status:l.status || 'Offen', createdBy:l.createdBy || '', assignedTo:'' };
+        return { type:'Lead Schätzung', id:l.id, date:l.appointmentAt || l.createdAt, title:`${p.name || l.personId} · ${l.service || 'Reinigung'}`, amount:amountValue(l.expectedValue), personId:l.personId, leadId:l.id, status:l.status || 'Offen', createdBy:l.createdBy || '', assignedTo:'' };
       });
   }
   function jobIncomeItems(range) {
     return paidJobs().filter(j => dateInRange(financeJobDate(j), range.from, range.to)).map(j => {
       const p = personById(j.personId) || {};
-      return { type:'Job bezahlt', id:j.id, date:financeJobDate(j), title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
+      return { type:'Job bezahlt', id:j.id, date:financeJobDate(j), title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:amountValue(j.amount), personId:j.personId, jobId:j.id, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
     });
   }
   function manualIncomeItems(range) {
@@ -626,10 +655,10 @@
       const start = x.from || x.date || x.createdAt;
       const end = x.to || start;
       return (!range.from || end >= range.from) && (!range.to || start <= range.to);
-    }).map(x => ({ type:'Manuell', id:x.id, date:x.from || x.createdAt, from:x.from || '', to:x.to || '', title:x.title || 'Manuelle Einnahme', amount:Number(x.amount || 0), notes:x.notes || '', createdBy:x.createdBy || '' }));
+    }).map(x => ({ type:'Manuell', id:x.id, date:x.from || x.createdAt, from:x.from || '', to:x.to || '', title:x.title || 'Manuelle Einnahme', amount:amountValue(x.amount), notes:x.notes || '', createdBy:x.createdBy || '' }));
   }
   function expenseItems(range) {
-    return (state.finance?.expenses || []).filter(x => dateInRange(x.date || x.createdAt, range.from, range.to)).map(x => ({ ...x, amount:Number(x.amount || 0) }));
+    return (state.finance?.expenses || []).filter(x => dateInRange(x.date || x.createdAt, range.from, range.to)).map(x => ({ ...x, amount:amountValue(x.amount) }));
   }
   function financeSummary(range) {
     const jobs = jobIncomeItems(range);
@@ -638,10 +667,10 @@
     const forecast = forecastJobs(range);
     const forecastLeads = forecastLeadItems(range);
     const forecastAll = [...forecast, ...forecastLeads];
-    const jobIncome = jobs.reduce((s,x)=>s+x.amount,0);
-    const manualIncome = manual.reduce((s,x)=>s+x.amount,0);
-    const expenseTotal = expenses.reduce((s,x)=>s+x.amount,0);
-    const forecastTotal = forecastAll.reduce((s,x)=>s+x.amount,0);
+    const jobIncome = jobs.reduce((s,x)=>s+amountValue(x.amount),0);
+    const manualIncome = manual.reduce((s,x)=>s+amountValue(x.amount),0);
+    const expenseTotal = expenses.reduce((s,x)=>s+amountValue(x.amount),0);
+    const forecastTotal = forecastAll.reduce((s,x)=>s+amountValue(x.amount),0);
     return { jobs, manual, expenses, forecast, forecastLeads, forecastAll, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
   }
 
@@ -697,7 +726,7 @@
     const rows = state.people.map(p => {
       const allJobs = completedJobs().filter(j => j.personId === p.id);
       const inRange = allJobs.filter(j => dateInRange(financeJobDate(j), range.from, range.to));
-      const revenue = inRange.reduce((s,j)=>s+Number(j.amount||0),0);
+      const revenue = inRange.reduce((s,j)=>s+amountValue(j.amount),0);
       const last = allJobs.map(financeJobDate).filter(Boolean).sort().pop() || '';
       const days = last ? Math.round((new Date() - new Date(last)) / 86400000) : null;
       return { p, allJobs, inRange, revenue, last, days };
@@ -930,7 +959,8 @@
       updatedBy: currentUser
     });
     if (lead) lead.status = 'Job erstellt';
-    if (['Erledigt','Bezahlt'].includes(job.status)) completeJob(job.id, false);
+    if (isCompletedJob(job)) completeJob(job.id, false);
+    if (isPaidJob(job)) job.paidAt = job.paidAt || new Date().toISOString();
     saveState('job'); form.closest('dialog').close(); setTab('jobs'); toast(`Job gespeichert: ${p.id}`);
   });
 
@@ -958,13 +988,13 @@
   function completeJob(jobId, showMessage) {
     const job = jobById(jobId); if (!job) return;
     const p = personById(job.personId); if (!p) return;
-    job.status = job.status === 'Bezahlt' ? 'Bezahlt' : 'Erledigt';
+    job.status = isPaidJob(job) ? 'Bezahlt' : 'Erledigt';
     job.completedAt = job.completedAt || new Date().toISOString();
-    if (job.status === 'Bezahlt') job.paidAt = job.paidAt || new Date().toISOString();
+    if (isPaidJob(job)) job.paidAt = job.paidAt || new Date().toISOString();
     p.status = 'customer'; p.customerSince = p.customerSince || new Date().toISOString();
     const lead = job.leadId ? leadById(job.leadId) : null;
     if (lead) lead.status = 'Kunde geworden';
-    const amount = Number(job.amount || lead?.expectedValue || 0);
+    const amount = amountValue(job.amount || lead?.expectedValue || 0);
     const refId = job.referredById || lead?.referredById || p.referredById;
     if (refId && refId !== p.id && amount >= Number(getSetting('minOrder'))) {
       const exists = state.rewards.some(r => r.jobId === job.id && r.customerId === refId);
@@ -1067,6 +1097,24 @@
       return `<button type="button" data-pick-person="${esc(p.id)}"><strong>${esc(p.name || 'Ohne Name')}</strong> · ${esc(p.id)} · ${esc(personStatusLabel(p))}${contactStatus(p) !== 'Aktiv' ? ` · ${esc(contactStatus(p))}` : ''}${lead ? ` · offener Lead: ${esc(lead.service || lead.id)}` : ''}<br><small>${esc(fullAddressForPerson(p) || p.phone || '')}</small></button>`;
     }).join('');
     box.hidden = false;
+  });
+
+
+  document.addEventListener('click', event => {
+    const editCustomer = event.target.closest('[data-edit-customer]');
+    if (editCustomer) {
+      event.preventDefault();
+      const person = personById(editCustomer.dataset.editCustomer);
+      if (!person) return toast('Kunde nicht gefunden.');
+      openCustomerDialog(person);
+      return;
+    }
+    const warning = event.target.closest('[data-show-contact-warning]');
+    if (warning) {
+      event.preventDefault();
+      const person = personById(warning.dataset.showContactWarning);
+      if (person) alert(contactWarningText(person) || 'Dieser Kunde soll nicht kontaktiert werden.');
+    }
   });
 
   document.addEventListener('click', event => {
@@ -1437,7 +1485,7 @@
       title: fd.get('title'),
       from: fd.get('from'),
       to: fd.get('to'),
-      amount: Number(fd.get('amount') || 0),
+      amount: amountValue(fd.get('amount')),
       notes: fd.get('notes') || ''
     });
     saveState(entry.updatedAt ? 'manual income edit' : 'manual income');
@@ -1464,7 +1512,7 @@
       date: fd.get('date'),
       category: fd.get('category'),
       title: fd.get('title'),
-      amount: Number(fd.get('amount') || 0),
+      amount: amountValue(fd.get('amount')),
       notes: fd.get('notes') || ''
     });
     saveState(entry.updatedAt ? 'expense edit' : 'expense');
@@ -1630,14 +1678,14 @@
     ];
     const expenseRows = [
       ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID'],
-      ...s.expenses.map(x => [ymd(x.date), x.category || 'Ausgabe', x.title, Number(x.amount || 0), userName(x.createdBy), x.notes || '', x.id])
+      ...s.expenses.map(x => [ymd(x.date), x.category || 'Ausgabe', x.title, amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id])
     ];
     const customerRows = [
       ['LumianNr','Kunde','Telefon','PLZ/Ort','Jobs im Zeitraum','Umsatz CHF','Letzter Job','Jobs total'],
       ...state.people.map(p => {
         const allJobs = completedJobs().filter(j => j.personId === p.id);
         const inRange = allJobs.filter(j => dateInRange(financeJobDate(j), range.from, range.to));
-        const revenue = inRange.reduce((sum,j)=>sum+Number(j.amount||0),0);
+        const revenue = inRange.reduce((sum,j)=>sum+amountValue(j.amount),0);
         const last = allJobs.map(financeJobDate).filter(Boolean).sort().pop() || '';
         return [p.id, p.name || '', p.phone || '', p.place || '', inRange.length, revenue, last ? ymd(last) : '', allJobs.length];
       }).filter(r => r[4] || r[7] || r[1])

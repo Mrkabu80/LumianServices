@@ -647,7 +647,7 @@
       ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
       ['Voraussichtlich', money(s.forecastTotal), `${s.forecast.length} offene/geplante Jobs`],
       ['Ausgaben', money(s.expenseTotal), `${s.expenses.length} Kostenposition(en)`],
-      ['Gewinn grob', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
+      ['Gewinn', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
     ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
 
     renderFinanceChart(s);
@@ -1605,7 +1605,7 @@
       ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
       ['Voraussichtlich / noch nicht kassiert', s.forecastTotal, `${s.forecast.length} offene/geplante Jobs`],
       ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
-      ['Gewinn grob', s.profit, 'bezahlte Einnahmen minus Ausgaben']
+      ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
     ];
     const incomeRows = [
       ['Typ','Datum','Bis','Kunde/Titel','Service/Kategorie','Betrag CHF','Eingetragen von','Notiz','ID'],

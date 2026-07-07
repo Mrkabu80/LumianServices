@@ -746,16 +746,17 @@ function runSyncTest_(params) {
   try {
     if (!calendarId) throw new Error('Keine Calendar ID vorhanden.');
     var calendar = calendarId === 'primary' ? CalendarApp.getDefaultCalendar() : CalendarApp.getCalendarById(calendarId);
-    if (!calendar) throw new Error('CalendarApp.getCalendarById returned null');
+    if (!calendar) throw new Error('CalendarApp.getCalendarById returned null for: ' + calendarId);
     var start = new Date(new Date().getTime() + 15 * 60 * 1000);
     var end = new Date(start.getTime() + 10 * 60 * 1000);
-    var event = calendar.createEvent('Lumian Sync Test - bitte ignorieren', start, end, { description: 'Automatischer Test aus Lumian Portal. Der Termin wird sofort wieder gelöscht.' });
+    var event = calendar.createEvent('Lumian Sync Test', start, end);
     var eventId = event.getId();
     event.deleteEvent();
-    result.calendar = { ok: true, message: 'OK: Kalender beschreibbar: ' + calendar.getName() + ' / Testevent erstellt und gelöscht / ' + eventId };
+    result.calendar = { ok: true, message: 'OK: Kalender erreichbar. Test-Termin erfolgreich erstellt und wieder gelöscht. Event ID: ' + eventId };
   } catch (calErr) {
-    result.calendar = { ok: false, message: 'FEHLER: Kalender nicht beschreibbar. iCal-Link reicht nicht; der Kalender muss dem Apps-Script-Konto mit „Änderungen an Terminen vornehmen“ freigegeben sein. Details: ' + String(calErr) };
+    result.calendar = { ok: false, message: 'FEHLER: Kalender nicht beschreibbar. Berechtigung prüfen. Details: ' + String(calErr) };
   }
+
   return result;
 }
 

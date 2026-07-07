@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=42">
+  <link rel="stylesheet" href="portal.css?v=44">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -338,7 +338,7 @@
               <button class="secondary" type="button" data-sync-now>Sync senden</button>
               <button class="secondary" type="button" data-load-cloud>Cloud laden</button>
             </div>
-            <p class="hint">Für zwei Handys: gleiche Web-App-URL eintragen. Fotos gehen in Google Drive, wenn die Folder ID gesetzt ist.</p>
+            <p class="hint">URL eintragen und Setup speichern. Sync/Web-Anfragen nutzen diese URL danach. Für zwei Handys: gleiche Web-App-URL eintragen.</p>
           </fieldset>
 
               <fieldset class="wide" data-admin-only>
@@ -381,16 +381,16 @@
             <p class="hint">Noah und Timo sind Admins. Neue Mitarbeiter sehen nur Übersicht, Leads, Jobs und Kunden. Buchhaltung, Bonus und volle Einstellungen bleiben Admins vorbehalten.</p>
             <div class="user-mini-form" data-user-form>
               <label>Benutzername
-                <input name="userId" autocomplete="off" placeholder="z.B. jana" required>
+                <input name="userId" autocomplete="off" placeholder="z.B. jana">
               </label>
               <label>Anzeigename
-                <input name="name" autocomplete="name" placeholder="z.B. Jana" required>
+                <input name="name" autocomplete="name" placeholder="z.B. Jana">
               </label>
               <label>Initial / Avatar
                 <input name="emoji" maxlength="2" placeholder="J">
               </label>
               <label>Start-Passwort
-                <input name="password" type="password" autocomplete="new-password" placeholder="mind. 4 Zeichen" required>
+                <input name="password" type="password" autocomplete="new-password" placeholder="mind. 4 Zeichen">
               </label>
               <label>Reset-Code
                 <input name="recoveryCode" autocomplete="off" placeholder="z.B. Jana-Reset-2026">
@@ -547,6 +547,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=42"></script>
+  <script src="portal.js?v=44"></script>
 </body>
 </html>

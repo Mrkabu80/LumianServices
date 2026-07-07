@@ -32,7 +32,7 @@
     minOrder: 300,
     businessPhone: '0772794707',
     referralBase: 'https://www.lumianservices.ch/empfehlung/?ref={{customerId}}',
-    scriptUrl: '',
+    scriptUrl: 'https://script.google.com/macros/s/AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg/exec',
     driveFolderId: '',
     calendarId: '',
     recoveryCode: 'Lumian-Reset-2026',
@@ -140,7 +140,7 @@
     return String(str ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[ch]));
   }
 
-  function getSetting(key) { return state.settings[key] ?? DEFAULT_SETTINGS[key]; }
+  function getSetting(key) { const v = state.settings[key]; return (v === undefined || v === null || v === '') ? DEFAULT_SETTINGS[key] : v; }
   function userName(id) { return state?.users?.find(u => u.id === id)?.name || USERS.find(u => u.id === id)?.name || id || '-'; }
   function userEmoji(id) { return state?.users?.find(u => u.id === id)?.emoji || USERS.find(u => u.id === id)?.emoji || '?'; }
   function personById(id) { return state.people.find(p => p.id === id); }
@@ -1086,15 +1086,22 @@
     if (form.elements.userRecoveryCode) form.elements.userRecoveryCode.value = u?.recoveryCode || defaultRecoveryCode(currentUser);
     form.dataset.filled = 'yes';
   }
-  $('[data-settings-form]')?.addEventListener('submit', event => {
-    event.preventDefault();
-    const fd = new FormData(event.currentTarget);
-    Object.keys(DEFAULT_SETTINGS).forEach(key => { if (fd.has(key)) state.settings[key] = fd.get(key); });
+  function saveSettingsFromForm(showToast = true) {
+    const form = $('[data-settings-form]');
+    if (!form) return false;
+    const fd = new FormData(form);
+    Object.keys(DEFAULT_SETTINGS).forEach(key => { if (fd.has(key)) state.settings[key] = String(fd.get(key) || '').trim(); });
     state.settings.bonusAmount = Number(state.settings.bonusAmount || 0);
     state.settings.minOrder = Number(state.settings.minOrder || 0);
     const u = state.users.find(x => x.id === currentUser);
     if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
-    saveState('settings'); toast('Setup gespeichert.');
+    saveState('settings');
+    if (showToast) toast('Setup gespeichert.');
+    return true;
+  }
+  $('[data-settings-form]')?.addEventListener('submit', event => {
+    event.preventDefault();
+    saveSettingsFromForm(true);
   });
   $('[data-change-password]')?.addEventListener('click', async () => {
     const form = $('[data-settings-form]'); const u = state.users.find(x => x.id === currentUser);
@@ -1627,8 +1634,14 @@
     return count;
   }
 
+  function currentScriptUrl() {
+    const formUrl = $('[data-settings-form]')?.elements?.scriptUrl?.value;
+    return String(formUrl || getSetting('scriptUrl') || '').trim();
+  }
+
   function checkWebsiteLeads(silent = false) {
-    const url = getSetting('scriptUrl');
+    saveSettingsFromForm(false);
+    const url = currentScriptUrl();
     if (!url) {
       if (!silent) toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
       return;
@@ -1652,12 +1665,14 @@
 
   function makeCloudPayload() { saveState('before sync'); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
   async function syncCloud() {
-    const url = getSetting('scriptUrl'); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+    saveSettingsFromForm(false);
+    const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
     try { await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(makeCloudPayload()) }); toast('Sync gesendet. Google Sheet/Drive prüfen.'); }
     catch { toast('Sync konnte nicht gesendet werden.'); }
   }
   function loadCloud() {
-    const url = getSetting('scriptUrl'); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+    saveSettingsFromForm(false);
+    const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
     const callbackName = `lumianCloud_${Date.now()}`;
     const script = document.createElement('script');
     window[callbackName] = data => {
@@ -1676,7 +1691,8 @@
 
   async function resetCloudAndLocal() {
     if (!isAdmin()) return toast('Nur Admins können Cloud-Daten löschen.');
-    const url = getSetting('scriptUrl');
+    saveSettingsFromForm(false);
+    const url = currentScriptUrl();
     if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
     if (!(await confirmSensitiveAction('Cloud + Website-Anfragen wirklich löschen?'))) return;
     const typed = prompt('Letzte Bestätigung: Schreibe RESET, um Google Sheet, Cloud-State und Website-Anfragen zu leeren.');

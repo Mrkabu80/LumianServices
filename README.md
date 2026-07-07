@@ -94,3 +94,6 @@ Rechtliches aktualisiert:
 - Impressum enthält Lumian Services, Inhaber Fares Aburok, Einzelunternehmen.
 - Adresse steht im Impressum, nicht im Footer.
 - Datenschutz verweist auf das Impressum und enthält die Kontakt-E-Mail.
+
+
+v43: Fixed Google Apps Script syntax error caused by broken newline in join('\n') and added getOrCreateSheet_ helper.

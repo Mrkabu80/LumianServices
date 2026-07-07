@@ -33,6 +33,67 @@ function isPastSwissDate(value) {
 }
 
 
+function swissDateToNative(value) {
+  const formatted = parseSwissDate(value);
+  if (!formatted) return '';
+  const m = formatted.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) return '';
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+function nativeDateToSwiss(value) {
+  const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
+function openNativeDatePicker(native) {
+  if (!native) return;
+  try { native.showPicker ? native.showPicker() : native.click(); }
+  catch { native.focus(); native.click(); }
+}
+
+function enhanceDateInput(input) {
+  if (!input || input.dataset.calendarEnhanced === '1') return;
+  input.dataset.calendarEnhanced = '1';
+  try { input.type = 'text'; } catch {}
+  input.placeholder = input.placeholder || 'TT.MM.JJJJ';
+  input.autocomplete = 'off';
+  input.inputMode = 'numeric';
+  input.classList.add('calendar-display-input');
+
+  const wrap = document.createElement('span');
+  wrap.className = 'calendar-field-wrap';
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'calendar-picker-button';
+  btn.setAttribute('aria-label', 'Kalender öffnen');
+  btn.textContent = '📅';
+  wrap.appendChild(btn);
+
+  const native = document.createElement('input');
+  native.type = 'date';
+  native.className = 'calendar-native-input';
+  native.tabIndex = -1;
+  native.setAttribute('aria-hidden', 'true');
+  native.value = swissDateToNative(input.value);
+  wrap.appendChild(native);
+
+  btn.addEventListener('click', () => { native.value = swissDateToNative(input.value); openNativeDatePicker(native); });
+  native.addEventListener('change', () => {
+    if (!native.value) return;
+    input.value = nativeDateToSwiss(native.value);
+    input.classList.remove('invalid');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  input.addEventListener('blur', () => { native.value = swissDateToNative(input.value); });
+}
+
+
 const navToggle = document.querySelector('[data-nav-toggle]');
 const nav = document.querySelector('[data-nav]');
 if (navToggle && nav) {
@@ -216,12 +277,15 @@ if (form) {
 
 function initDateInputs() {
   document.querySelectorAll('[data-date-input][data-ch-date]').forEach(input => {
+    enhanceDateInput(input);
     input.placeholder = input.placeholder || 'TT.MM.JJJJ';
     input.addEventListener('input', () => input.classList.remove('invalid'));
     input.addEventListener('blur', () => {
       if (!input.value.trim()) return;
       const formatted = parseSwissDate(input.value);
       if (formatted) input.value = formatted;
+      const native = input.closest('.calendar-field-wrap')?.querySelector('.calendar-native-input');
+      if (native) native.value = swissDateToNative(input.value);
     });
   });
 }

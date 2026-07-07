@@ -47,8 +47,8 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   let currentUser = sessionStorage.getItem(SESSION_KEY) || '';
   let activeTab = 'dashboard';
-  const PAGE_SIZE = 20;
-  let listPages = { leads: 1, jobs: 1, customers: 1 };
+  const PAGE_SIZE = 10;
+  let listPages = { today: 1, leads: 1, jobs: 1, customers: 1, income: 1, expenses: 1, activity: 1, rewards: 1 };
   let customerListMode = 'search';
   let stagedPhotos = { before: null, after: null };
   let deferredInstallPrompt = null;
@@ -375,6 +375,81 @@
     return true;
   }
 
+
+  function nativeDateValueFromField(value) {
+    const d = parseDateValue(value);
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function timeValueFromField(value) {
+    const d = parseDateValue(value);
+    if (!d) return '';
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function syncCalendarNative(input) {
+    if (!input) return;
+    const wrap = input.closest('.calendar-field-wrap');
+    const native = wrap?.querySelector('input[type="date"].calendar-native-input');
+    if (native) native.value = nativeDateValueFromField(input.value);
+  }
+
+  function syncAllCalendarControls(root = document) {
+    $$('[data-ch-date],[data-ch-datetime]', root).forEach(syncCalendarNative);
+  }
+
+  function openNativeDatePicker(native) {
+    if (!native) return;
+    try { native.showPicker ? native.showPicker() : native.click(); }
+    catch { native.focus(); native.click(); }
+  }
+
+  function enhanceCalendarField(input) {
+    if (!input || input.dataset.calendarEnhanced === '1') return;
+    input.dataset.calendarEnhanced = '1';
+    try { input.type = 'text'; } catch {}
+    input.placeholder = input.matches('[data-ch-datetime]') ? 'TT.MM.JJJJ HH:MM' : 'TT.MM.JJJJ';
+    input.autocomplete = 'off';
+    input.inputMode = 'numeric';
+    input.classList.add('calendar-display-input');
+
+    const wrap = document.createElement('span');
+    wrap.className = 'calendar-field-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'calendar-picker-button';
+    btn.setAttribute('aria-label', 'Kalender öffnen');
+    btn.textContent = '📅';
+    wrap.appendChild(btn);
+
+    const native = document.createElement('input');
+    native.type = 'date';
+    native.className = 'calendar-native-input';
+    native.tabIndex = -1;
+    native.setAttribute('aria-hidden', 'true');
+    native.value = nativeDateValueFromField(input.value);
+    wrap.appendChild(native);
+
+    btn.addEventListener('click', () => { syncCalendarNative(input); openNativeDatePicker(native); });
+    native.addEventListener('change', () => {
+      if (!native.value) return;
+      if (input.matches('[data-ch-datetime]')) {
+        const t = timeValueFromField(input.value) || '09:00';
+        input.value = `${fmtDateOnlyForField(native.value)} ${t}`;
+      } else {
+        input.value = fmtDateOnlyForField(native.value);
+      }
+      input.classList.remove('invalid');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    input.addEventListener('blur', () => syncCalendarNative(input));
+  }
+
   function photoPreviewSrc(photo) {
     if (!photo) return '';
     if (photo.dataUrl) return photo.dataUrl;
@@ -538,10 +613,9 @@
     const pageBtn = event.target.closest('[data-page-target]');
     if (pageBtn) {
       const key = pageBtn.dataset.pageTarget;
-      listPages[key] = Math.max(1, (listPages[key] || 1) + Number(pageBtn.dataset.pageDir || 0));
+      if (pageBtn.dataset.pageReset) listPages[key] = 1;
+      else listPages[key] = Math.max(1, (listPages[key] || 1) + Number(pageBtn.dataset.pageDir || 0));
       renderAll();
-      const panel = pageBtn.closest('.panel');
-      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   });
 
@@ -563,8 +637,10 @@
   function renderToday() {
     const now = Date.now();
     const jobs = state.jobs.filter(j => j.appointmentAt && isOpenJob(j))
-      .sort((a,b)=>new Date(a.appointmentAt)-new Date(b.appointmentAt)).slice(0, 8);
-    $('[data-today-list]').innerHTML = jobs.length ? jobs.map(j => {
+      .sort((a,b)=>new Date(a.appointmentAt)-new Date(b.appointmentAt));
+    const pageData = paginateItems(jobs, 'today');
+    renderPager('today', pageData);
+    $('[data-today-list]').innerHTML = pageData.slice.length ? pageData.slice.map(j => {
       const p = personById(j.personId) || {};
       const overdue = new Date(j.appointmentAt).getTime() < now;
       return `<article class="item-card">
@@ -581,25 +657,25 @@
     if (!listPages[key] || listPages[key] < 1) listPages[key] = 1;
     if (listPages[key] > pages) listPages[key] = pages;
     const page = listPages[key];
-    const start = (page - 1) * PAGE_SIZE;
-    return { slice: items.slice(start, start + PAGE_SIZE), total, page, pages, start, end: Math.min(start + PAGE_SIZE, total) };
+    const start = 0;
+    const end = Math.min(page * PAGE_SIZE, total);
+    return { slice: items.slice(start, end), total, page, pages, start, end };
   }
 
   function renderPager(key, data) {
     const el = $(`[data-${key.slice(0,-1)}-pager]`) || $(`[data-${key}-pager]`);
     if (!el) return;
     if (!data.total) { el.innerHTML = ''; return; }
-    const label = key === 'leads' ? 'Leads' : key === 'jobs' ? 'Jobs' : 'Kunden';
+    const labels = { today:'Termine', leads:'Leads', jobs:'Jobs', customers:'Kunden', income:'Einträge', expenses:'Ausgaben', activity:'Kunden', rewards:'Bonus-Einträge' };
+    const label = labels[key] || 'Einträge';
     if (data.total <= PAGE_SIZE) {
       el.innerHTML = `<div class="pager-summary">${data.total} ${label}</div>`;
       return;
     }
-    el.innerHTML = `<div class="pager-summary">${data.start + 1}–${data.end} von ${data.total} ${label}</div>
-      <div class="pager-actions">
-        <button class="secondary" type="button" data-page-target="${key}" data-page-dir="-1" ${data.page <= 1 ? 'disabled' : ''}>Zurück</button>
-        <span class="pager-page">Seite ${data.page} / ${data.pages}</span>
-        <button class="secondary" type="button" data-page-target="${key}" data-page-dir="1" ${data.page >= data.pages ? 'disabled' : ''}>Weiter</button>
-      </div>`;
+    const more = data.end < data.total ? `<button class="secondary" type="button" data-page-target="${key}" data-page-dir="1">Weitere ${Math.min(PAGE_SIZE, data.total - data.end)} anzeigen</button>` : '';
+    const less = data.page > 1 ? `<button class="secondary" type="button" data-page-target="${key}" data-page-reset="1">Weniger anzeigen</button>` : '';
+    el.innerHTML = `<div class="pager-summary">${data.end} von ${data.total} ${label} angezeigt</div>
+      <div class="pager-actions">${more}${less}</div>`;
   }
 
   function renderLeads() {
@@ -921,15 +997,20 @@
 
     renderFinanceChart(s);
     const incomes = [...s.jobs, ...s.manual].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const incomePage = paginateItems(incomes, 'income');
+    renderPager('income', incomePage);
     $('[data-income-count]').textContent = `${incomes.length} Eintrag(e)`;
-    $('[data-income-list]').innerHTML = incomes.length ? incomes.map(x => {
+    $('[data-income-list]').innerHTML = incomePage.slice.length ? incomePage.slice.map(x => {
       const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
       const editBtns = x.type === 'Manuell' && canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-manual-income="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-manual-income="${esc(x.id)}">Löschen</button></div>` : (x.jobId ? `<div class="actions"><button class="secondary" data-edit-job="${esc(x.jobId)}">Job/Zahlung bearbeiten</button></div>` : '');
       return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.type)} · ${esc(fmtDateOnly(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge ok">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
     }).join('') : '<div class="empty">Keine Einnahmen im Zeitraum.</div>';
 
+    const sortedExpenses = [...s.expenses].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const expensePage = paginateItems(sortedExpenses, 'expenses');
+    renderPager('expenses', expensePage);
     $('[data-expense-count]').textContent = `${s.expenses.length} Eintrag(e)`;
-    $('[data-expense-list]').innerHTML = s.expenses.length ? s.expenses.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x => {
+    $('[data-expense-list]').innerHTML = expensePage.slice.length ? expensePage.slice.map(x => {
       const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
       const editBtns = canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : '';
       return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(fmtDateOnly(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge danger">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
@@ -968,7 +1049,9 @@
       return b.revenue - a.revenue || b.inRange.length - a.inRange.length;
     });
 
-    $('[data-customer-activity-list]').innerHTML = rows.length ? rows.map(r => {
+    const pageData = paginateItems(rows, 'activity');
+    renderPager('activity', pageData);
+    $('[data-customer-activity-list]').innerHTML = pageData.slice.length ? pageData.slice.map(r => {
       const inactive = r.days !== null && r.days > 90;
       const status = r.last ? `Letzter Job: ${fmtDate(r.last)}${inactive ? ' · lange nicht kontaktiert' : ''}` : 'Noch kein erledigter Job';
       return `<article class="item-card mini">
@@ -982,7 +1065,9 @@
   function renderRewards() {
     if (!$('[data-reward-list]') || !isAdmin()) return;
     const rewards = [...state.rewards].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-    $('[data-reward-list]').innerHTML = rewards.length ? rewards.map(r => {
+    const pageData = paginateItems(rewards, 'rewards');
+    renderPager('rewards', pageData);
+    $('[data-reward-list]').innerHTML = pageData.slice.length ? pageData.slice.map(r => {
       const receiver = personById(r.customerId); const from = personById(r.fromPersonId);
       return `<article class="item-card">
         <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}</div></div><span class="badge ${r.status==='offen'?'warn':'ok'}">${esc(r.status)}</span></div>
@@ -1080,6 +1165,7 @@
     }
     $('[data-ref-suggestions="lead"]').hidden = true;
     $('[data-lead-dialog]').showModal();
+    requestAnimationFrame(() => syncAllCalendarControls(form));
   }
 
   function fillJobPerson(form, person, lead = null) {
@@ -1141,6 +1227,7 @@
     }
     $('[data-ref-suggestions="job"]').hidden = true;
     $('[data-job-dialog]').showModal();
+    requestAnimationFrame(() => syncAllCalendarControls(form));
   }
 
   $$('[data-open-lead]').forEach(btn => btn.addEventListener('click', () => openLeadDialog()));
@@ -1929,19 +2016,23 @@
       if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = fmtDateOnlyForField(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
       if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = fmtDateOnlyForField(ymd(new Date()));
     }
+    syncAllCalendarControls();
   }
   $('[data-manual-income-form]')?.addEventListener('submit', event => { event.preventDefault(); addManualIncome(event.currentTarget); });
   $('[data-expense-form]')?.addEventListener('submit', event => { event.preventDefault(); addExpense(event.currentTarget); });
   $$('[data-finance-period],[data-finance-from],[data-finance-to],[data-customer-activity-sort]').forEach(el => el.addEventListener('change', renderFinance));
   $$('[data-ch-date],[data-ch-datetime]').forEach(el => {
+    enhanceCalendarField(el);
     el.addEventListener('input', () => el.classList.remove('invalid'));
     el.addEventListener('blur', () => {
       const withTime = el.matches('[data-ch-datetime]');
       if (withTime && el.value && /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(el.value.trim())) el.value = el.value.trim() + ' 09:00';
       if (!withTime && el.value) { const iso = isoDateOnlyFromField(el.value); if (iso) el.value = fmtDateOnlyForField(iso); }
       if (withTime && el.value) { const iso = isoDateTimeFromField(el.value); if (iso) el.value = fmtDateTimeForField(iso); }
+      syncCalendarNative(el);
     });
   });
+  syncAllCalendarControls();
   $('[data-finance-apply]')?.addEventListener('click', renderFinance);
   document.addEventListener('click', async event => {
     const editIncome = event.target.closest('[data-edit-manual-income]');

@@ -3036,3 +3036,70 @@ a.file-button{
 .photo-placeholder{min-height:160px;display:grid;place-items:center;text-align:center;border:1px dashed rgba(255,255,255,.22);border-radius:16px;color:#b8c9ce;background:rgba(255,255,255,.04);padding:14px}
 .photo-placeholder a{color:#6ee7ff;font-weight:900}
 [data-ch-date],[data-ch-datetime]{letter-spacing:.02em}
+
+/* v75: no inner scrollbars; show 10 items and reveal more with buttons */
+[data-panel="leads"] [data-lead-list],
+[data-panel="customers"] [data-customer-list]{
+  max-height:none !important;
+  overflow:visible !important;
+  padding-right:0 !important;
+}
+.pager{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:12px;
+  padding:10px 12px;
+  border:1px solid rgba(35,200,255,.16);
+  border-radius:18px;
+  background:rgba(255,255,255,.03);
+  color:#b8c9ce;
+  font-weight:850;
+}
+.pager:empty{display:none}
+.pager-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.pager-summary{font-size:.95rem}
+@media(max-width:760px){
+  .pager{align-items:flex-start;flex-direction:column}
+  .pager-actions,.pager-actions button{width:100%}
+}
+
+/* v75: Swiss visible date format with a real native calendar picker button */
+.calendar-field-wrap{
+  position:relative;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 48px;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  margin-top:6px;
+}
+.calendar-field-wrap .calendar-display-input{
+  width:100%;
+  margin-top:0 !important;
+}
+.calendar-picker-button{
+  min-height:48px;
+  border-radius:14px;
+  border:1px solid rgba(35,200,255,.35);
+  background:rgba(35,200,255,.13);
+  color:#ecfbff;
+  font-weight:950;
+  cursor:pointer;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);
+}
+.calendar-picker-button:hover{background:rgba(35,200,255,.22)}
+.calendar-native-input{
+  position:absolute;
+  right:0;
+  bottom:0;
+  width:48px;
+  height:48px;
+  opacity:.001;
+  pointer-events:none;
+}
+@media(max-width:760px){
+  .calendar-field-wrap{grid-template-columns:minmax(0,1fr) 52px;gap:10px}
+  .calendar-picker-button{min-height:52px}
+}

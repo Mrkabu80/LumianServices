@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=74">
+  <link rel="stylesheet" href="portal.css?v=75">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -88,6 +88,7 @@
         <div class="today-card">
           <div class="panel-head slim"><h2>Nächste Termine</h2><button class="secondary" data-tab-go="jobs">Alle Jobs</button></div>
           <div data-today-list class="list compact"></div>
+          <div data-today-pager class="pager"></div>
         </div>
       </section>
 
@@ -266,10 +267,12 @@
           <article class="today-card">
             <div class="panel-head slim"><h2>Einnahmen & Jobs</h2><span class="badge" data-income-count></span></div>
             <div data-income-list class="list compact"></div>
+            <div data-income-pager class="pager"></div>
           </article>
           <article class="today-card">
             <div class="panel-head slim"><h2>Ausgaben</h2><span class="badge" data-expense-count></span></div>
             <div data-expense-list class="list compact"></div>
+            <div data-expenses-pager class="pager"></div>
           </article>
         </div>
 
@@ -287,6 +290,7 @@
             </select>
           </div>
           <div data-customer-activity-list class="list compact"></div>
+          <div data-activity-pager class="pager"></div>
         </article>
       </section>
 
@@ -300,6 +304,7 @@
           <button class="secondary" data-tab-go="settings">Regeln ändern</button>
         </div>
         <div data-reward-list class="list"></div>
+        <div data-rewards-pager class="pager"></div>
       </section>
 
       <section class="panel" data-panel="settings">
@@ -567,6 +572,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=74"></script>
+  <script src="portal.js?v=75"></script>
 </body>
 </html>

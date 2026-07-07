@@ -2725,3 +2725,9 @@ a.file-button{
     overflow-x:hidden !important;
   }
 }
+
+
+/* v54: Excel-first import/export labels */
+.import-hint{
+  line-height:1.45;
+}

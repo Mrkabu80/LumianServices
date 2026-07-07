@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=50">
+  <link rel="stylesheet" href="portal.css?v=54">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -98,13 +98,13 @@
             <p class="muted">Anfragen speichern. Jede Person erhält sofort eine Lumian-Nr. wie LM1001.</p>
           </div>
           <div class="panel-actions">
-            <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Excel-Vorlage herunterladen</a>
-            <label class="file-button small">CSV importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
+            <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Vorlage herunterladen</a>
+            <label class="file-button small">Vorlage importieren<input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-import-leads hidden></label>
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
             <button class="secondary small-inline" type="button" data-check-website-leads>Web-Leads prüfen</button>
           </div>
         </div>
-        <div class="import-hint">Excel-Vorlage herunterladen, ausfüllen. Für den Import in Excel als CSV UTF-8 speichern und hier importieren.</div>
+        <div class="import-hint">Vorlage herunterladen, ausfüllen. Für den Import in Excel als CSV UTF-8 speichern und hier importieren.</div>
         <div class="web-leads-status" data-web-leads-status hidden></div>
         <div class="search-row">
           <input data-lead-search placeholder="Lead suchen: M, Müller, Ort, Service, LM-Nr.">
@@ -147,12 +147,12 @@
           </div>
           <div class="panel-actions">
             <button class="secondary" type="button" data-download-customers-template>Vorlage herunterladen</button>
-            <label class="file-button small">CSV importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-customers hidden></label>
+            <label class="file-button small">Vorlage importieren<input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-import-customers hidden></label>
             <button class="primary" type="button" data-open-customer>+ Kunde manuell</button>
             <button class="secondary" data-export-csv>Excel Export</button>
           </div>
         </div>
-        <div class="import-hint">Bestehende Kunden können per Excel/CSV importiert werden. Wenn keine Lumian-Nr. mitgegeben wird, erstellt das Portal automatisch eine.</div>
+        <div class="import-hint">Bestehende Kunden können per Excel-Vorlage importiert werden. Wenn keine Lumian-Nr. mitgegeben wird, erstellt das Portal automatisch eine.</div>
         <div class="search-row single">
           <input data-customer-search placeholder="Kunden suchen: Name, Ort, Telefon oder LM1001">
         </div>
@@ -168,7 +168,7 @@
             <p class="muted">Einfache Übersicht: fertige Jobs = Einnahmen, manuelle Einnahmen ergänzen, Ausgaben abziehen.</p>
           </div>
           <div class="panel-actions">
-            <button class="secondary" type="button" data-finance-export>Buchhaltung exportieren</button>
+            <button class="secondary" type="button" data-finance-export>Excel-Report exportieren</button>
           </div>
         </div>
 
@@ -409,10 +409,10 @@
               <fieldset data-admin-only>
             <legend>Daten, Import & Backup</legend>
             <div class="button-row vertical">
-              <a class="secondary" href="templates/lumian-kunden-import-vorlage.xlsx" download>Kunden Excel-Vorlage</a>
-              <label class="file-button">CSV importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-customers hidden></label>
-              <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Lead Excel-Vorlage</a>
-              <label class="file-button">CSV importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
+              <a class="secondary" href="templates/lumian-kunden-import-vorlage.xlsx" download>Kunden-Vorlage herunterladen</a>
+              <label class="file-button">Vorlage importieren<input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-import-customers hidden></label>
+              <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Lead-Vorlage herunterladen</a>
+              <label class="file-button">Vorlage importieren<input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" data-import-leads hidden></label>
               <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
               <button class="secondary danger" type="button" data-reset-demo>Lokale Testdaten löschen</button>
@@ -548,6 +548,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=50"></script>
+  <script src="portal.js?v=54"></script>
 </body>
 </html>

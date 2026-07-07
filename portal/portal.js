@@ -1177,6 +1177,47 @@
     return rows.slice(1).map(r => Object.fromEntries(headers.map((h,i)=>[h, r[i] || '']))).filter(o => Object.values(o).some(Boolean));
   }
 
+
+  function isExcelFile(file) {
+    return /\.(xlsx|xls)$/i.test(file?.name || '');
+  }
+  function requireXlsx() {
+    if (window.XLSX) return true;
+    toast('Excel-Modul lädt noch oder ist offline. Bitte kurz warten und nochmals importieren.');
+    return false;
+  }
+  async function importFile(file, type) {
+    if (!file) return;
+    let objects = [];
+    if (isExcelFile(file)) {
+      if (!requireXlsx()) return;
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type:'array', cellDates:true, raw:false });
+      const preferred = wb.SheetNames.find(n => /import/i.test(n)) || wb.SheetNames[0];
+      const ws = wb.Sheets[preferred];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+      objects = rowObjects(rows.filter(r => r.some(v => String(v || '').trim() !== '')));
+    } else {
+      const rows = parseCsv(await file.text());
+      objects = rowObjects(rows);
+    }
+    if (!objects.length) return toast('Importdatei ist leer oder hat keine Kopfzeile.');
+    if (type === 'customers') importCustomersFromObjects(objects); else importLeadsFromObjects(objects);
+  }
+  function aoaSheet(rows, cols) {
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = cols.map(w => ({ wch:w }));
+    if (rows.length > 1) ws['!autofilter'] = { ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:Math.max(0, rows.length-1), c:rows[0].length-1}}) };
+    ws['!freeze'] = { xSplit:0, ySplit:1 };
+    return ws;
+  }
+  function writeWorkbook(filename, sheets) {
+    if (!requireXlsx()) return;
+    const wb = XLSX.utils.book_new();
+    sheets.forEach(([name, rows, cols]) => XLSX.utils.book_append_sheet(wb, aoaSheet(rows, cols || []), name));
+    XLSX.writeFile(wb, filename);
+  }
+
   function csvAddress(o) {
     return o.strassenr || o.strassenummer || o.strassennr || o.strasse || o.adresse || o.address || '';
   }
@@ -1278,11 +1319,7 @@
     toast(msg);
   }
   async function importCsvFile(file, type) {
-    if (!file) return;
-    const rows = parseCsv(await file.text());
-    const objects = rowObjects(rows);
-    if (!objects.length) return toast('Importdatei ist leer oder hat keine Kopfzeile.');
-    if (type === 'customers') importCustomersFromObjects(objects); else importLeadsFromObjects(objects);
+    return importFile(file, type);
   }
 
   async function confirmSensitiveAction(label) {
@@ -1498,31 +1535,65 @@
       saveState('expense delete'); renderFinance(); toast('Ausgabe gelöscht.');
     }
   });
-  function exportFinanceCsv() {
+  function exportFinanceExcel() {
     const range = getFinanceRange();
     const s = financeSummary(range);
-    const rows = [
-      ['Typ','Datum/Von','Bis','Titel/Kunde','Kategorie','Betrag CHF','Eingetragen von','Notiz','JobID/ID'],
-      ...s.jobs.map(x => ['Einnahme Job bezahlt', ymd(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
-      ...s.forecast.map(x => ['Voraussichtlich', ymd(x.date), '', x.title, x.status || 'offen/geplant', x.amount, userName(x.assignedTo || x.createdBy), 'Noch nicht kassiert', x.jobId]),
-      ...s.manual.map(x => ['Einnahme manuell', ymd(x.date), x.to || '', x.title, 'Manuell', x.amount, userName(x.createdBy), x.notes || '', x.id]),
-      ...s.expenses.map(x => ['Ausgabe', ymd(x.date), '', x.title, x.category || 'Ausgabe', -Number(x.amount || 0), userName(x.createdBy), x.notes || '', x.id]),
+    const now = new Date().toLocaleString('de-CH');
+
+    const summary = [
+      ['Lumian Services Buchhaltungsreport'],
+      ['Zeitraum', range.label],
+      ['Exportiert am', now],
       [],
-      ['Zusammenfassung','','','Bezahlte Jobs','',s.jobIncome,'',''],
-      ['Zusammenfassung','','','Voraussichtlich / noch nicht kassiert','',s.forecastTotal,'',''],
-      ['Zusammenfassung','','','Manuell ergänzt','',s.manualIncome,'',''],
-      ['Zusammenfassung','','','Ausgaben','',-s.expenseTotal,'',''],
-      ['Zusammenfassung','','','Gewinn grob','',s.profit,'','']
+      ['Kennzahl','CHF','Info'],
+      ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
+      ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
+      ['Voraussichtlich / noch nicht kassiert', s.forecastTotal, `${s.forecast.length} offene/geplante Jobs`],
+      ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
+      ['Gewinn grob', s.profit, 'bezahlte Einnahmen minus Ausgaben']
     ];
-    downloadText(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.csv`, rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
+
+    const incomeRows = [
+      ['Typ','Datum','Bis','Kunde/Titel','Service/Kategorie','Betrag CHF','Eingetragen von','Notiz','ID'],
+      ...s.jobs.map(x => ['Einnahme Job bezahlt', ymd(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
+      ...s.manual.map(x => ['Einnahme manuell', ymd(x.date), x.to || '', x.title, 'Manuell', x.amount, userName(x.createdBy), x.notes || '', x.id])
+    ];
+    const forecastRows = [
+      ['Typ','Datum','Kunde/Titel','Status','Betrag CHF','Zuständig','JobID'],
+      ...s.forecast.map(x => ['Voraussichtlich', ymd(x.date), x.title, x.status || 'offen/geplant', x.amount, userName(x.assignedTo || x.createdBy), x.jobId])
+    ];
+    const expenseRows = [
+      ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID'],
+      ...s.expenses.map(x => [ymd(x.date), x.category || 'Ausgabe', x.title, Number(x.amount || 0), userName(x.createdBy), x.notes || '', x.id])
+    ];
+    const customerRows = [
+      ['LumianNr','Kunde','Telefon','PLZ/Ort','Jobs im Zeitraum','Umsatz CHF','Letzter Job','Jobs total'],
+      ...state.people.map(p => {
+        const allJobs = completedJobs().filter(j => j.personId === p.id);
+        const inRange = allJobs.filter(j => dateInRange(financeJobDate(j), range.from, range.to));
+        const revenue = inRange.reduce((sum,j)=>sum+Number(j.amount||0),0);
+        const last = allJobs.map(financeJobDate).filter(Boolean).sort().pop() || '';
+        return [p.id, p.name || '', p.phone || '', p.place || '', inRange.length, revenue, last ? ymd(last) : '', allJobs.length];
+      }).filter(r => r[4] || r[7] || r[1])
+    ];
+
+    writeWorkbook(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.xlsx`, [
+      ['Zusammenfassung', summary, [36,20,44]],
+      ['Einnahmen', incomeRows, [24,14,14,34,22,14,18,36,16]],
+      ['Voraussichtlich', forecastRows, [20,14,34,20,14,18,16]],
+      ['Ausgaben', expenseRows, [14,22,34,14,18,36,16]],
+      ['Kundenaktivität', customerRows, [14,26,18,20,16,14,16,12]]
+    ]);
   }
-  $('[data-finance-export]')?.addEventListener('click', exportFinanceCsv);
+  $('[data-finance-export]')?.addEventListener('click', exportFinanceExcel);
 
 
   function exportCsv() {
-    const rows = [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit']]
-      .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '']));
-    downloadText('lumian-kunden-excel.csv', rows.map(row => row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';')).join('\n'), 'text/csv;charset=utf-8');
+    const rows = [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen']]
+      .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '',p.notes || '']));
+    writeWorkbook(`lumian-kunden-export-${new Date().toISOString().slice(0,10)}.xlsx`, [
+      ['Kunden', rows, [14,14,26,18,28,28,20,18,16,18,38]]
+    ]);
   }
   function exportJson() { downloadText(`lumian-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,2), 'application/json'); }
   function downloadText(name, text, type) { const blob = new Blob([text], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); }

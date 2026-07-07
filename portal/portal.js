@@ -605,6 +605,16 @@
         return { type:'Forecast', id:j.id, date:j.appointmentAt || j.createdAt, title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, status:j.status, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
       });
   }
+  function forecastLeadItems(range) {
+    return state.leads
+      .filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status))
+      .filter(l => Number(l.expectedValue || 0) > 0)
+      .filter(l => dateInRange(l.appointmentAt || l.createdAt, range.from, range.to))
+      .map(l => {
+        const p = personById(l.personId) || {};
+        return { type:'Lead Schätzung', id:l.id, date:l.appointmentAt || l.createdAt, title:`${p.name || l.personId} · ${l.service || 'Reinigung'}`, amount:Number(l.expectedValue || 0), personId:l.personId, leadId:l.id, status:l.status || 'Offen', createdBy:l.createdBy || '', assignedTo:'' };
+      });
+  }
   function jobIncomeItems(range) {
     return paidJobs().filter(j => dateInRange(financeJobDate(j), range.from, range.to)).map(j => {
       const p = personById(j.personId) || {};
@@ -626,11 +636,13 @@
     const manual = manualIncomeItems(range);
     const expenses = expenseItems(range);
     const forecast = forecastJobs(range);
+    const forecastLeads = forecastLeadItems(range);
+    const forecastAll = [...forecast, ...forecastLeads];
     const jobIncome = jobs.reduce((s,x)=>s+x.amount,0);
     const manualIncome = manual.reduce((s,x)=>s+x.amount,0);
     const expenseTotal = expenses.reduce((s,x)=>s+x.amount,0);
-    const forecastTotal = forecast.reduce((s,x)=>s+x.amount,0);
-    return { jobs, manual, expenses, forecast, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
+    const forecastTotal = forecastAll.reduce((s,x)=>s+x.amount,0);
+    return { jobs, manual, expenses, forecast, forecastLeads, forecastAll, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
   }
 
   function canEditFinanceEntry(x) {
@@ -645,7 +657,7 @@
     $('[data-finance-stats]').innerHTML = [
       ['Bezahlte Jobs', money(s.jobIncome), `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
-      ['Voraussichtlich', money(s.forecastTotal), `${s.forecast.length} offene/geplante Jobs`],
+      ['Voraussichtlich', money(s.forecastTotal), `${s.forecast.length} Job(s) + ${s.forecastLeads.length} Lead(s)`],
       ['Ausgaben', money(s.expenseTotal), `${s.expenses.length} Kostenposition(en)`],
       ['Gewinn', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
     ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
@@ -1614,7 +1626,7 @@
     ];
     const forecastRows = [
       ['Typ','Datum','Kunde/Titel','Status','Betrag CHF','Zuständig','JobID'],
-      ...s.forecast.map(x => ['Voraussichtlich', ymd(x.date), x.title, x.status || 'offen/geplant', x.amount, userName(x.assignedTo || x.createdBy), x.jobId])
+      ...s.forecastAll.map(x => ['Voraussichtlich', ymd(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
     ];
     const expenseRows = [
       ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID'],

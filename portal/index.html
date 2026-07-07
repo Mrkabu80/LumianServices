@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=61">
+  <link rel="stylesheet" href="portal.css?v=69">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -39,7 +39,7 @@
         <button class="primary" type="submit">Einloggen</button>
         <button class="secondary" type="button" data-biometric-login>Mit Face ID / Touch ID entsperren</button>
         <button class="text-button" type="button" data-forgot-password>Passwort vergessen?</button>
-        <p class="hint" data-login-hint>Beim ersten Login legt jeder sein Passwort selbst fest. Biometrie kann danach in Setup aktiviert werden.</p>
+        <p class="hint" data-login-hint>Beim ersten Login legt jeder sein Passwort selbst fest. Biometrie kann danach in den Einstellungen aktiviert werden.</p>
       </form>
     </section>
 
@@ -66,7 +66,7 @@
         <button data-tab="customers">Kunden</button>
         <button data-tab="finance">Buchhaltung</button>
         <button data-tab="rewards">Bonus</button>
-        <button data-tab="settings">Setup</button>
+        <button data-tab="settings">Einstellungen</button>
       </nav>
 
       <section class="panel active" data-panel="dashboard">
@@ -76,8 +76,8 @@
           <ol class="flow-list">
             <li><strong>Lead</strong> = Anfrage, noch kein bestätigter Auftrag.</li>
             <li><strong>Job</strong> = Termin, Besichtigung oder Reinigung ist geplant/bestätigt.</li>
-            <li><strong>Kunde</strong> = wird automatisch, sobald ein Job erledigt oder bezahlt ist.</li>
-            <li><strong>Empfehlung</strong> = nach Abschluss kann der Kunde seinen Empfehlungslink per WhatsApp erhalten.</li>
+            <li><strong>Kunde</strong> = wird automatisch, sobald ein Job bezahlt ist.</li>
+            <li><strong>Empfehlung</strong> = bezahlte Kunden können ihren Empfehlungslink per WhatsApp erhalten.</li>
           </ol>
         </div>
         <div class="quick-actions">
@@ -123,7 +123,7 @@
         <div class="panel-head">
           <div>
             <h2>Jobs</h2>
-            <p class="muted">Job aus bestehendem Lead/Kunden erstellen oder neue Person erfassen. Solange die Zahlung offen ist, bleibt der Job unter offenen Jobs. Erst bezahlte Jobs zählen als echte Einnahme in der Buchhaltung.</p>
+            <p class="muted">Job aus bestehendem Lead/Kunden erstellen oder neue Person erfassen. Ein Job kann erst abgeschlossen werden, wenn die Zahlung bezahlt/bestätigt ist. Solange die Zahlung offen ist, bleibt der Job unter offenen Jobs und zählt nur als voraussichtlich.</p>
           </div>
           <button class="primary" data-open-job>+ Job erstellen</button>
         </div>
@@ -133,7 +133,7 @@
             <option value="open">Offen / Zahlung offen</option>
             <option value="unpaid">Nur Zahlung offen</option>
             <option value="all">Alle Jobs</option>
-            <option value="done">Erledigt / Bezahlt</option>
+            <option value="done">Bezahlt / abgeschlossen</option>
           </select>
         </div>
         <div data-job-list class="list"></div>
@@ -183,17 +183,18 @@
         <div class="finance-toolbar">
           <label>Zeitraum
             <select data-finance-period>
+              <option value="todate">Bisher / bis heute</option>
               <option value="week">Diese Woche</option>
               <option value="month" selected>Dieser Monat</option>
               <option value="year">Dieses Jahr</option>
               <option value="custom">Von / bis</option>
             </select>
           </label>
-          <label>Von
-            <input type="date" data-finance-from>
+          <label data-finance-from-wrap>Von
+            <input type="date" data-finance-from lang="de-CH">
           </label>
-          <label>Bis
-            <input type="date" data-finance-to>
+          <label data-finance-to-wrap>Bis
+            <input type="date" data-finance-to lang="de-CH">
           </label>
           <button class="secondary" type="button" data-finance-apply>Aktualisieren</button>
         </div>
@@ -218,8 +219,8 @@
                 <input name="title" placeholder="z.B. Einnahmen Juni bisher" required>
               </label>
               <div class="form-pair">
-                <label>Von<input name="from" type="date" required></label>
-                <label>Bis<input name="to" type="date" required></label>
+                <label>Von<input name="from" type="date" lang="de-CH" required></label>
+                <label>Bis<input name="to" type="date" lang="de-CH" required></label>
               </div>
               <label>Betrag CHF
                 <input name="amount" type="number" min="0" step="0.05" inputmode="decimal" required>
@@ -236,7 +237,7 @@
             <p class="hint">Maschinen, Seife, Mops, Tücher, Benzin oder anderes Material. Wird vom Gewinn abgezogen.</p>
             <form class="finance-mini-form" data-expense-form>
               <input type="hidden" name="entryId">
-              <label>Datum<input name="date" type="date" required></label>
+              <label>Datum<input name="date" type="date" lang="de-CH" required></label>
               <label>Kategorie
                 <select name="category">
                   <option>Maschine / Gerät</option>
@@ -304,11 +305,11 @@
       <section class="panel" data-panel="settings">
         <div class="panel-head">
           <div>
-            <h2>Setup</h2>
+            <h2>Einstellungen</h2>
             <p class="muted">Bonus, Texte, Google Review, Google Sheet, Drive, Passwort, Biometrie und Backup.</p>
           </div>
           <div class="panel-actions">
-            <button class="primary setup-save-top" type="submit" form="settings-form">Setup speichern</button>
+            <button class="primary setup-save-top" type="submit" form="settings-form">Einstellungen speichern</button>
             <button class="secondary danger" data-logout type="button">Logout</button>
           </div>
         </div>
@@ -343,14 +344,15 @@
             <label>Google Drive Folder ID für Fotos
               <input name="driveFolderId" placeholder="optional, für Vorher/Nachher Fotos">
             </label>
-            <label>Google Calendar ID optional
-              <input name="calendarId" placeholder="optional, z.B. primary">
+            <p class="hint">Fotos werden beim Sync so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Termine werden mit dem Lumian Google Calendar erstellt/aktualisiert. Wichtig: Ein iCal-Link ist nur lesbar; Apps Script braucht Schreibzugriff auf den Kalender. Der iCal-Link wird automatisch zur Calendar ID lumianservices@gmail.com umgewandelt.</p>
+            <label>Google Calendar ID oder iCal-Link
+              <input name="calendarId" placeholder="lumianservices@gmail.com oder iCal-Link">
             </label>
             <div class="button-row">
               <button class="secondary" type="button" data-sync-now>Sync senden</button>
               <button class="secondary" type="button" data-load-cloud>Cloud laden</button>
             </div>
-            <p class="hint">URL eintragen und Setup speichern. Sync/Web-Anfragen nutzen diese URL danach. Für zwei Handys: gleiche Web-App-URL eintragen.</p>
+            <p class="hint">URL eintragen und Einstellungen speichern. Sync/Web-Anfragen, Foto-Upload und Kalender-Sync nutzen diese URL danach. Für zwei Handys: gleiche Web-App-URL eintragen.</p>
           </fieldset>
 
               <fieldset class="wide" data-admin-only>
@@ -456,7 +458,7 @@
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination / weiss noch nicht</option></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label>Betrag/Schätzung CHF<input name="expectedValue" type="number" min="0" step="10" placeholder="350"></label>
-        <label>Besichtigung/Termin<input name="appointmentAt" type="datetime-local"></label>
+        <label>Besichtigung/Termin<input name="appointmentAt" type="datetime-local" lang="de-CH" step="60"></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
           <input name="referredBySearch" data-ref-search="lead" autocomplete="off" placeholder="Name oder LM-Nr. tippen">
           <input name="referredById" type="hidden">
@@ -502,7 +504,7 @@
       <input type="hidden" name="jobId">
       <input type="hidden" name="leadId">
       <input type="hidden" name="personId">
-      <p class="hint">Job = Termin/Besichtigung/Reinigung. Offene und erledigte, aber noch unbezahlte Jobs bleiben als voraussichtlich in der Buchhaltung. Erst Zahlung bezahlt zählt als echte Einnahme.</p>
+      <p class="hint">Job = Termin/Besichtigung/Reinigung. Ein Job wird erst abgeschlossen und zum Kunden, wenn die Zahlung bezahlt/bestätigt ist. Offene Jobs zählen als voraussichtlich.</p>
       <div class="form-grid">
         <label class="wide autocomplete-wrap">Bestehenden Lead/Kunden suchen
           <input name="personSearch" data-person-search="job" autocomplete="off" placeholder="Name, Telefon oder LM-Nr. tippen – z.B. Müller oder LM1001">
@@ -515,9 +517,9 @@
         <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
         <label>PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination</option></select></label>
-        <label>Termin<input name="appointmentAt" type="datetime-local"></label>
+        <label>Termin<input name="appointmentAt" type="datetime-local" lang="de-CH" step="60"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
-        <label>Status<select name="status"><option value="Geplant">Geplant</option><option value="Bestätigt">Bestätigt</option><option value="Erledigt">Erledigt / Zahlung offen</option><option value="Bezahlt">Bezahlt</option><option value="Abgesagt">Abgesagt</option></select></label>
+        <label>Status<select name="status"><option value="Geplant">Geplant</option><option value="Bestätigt">Bestätigt</option><option value="Bezahlt">Bezahlt / Job abgeschlossen / wird Kunde</option><option value="Abgesagt">Abgesagt</option></select></label>
         <label>Zuständig<select name="assignedTo" data-assigned-select></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
@@ -564,6 +566,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=61"></script>
+  <script src="portal.js?v=69"></script>
 </body>
 </html>

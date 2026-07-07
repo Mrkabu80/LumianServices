@@ -1,4 +1,4 @@
-const CACHE_NAME='lumian-static-v10';
+const CACHE_NAME='lumian-static-v13';
 const OFFLINE_URL='/offline.html';
 const ASSETS=['/','/index.html','/styles.css','/script.js','/assets/js/gallery-data.js','/offline.html','/assets/img/favicon.ico','/assets/img/app-icon-192.png','/assets/img/app-icon-512.png','/assets/img/lumian-logo-dark.png','/assets/img/lumian-logo-hero.png','/portal/','/portal/index.html','/portal/portal.css','/portal/portal.js','/portal/portal.webmanifest','/assets/img/app-icon-192.png','/assets/img/app-icon-512.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(ASSETS)).catch(()=>{}));self.skipWaiting();});

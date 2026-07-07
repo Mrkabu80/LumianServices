@@ -34,8 +34,8 @@
     referralBase: 'https://www.lumianservices.ch/empfehlung/?ref={{customerId}}',
     googleReviewUrl: 'https://g.page/r/CQIaGL8jXr4wEAI/review',
     scriptUrl: 'https://script.google.com/macros/s/AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg/exec',
-    driveFolderId: '',
-    calendarId: '',
+    driveFolderId: '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr',
+    calendarId: 'https://calendar.google.com/calendar/ical/lumianservices%40gmail.com/public/basic.ics',
     recoveryCode: 'Lumian-Reset-2026',
     referralTemplate: 'Hoi {{name}}, danke nochmals für dein Vertrauen in Lumian Services.\n\nWenn du uns an Freunde, Familie oder Nachbarn weiterempfiehlst, erhalten sie CHF {{bonus}} Rabatt auf ihren ersten Auftrag ab CHF {{minOrder}}. Du erhältst nach abgeschlossenem Auftrag ebenfalls CHF {{bonus}} Guthaben für deine nächste Reinigung.\n\nDein Empfehlungslink:\n{{referralLink}}\n\nLiebe Grüsse\nLumian Services',
     newCustomerTemplate: 'Hoi {{name}}, danke für deine Anfrage bei Lumian Services.\n\nGerne schauen wir uns dein Anliegen an und melden uns mit einem Vorschlag. Wenn du über eine Empfehlung kommst, gilt der CHF {{bonus}} Vorteil ab einem Auftrag von CHF {{minOrder}}.\n\nLiebe Grüsse\nLumian Services',
@@ -115,7 +115,7 @@
     merged.users = [...defaultUsers, ...customUsers];
     merged.people = Array.isArray(s.people) ? s.people.map(p => ({ email: '', ...p })) : [];
     merged.leads = Array.isArray(s.leads) ? s.leads : [];
-    merged.jobs = Array.isArray(s.jobs) ? s.jobs.map(j => ({ source: '', referredById: '', ...j })) : [];
+    merged.jobs = Array.isArray(s.jobs) ? s.jobs.map(j => normalizeJobForNoUnpaidDone({ source: '', referredById: '', ...j })) : [];
     merged.rewards = Array.isArray(s.rewards) ? s.rewards : [];
     merged.finance = { manualIncome: [], expenses: [], ...(s.finance || {}) };
     if (!Array.isArray(merged.finance.manualIncome)) merged.finance.manualIncome = [];
@@ -166,8 +166,27 @@
   function leadById(id) { return state.leads.find(l => l.id === id); }
   function jobById(id) { return state.jobs.find(j => j.id === id); }
   function allPeopleSorted() { return [...state.people].sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'de-CH')); }
+  function normalizeJobForNoUnpaidDone(job = {}) {
+    const j = { ...job };
+    const status = String(j.status || '').toLowerCase();
+    const markedPaid = !!j.paidAt || status.includes('bezahlt');
+    if (markedPaid) {
+      j.status = 'Bezahlt';
+      j.paidAt = j.paidAt || j.completedAt || j.updatedAt || j.createdAt || new Date().toISOString();
+      j.completedAt = j.completedAt || j.paidAt;
+      return j;
+    }
+    // New rule: there is no valid state "Erledigt but not paid".
+    // If old/local/cloud data contains it, reopen the job as planned so it stays forecast only.
+    if (status === 'erledigt' || status.includes('erledigt') || status.includes('zahlung offen')) {
+      j.status = 'Geplant';
+      delete j.completedAt;
+      delete j.paidAt;
+    }
+    return j;
+  }
   function activeCustomers() { return state.people.filter(p => p.status === 'customer').sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'de-CH')); }
-  function activeLeads() { return state.leads.filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status)); }
+  function activeLeads() { return state.leads.filter(l => !['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden','Verloren'].includes(l.status)); }
 
   function leadForPerson(personId) {
     return state.leads
@@ -273,13 +292,39 @@
     return true;
   }
 
+  function parseDateValue(value) {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    if (/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)) {
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    let m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{1,2}):(\d{2}))?/);
+    if (m) {
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?/);
+    if (m) {
+      const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] || 0), Number(m[5] || 0));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function fmtDateOnly(value) {
+    const d = parseDateValue(value);
+    if (!d) return value ? String(value) : '-';
+    return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  }
+
   function fmtDate(value) {
-    if (!value) return '-';
-    try {
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return value;
-      return d.toLocaleString('de-CH', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
-    } catch { return value; }
+    const d = parseDateValue(value);
+    if (!d) return value ? String(value) : '-';
+    return `${fmtDateOnly(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   }
 
   function nextId(type) {
@@ -411,7 +456,7 @@
     renderPermissions();
     $$('[data-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     $$('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tab));
-    const titles = { dashboard:'Übersicht', leads:'Leads', jobs:'Jobs', customers:'Kunden', finance:'Buchhaltung', rewards:'Bonus', settings:'Setup' };
+    const titles = { dashboard:'Übersicht', leads:'Leads', jobs:'Jobs', customers:'Kunden', finance:'Buchhaltung', rewards:'Bonus', settings:'Einstellungen' };
     $('[data-page-title]').textContent = titles[tab] || 'Übersicht';
     renderAll();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -447,7 +492,7 @@
 
   function renderToday() {
     const now = Date.now();
-    const jobs = state.jobs.filter(j => j.appointmentAt && !['Erledigt','Bezahlt','Abgesagt'].includes(j.status))
+    const jobs = state.jobs.filter(j => j.appointmentAt && isOpenJob(j))
       .sort((a,b)=>new Date(a.appointmentAt)-new Date(b.appointmentAt)).slice(0, 8);
     $('[data-today-list]').innerHTML = jobs.length ? jobs.map(j => {
       const p = personById(j.personId) || {};
@@ -491,8 +536,8 @@
     const q = ($('[data-lead-search]')?.value || '').toLowerCase().trim();
     const filter = $('[data-lead-filter]')?.value || 'active';
     let leads = [...state.leads].sort((a,b)=>(personById(a.personId)?.name||'').localeCompare(personById(b.personId)?.name||'', 'de-CH') || new Date(b.createdAt)-new Date(a.createdAt));
-    if (filter === 'active') leads = leads.filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status));
-    if (filter === 'won') leads = leads.filter(l => ['Job erstellt','Kunde geworden'].includes(l.status));
+    if (filter === 'active') leads = leads.filter(l => !['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden','Verloren'].includes(l.status));
+    if (filter === 'won') leads = leads.filter(l => ['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden'].includes(l.status));
     if (filter === 'lost') leads = leads.filter(l => l.status === 'Verloren');
     if (q) leads = leads.filter(l => {
       const p = personById(l.personId) || {};
@@ -509,7 +554,7 @@
     return `<article class="item-card">
       <div class="item-top">
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy || l.assignedTo || currentUser))}</div></div>
-        <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empf. ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
+        <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empfohlen von ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(fullAddressForPerson(p))}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}${l.notes?`<br>${esc(String(l.notes).slice(0,160))}`:''}</div>
       <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-edit-lead="${esc(l.id)}">Bearbeiten</button>${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
@@ -534,21 +579,43 @@
 
   function jobCard(j) {
     const p = personById(j.personId) || {};
-    const completed = isCompletedJob(j);
     const paid = isPaidJob(j);
-    const statusLabel = completed && !paid ? `${j.status || 'Erledigt'} · Zahlung offen` : (j.status || 'Geplant');
-    const statusClass = paid ? 'ok' : (j.status === 'Abgesagt' ? 'danger' : 'warn');
+    const cancelled = isCancelledJob(j);
+    const statusLabel = paid ? 'Bezahlt / abgeschlossen' : (cancelled ? 'Abgesagt' : `${j.status || 'Geplant'} · Zahlung offen`);
+    const statusClass = paid ? 'ok' : (cancelled ? 'danger' : 'warn');
     const ref = personById(j.referredById || p.referredById);
-    const photos = [j.beforePhoto, j.afterPhoto].filter(Boolean).map((ph,i)=>`<img class="thumb" src="${esc(ph.dataUrl || ph.url)}" alt="${i?'Nachher':'Vorher'} Foto">`).join('');
+    const currentAmount = amountValue(j.amount);
+    const customerTotal = p.status === 'customer' ? totalRevenueForPerson(p.id) : 0;
+    const amountBadges = p.status === 'customer'
+      ? `${currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : ''}<span class="badge money-badge total">Umsatz total ${esc(money(customerTotal))}</span>`
+      : (currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : '');
+    const syncBadges = jobSyncBadges(j);
+    const photos = [j.beforePhoto, j.afterPhoto].filter(Boolean).map((ph,i)=>`<img class="thumb" src="${esc(ph.dataUrl || ph.url || ph.driveUrl)}" alt="${i?'Nachher':'Vorher'} Foto">`).join('');
     return `<article class="item-card">
       <div class="item-top">
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
-        <div class="badges"><span class="badge ${statusClass}">${esc(statusLabel)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
+        <div class="badges"><span class="badge ${statusClass}">${esc(statusLabel)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${amountBadges}${syncBadges}${ref?`<span class="badge ok">Empfohlen von ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(fullAddressForPerson(p))}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
-      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}${reviewLink(p, j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!isCancelledJob(j) && !completed ? `<button class="primary" data-complete-job="${esc(j.id)}">Arbeit erledigt</button>` : ''}${!isCancelledJob(j) && !paid ? `<button class="${completed ? 'primary' : 'secondary'}" data-paid-job="${esc(j.id)}">Zahlung bezahlt</button>` : ''}${completed ? whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true) : ''}</div>
+      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}${reviewLink(p, j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!cancelled && !paid ? `<button class="primary" data-complete-job="${esc(j.id)}">Job erledigt &amp; bezahlt</button>` : ''}</div>
     </article>`;
+  }
+
+  function jobSyncBadges(job) {
+    const badges = [];
+    const photos = [job?.beforePhoto, job?.afterPhoto].filter(Boolean);
+    if (photos.some(ph => ph?.error)) badges.push('<span class="badge danger">Foto Sync Fehler</span>');
+    else if (photos.some(ph => ph?.dataUrl || ph?.localOnly)) badges.push('<span class="badge warn">Foto wartet auf Drive</span>');
+    else if (photos.some(ph => ph?.url || ph?.driveUrl)) badges.push('<span class="badge ok">Fotos in Drive</span>');
+
+    if (job?.appointmentAt && !isCancelledJob(job)) {
+      const status = String(job.calendarSyncStatus || '');
+      if (status.toLowerCase().includes('fehler') || status.toLowerCase().includes('nicht gefunden')) badges.push('<span class="badge danger">Kalender Fehler</span>');
+      else if (job.calendarEventId || status.toLowerCase().includes('synchronisiert')) badges.push('<span class="badge ok">Kalender sync</span>');
+      else badges.push('<span class="badge warn">Kalender wartet</span>');
+    }
+    return badges.join('');
   }
 
   function renderCustomers() {
@@ -567,14 +634,17 @@
 
   function customerCard(p) {
     const jobs = state.jobs.filter(j => j.personId === p.id);
+    const paidJobsCount = paidJobsForPerson(p.id).length;
+    const openJobsCount = jobs.filter(isOpenJob).length;
+    const revenueTotal = totalRevenueForPerson(p.id);
     const link = referralLink(p.id);
     const blocked = isContactBlocked(p);
     const warning = contactWarningText(p);
     const contactActions = blocked
       ? `<button class="secondary" data-show-contact-warning="${esc(p.id)}">Kontakt gesperrt</button>`
-      : `${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${reviewLink(p)}${phoneLink(p.phone)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`;
+      : `${whatsappLink(p.phone, referralInviteText(p), 'Empfehlungslink senden', true)}${reviewLink(p)}${phoneLink(p.phone)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`;
     return `<article class="item-card ${blocked ? 'contact-blocked' : ''}">
-      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span> ${contactBadge(p)}</div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div>${warning ? `<div class="item-warning">${esc(warning)}</div>` : ''}</div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
+      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span> ${contactBadge(p)}</div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div>${warning ? `<div class="item-warning">${esc(warning)}</div>` : ''}</div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge ok">${paidJobsCount} bezahlt</span>${openJobsCount ? `<span class="badge warn">${openJobsCount} offen</span>` : ''}<span class="badge money-badge total">Umsatz total ${esc(money(revenueTotal))}</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
       <div class="referral-link-line"><span>Empfehlungslink</span><strong>${esc(link)}</strong></div>
       <div class="actions">${contactActions}${mapLink(p)}<button class="secondary" data-edit-customer="${esc(p.id)}">Bearbeiten</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
     </article>`;
@@ -605,8 +675,8 @@
     return status === 'bezahlt' || status.includes('bezahlt') || !!job.paidAt;
   }
   function isCompletedJob(job = {}) {
-    const status = String(job.status || '').toLowerCase();
-    return isPaidJob(job) || status === 'erledigt' || status.includes('erledigt');
+    // A job is completed only when payment is confirmed.
+    return isPaidJob(job);
   }
   function isCancelledJob(job = {}) {
     const status = String(job.status || '').toLowerCase();
@@ -614,6 +684,15 @@
   }
   function isOpenJob(job = {}) {
     return !isPaidJob(job) && !isCancelledJob(job);
+  }
+
+  function paidJobsForPerson(personId) {
+    if (!personId) return [];
+    return state.jobs.filter(j => j.personId === personId && isPaidJob(j) && amountValue(j.amount) > 0);
+  }
+
+  function totalRevenueForPerson(personId) {
+    return paidJobsForPerson(personId).reduce((sum, j) => sum + amountValue(j.amount), 0);
   }
 
   function ymd(d) {
@@ -627,7 +706,8 @@
     }
     const dt = d instanceof Date ? d : new Date(d);
     if (Number.isNaN(dt.getTime())) return '';
-    return dt.toISOString().slice(0,10);
+    // Use local date parts, not UTC, so Swiss browser time does not shift month/week ends by one day.
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   }
   function financeJobDate(job) {
     return job.paidAt || job.completedAt || job.appointmentAt || job.updatedAt || job.createdAt || '';
@@ -642,18 +722,31 @@
     const now = new Date();
     let from = '', to = ymd(now), label = '';
     const start = new Date(now);
-    if (period === 'week') {
+    if (period === 'todate') {
+      from = '';
+      to = ymd(now);
+      label = 'Bisher / bis heute';
+    } else if (period === 'week') {
       const day = (now.getDay() + 6) % 7;
       start.setDate(now.getDate() - day);
-      from = ymd(start); label = 'Diese Woche';
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      from = ymd(start);
+      to = ymd(end);
+      label = 'Diese Woche';
     } else if (period === 'year') {
-      from = `${now.getFullYear()}-01-01`; label = 'Dieses Jahr';
+      from = `${now.getFullYear()}-01-01`;
+      to = `${now.getFullYear()}-12-31`;
+      label = 'Dieses Jahr';
     } else if (period === 'custom') {
       from = $('[data-finance-from]')?.value || '';
       to = $('[data-finance-to]')?.value || to;
-      label = from || to ? `${from || '...'} bis ${to || '...'}` : 'Benutzerdefiniert';
+      label = from || to ? `${from ? fmtDateOnly(from) : '...'} bis ${to ? fmtDateOnly(to) : '...'}` : 'Benutzerdefiniert';
     } else {
-      from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`; label = 'Dieser Monat';
+      const month = String(now.getMonth()+1).padStart(2,'0');
+      from = `${now.getFullYear()}-${month}-01`;
+      to = ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+      label = 'Dieser Monat';
     }
     return { period, from, to, label };
   }
@@ -675,7 +768,7 @@
   }
   function forecastLeadItems(range) {
     return state.leads
-      .filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status))
+      .filter(l => !['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden','Verloren'].includes(l.status))
       .filter(l => amountValue(l.expectedValue) > 0)
       .filter(l => dateInRange(l.appointmentAt || l.createdAt, range.from, range.to))
       .map(l => {
@@ -717,9 +810,29 @@
     return !!x && (x.createdBy === currentUser);
   }
 
+  function updateFinanceDateControls(range) {
+    const fromWrap = $('[data-finance-from-wrap]');
+    const toWrap = $('[data-finance-to-wrap]');
+    const fromInput = $('[data-finance-from]');
+    const toInput = $('[data-finance-to]');
+    const applyBtn = $('[data-finance-apply]');
+    const isCustom = range.period === 'custom';
+    [fromWrap, toWrap].filter(Boolean).forEach(el => { el.hidden = !isCustom; });
+    if (applyBtn) applyBtn.hidden = !isCustom;
+    if (!isCustom) {
+      if (fromInput) fromInput.value = range.from || '';
+      if (toInput) toInput.value = range.to || '';
+    }
+    if (range.period === 'todate') {
+      if (fromInput) fromInput.value = '';
+      if (toInput) toInput.value = '';
+    }
+  }
+
   function renderFinance() {
     if (!$('[data-finance-stats]') || !isAdmin()) return;
     const range = getFinanceRange();
+    updateFinanceDateControls(range);
     const s = financeSummary(range);
     $('[data-finance-period-label]').textContent = range.label;
     $('[data-finance-stats]').innerHTML = [
@@ -736,14 +849,14 @@
     $('[data-income-list]').innerHTML = incomes.length ? incomes.map(x => {
       const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
       const editBtns = x.type === 'Manuell' && canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-manual-income="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-manual-income="${esc(x.id)}">Löschen</button></div>` : (x.jobId ? `<div class="actions"><button class="secondary" data-edit-job="${esc(x.jobId)}">Job/Zahlung bearbeiten</button></div>` : '');
-      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.type)} · ${esc(ymd(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge ok">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
+      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.type)} · ${esc(fmtDateOnly(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge ok">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
     }).join('') : '<div class="empty">Keine Einnahmen im Zeitraum.</div>';
 
     $('[data-expense-count]').textContent = `${s.expenses.length} Eintrag(e)`;
     $('[data-expense-list]').innerHTML = s.expenses.length ? s.expenses.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x => {
       const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
       const editBtns = canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : '';
-      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(ymd(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge danger">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
+      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(fmtDateOnly(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge danger">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
     }).join('') : '<div class="empty">Keine Ausgaben im Zeitraum.</div>';
 
     renderCustomerActivity(range);
@@ -942,7 +1055,7 @@
       if (job.referredById) setRefField('job', job.referredById);
       stagedPhotos.before = job.beforePhoto || null;
       stagedPhotos.after = job.afterPhoto || null;
-      $('[data-photo-preview]').innerHTML = [stagedPhotos.before, stagedPhotos.after].filter(Boolean).map((ph,i)=>`<img src="${esc(ph.dataUrl || ph.url)}" alt="${i?'Nachher':'Vorher'}">`).join('');
+      $('[data-photo-preview]').innerHTML = [stagedPhotos.before, stagedPhotos.after].filter(Boolean).map((ph,i)=>`<img src="${esc(ph.dataUrl || ph.url || ph.driveUrl)}" alt="${i?'Nachher':'Vorher'}">`).join('');
       $('[data-job-modal-title]').textContent = 'Job bearbeiten';
     } else {
       form.elements.jobId.value = '';
@@ -1042,11 +1155,18 @@
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser
     });
+    job = Object.assign(job, normalizeJobForNoUnpaidDone(job));
     if (job.status === 'Bezahlt') job.paidAt = job.paidAt || new Date().toISOString();
-    else if (job.paidAt && job.status !== 'Bezahlt') delete job.paidAt;
+    else { delete job.paidAt; delete job.completedAt; }
     if (lead) lead.status = 'Job erstellt';
     if (isCompletedJob(job)) completeJob(job.id, false);
-    saveState('job'); form.closest('dialog').close(); setTab('jobs'); toast(`Job gespeichert: ${p.id}`);
+    saveState('job'); form.closest('dialog').close(); setTab('jobs');
+    const needsMediaSync = !!(job.beforePhoto?.dataUrl || job.afterPhoto?.dataUrl || job.appointmentAt);
+    const calMsg = job.appointmentAt && calendarSyncTarget() ? ' Termin wird automatisch mit Google Calendar synchronisiert.' : '';
+    toast(job.status === 'Bezahlt' ? `Job bezahlt und abgeschlossen: ${p.id}.${calMsg}` : `Job gespeichert: ${p.id}.${calMsg}`);
+    if (needsMediaSync && currentScriptUrl()) {
+      setTimeout(() => syncCloud(false), 350);
+    }
   });
 
   document.addEventListener('click', event => {
@@ -1059,9 +1179,9 @@
     const edit = event.target.closest('[data-edit-job]');
     if (edit) { const job = jobById(edit.dataset.editJob); if (job) openJobDialog(job); }
     const done = event.target.closest('[data-complete-job]');
-    if (done) completeJob(done.dataset.completeJob, true);
+    if (done) confirmCompleteJobPaid(done.dataset.completeJob);
     const paid = event.target.closest('[data-paid-job]');
-    if (paid) { const job = jobById(paid.dataset.paidJob); if (job) { job.status='Bezahlt'; job.paidAt = job.paidAt || new Date().toISOString(); completeJob(job.id, true); toast('Zahlung als bezahlt markiert. Der Betrag zählt jetzt in der Buchhaltung.'); } return; }
+    if (paid) confirmCompleteJobPaid(paid.dataset.paidJob);
     const cal = event.target.closest('[data-calendar-job]');
     if (cal) addCalendar(jobById(cal.dataset.calendarJob));
     const copy = event.target.closest('[data-copy-ref]');
@@ -1072,23 +1192,55 @@
     if (rew) { const r = state.rewards.find(x => x.id === rew.dataset.toggleReward); if (r) { r.status = r.status === 'offen' ? 'gutgeschrieben' : 'offen'; saveState('reward'); renderAll(); } }
   });
 
+  function confirmCompleteJobPaid(jobId) {
+    const job = jobById(jobId);
+    if (!job) return;
+    const p = personById(job.personId) || {};
+    const ok = window.confirm(`Ist die Zahlung für ${p.name || job.personId || 'diesen Job'} bezahlt/bestätigt?\n\nOK = Ja, Job abschliessen und Kunde erstellen.\nAbbrechen = Nein, Job bleibt offen.`);
+    if (!ok) {
+      const clean = normalizeJobForNoUnpaidDone(job);
+      Object.assign(job, clean);
+      saveState('job payment still open');
+      renderAll();
+      toast('Job bleibt offen, solange die Zahlung nicht bezahlt/bestätigt ist.');
+      return;
+    }
+    job.status = 'Bezahlt';
+    job.paidAt = job.paidAt || new Date().toISOString();
+    completeJob(job.id, true);
+  }
+
   function completeJob(jobId, showMessage) {
     const job = jobById(jobId); if (!job) return;
     const p = personById(job.personId); if (!p) return;
-    job.status = isPaidJob(job) ? 'Bezahlt' : 'Erledigt';
-    job.completedAt = job.completedAt || new Date().toISOString();
-    if (isPaidJob(job)) job.paidAt = job.paidAt || new Date().toISOString();
-    p.status = 'customer'; p.customerSince = p.customerSince || new Date().toISOString();
+
+    // New rule: no "Erledigt / Zahlung offen" state.
+    // Work is only closed when payment is confirmed.
+    if (!isPaidJob(job)) {
+      Object.assign(job, normalizeJobForNoUnpaidDone(job));
+      saveState('complete blocked payment open');
+      renderAll();
+      if (showMessage) toast('Nicht abgeschlossen: zuerst Zahlung bezahlt/bestätigt wählen.');
+      return;
+    }
+
+    job.status = 'Bezahlt';
+    job.paidAt = job.paidAt || new Date().toISOString();
+    job.completedAt = job.completedAt || job.paidAt;
     const lead = job.leadId ? leadById(job.leadId) : null;
+
+    p.status = 'customer';
+    p.customerSince = p.customerSince || new Date().toISOString();
     if (lead) lead.status = 'Kunde geworden';
+
     const amount = amountValue(job.amount || lead?.expectedValue || 0);
     const refId = job.referredById || lead?.referredById || p.referredById;
-    if (isPaidJob(job) && refId && refId !== p.id && amount >= Number(getSetting('minOrder'))) {
+    if (refId && refId !== p.id && amount >= Number(getSetting('minOrder'))) {
       const exists = state.rewards.some(r => r.jobId === job.id && r.customerId === refId);
       if (!exists) state.rewards.push({ id: nextId('reward'), customerId: refId, fromPersonId: p.id, jobId: job.id, amount: Number(getSetting('bonusAmount')), status: 'offen', createdAt: new Date().toISOString(), createdBy: currentUser });
     }
-    saveState('complete'); renderAll();
-    if (showMessage) toast(isPaidJob(job) ? 'Job bezahlt. Person ist Kunde und der Betrag zählt in der Buchhaltung.' : 'Job erledigt. Zahlung ist noch offen und kann jederzeit markiert werden.');
+    saveState('complete paid'); renderAll();
+    if (showMessage) toast('Job bezahlt und abgeschlossen. Person ist jetzt Kunde und zählt als echte Einnahme.');
   }
 
   async function compressImage(file) {
@@ -1110,11 +1262,11 @@
     const photo = await compressImage(event.target.files?.[0]);
     if (!photo) return;
     if (event.target.name === 'beforePhoto') stagedPhotos.before = photo; else stagedPhotos.after = photo;
-    $('[data-photo-preview]').innerHTML = [stagedPhotos.before, stagedPhotos.after].filter(Boolean).map((ph,i)=>`<img src="${esc(ph.dataUrl || ph.url)}" alt="${i?'Nachher':'Vorher'}">`).join('');
-    toast('Foto gespeichert. Beim Google Sync wird es in Drive abgelegt.');
+    $('[data-photo-preview]').innerHTML = [stagedPhotos.before, stagedPhotos.after].filter(Boolean).map((ph,i)=>`<img src="${esc(ph.dataUrl || ph.url || ph.driveUrl)}" alt="${i?'Nachher':'Vorher'}">`).join('');
+    toast('Foto gespeichert. Beim Sync wird es in Drive abgelegt: Kundenordner LMxxxx → Jxxxx_before/Jxxxx_after.');
   });
 
-  function addCalendar(job) {
+  function downloadCalendarIcs(job) {
     if (!job?.appointmentAt) return toast('Kein Termin im Job eingetragen. Bitte Job bearbeiten und Datum/Zeit setzen.');
     const p = personById(job.personId) || {};
     const start = new Date(job.appointmentAt);
@@ -1152,6 +1304,17 @@
     a.click();
     URL.revokeObjectURL(a.href);
     toast('Kalenderdatei erstellt. Auf dem iPhone öffnen und hinzufügen.');
+  }
+
+  function addCalendar(job) {
+    if (!job?.appointmentAt) return toast('Kein Termin im Job eingetragen. Bitte Job bearbeiten und Datum/Zeit setzen.');
+    if (currentScriptUrl() && calendarSyncTarget()) {
+      saveState('calendar sync requested');
+      syncCloud(false);
+      toast('Kalender-Sync gesendet. Der Termin wird im Lumian Google Calendar erstellt/aktualisiert.');
+      return;
+    }
+    downloadCalendarIcs(job);
   }
 
   function setRefField(scope, personId) {
@@ -1228,7 +1391,9 @@
   function fillSettings(force = false) {
     const form = $('[data-settings-form]'); if (!form) return;
     if (form.dataset.filled === 'yes' && !force) return;
-    Object.entries({ ...DEFAULT_SETTINGS, ...state.settings }).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value ?? ''; });
+    Object.keys(DEFAULT_SETTINGS).forEach(key => {
+      if (form.elements[key]) form.elements[key].value = getSetting(key) ?? '';
+    });
     const u = state.users.find(x => x.id === currentUser);
     if (form.elements.userRecoveryCode) form.elements.userRecoveryCode.value = u?.recoveryCode || defaultRecoveryCode(currentUser);
     form.dataset.filled = 'yes';
@@ -1236,6 +1401,9 @@
   function saveSettingsFromForm(showToast = true) {
     const form = $('[data-settings-form]');
     if (!form) return false;
+    // The settings form exists in the DOM even before the tab was opened.
+    // Fill it first, otherwise background sync can accidentally read empty inputs.
+    if (form.dataset.filled !== 'yes') fillSettings(true);
     const fd = new FormData(form);
     Object.keys(DEFAULT_SETTINGS).forEach(key => { if (fd.has(key)) state.settings[key] = String(fd.get(key) || '').trim(); });
     state.settings.bonusAmount = Number(state.settings.bonusAmount || 0);
@@ -1243,7 +1411,7 @@
     const u = state.users.find(x => x.id === currentUser);
     if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
     saveState('settings');
-    if (showToast) toast('Setup gespeichert.');
+    if (showToast) toast('Einstellungen gespeichert.');
     return true;
   }
   $('[data-settings-form]')?.addEventListener('submit', event => {
@@ -1291,7 +1459,7 @@
   function downloadLeadsTemplate() {
     const rows = [
       ['Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Service','Quelle','Betrag','Termin','EmpfohlenVon','Notizen'],
-      ['Peter Beispiel', '079 123 45 67', '', 'Beispielweg 2', '5400 Baden', 'Fensterreinigung', 'Google', '350', '2026-07-20 14:00', 'LM1001', 'Besichtigung nötig']
+      ['Peter Beispiel', '079 123 45 67', '', 'Beispielweg 2', '5400 Baden', 'Fensterreinigung', 'Google', '350', '20.07.2026 14:00', 'LM1001', 'Besichtigung nötig']
     ];
     downloadText('lumian-leads-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
   }
@@ -1444,6 +1612,10 @@
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return v.slice(0,16);
     const cleaned = v.replace(' ', 'T');
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(cleaned)) return cleaned.slice(0,16);
+    let m = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?/);
+    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T${String(m[4] || '09').padStart(2,'0')}:${m[5] || '00'}`;
+    m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}T09:00`;
     return v;
   }
   function importCustomersFromObjects(items) {
@@ -1674,8 +1846,11 @@
     const today = ymd(new Date());
     $$('[data-manual-income-form] input[type="date"], [data-expense-form] input[type="date"]').forEach(input => { if (!input.value) input.value = today; });
     const range = getFinanceRange();
-    if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = range.from;
-    if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = range.to;
+    updateFinanceDateControls(range);
+    if (range.period === 'custom') {
+      if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = range.from;
+      if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = range.to;
+    }
   }
   $('[data-manual-income-form]')?.addEventListener('submit', event => { event.preventDefault(); addManualIncome(event.currentTarget); });
   $('[data-expense-form]')?.addEventListener('submit', event => { event.preventDefault(); addExpense(event.currentTarget); });
@@ -1740,7 +1915,7 @@
     renderFinance();
     const range = getFinanceRange();
     const s = financeSummary(range);
-    const now = new Date().toLocaleString('de-CH');
+    const now = fmtDate(new Date());
 
     const summary = [
       ['Lumian Services Buchhaltungsreport'],
@@ -1756,16 +1931,16 @@
     ];
     const incomeRows = [
       ['Typ','Datum','Bis','Kunde/Titel','Service/Kategorie','Betrag CHF','Eingetragen von','Notiz','ID'],
-      ...s.jobs.map(x => ['Einnahme Job bezahlt', ymd(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
-      ...s.manual.map(x => ['Einnahme manuell', ymd(x.date), x.to || '', x.title, 'Manuell', x.amount, userName(x.createdBy), x.notes || '', x.id])
+      ...s.jobs.map(x => ['Einnahme Job bezahlt', fmtDateOnly(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
+      ...s.manual.map(x => ['Einnahme manuell', fmtDateOnly(x.date), x.to ? fmtDateOnly(x.to) : '', x.title, 'Manuell', x.amount, userName(x.createdBy), x.notes || '', x.id])
     ];
     const forecastRows = [
       ['Typ','Datum','Kunde/Titel','Status','Betrag CHF','Zuständig','JobID'],
-      ...s.forecastAll.map(x => ['Voraussichtlich', ymd(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
+      ...s.forecastAll.map(x => ['Voraussichtlich', fmtDateOnly(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
     ];
     const expenseRows = [
       ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID'],
-      ...s.expenses.map(x => [ymd(x.date), x.category || 'Ausgabe', x.title, amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id])
+      ...s.expenses.map(x => [fmtDateOnly(x.date), x.category || 'Ausgabe', x.title, amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id])
     ];
     const customerRows = [
       ['LumianNr','Kunde','Telefon','PLZ/Ort','Jobs im Zeitraum','Umsatz CHF','Letzter Job','Jobs total'],
@@ -1774,7 +1949,7 @@
         const inRange = allJobs.filter(j => dateInRange(financeJobDate(j), range.from, range.to));
         const revenue = inRange.reduce((sum,j)=>sum+amountValue(j.amount),0);
         const last = allJobs.map(financeJobDate).filter(Boolean).sort().pop() || '';
-        return [p.id, p.name || '', p.phone || '', p.place || '', inRange.length, revenue, last ? ymd(last) : '', allJobs.length];
+        return [p.id, p.name || '', p.phone || '', p.place || '', inRange.length, revenue, last ? fmtDateOnly(last) : '', allJobs.length];
       }).filter(r => r[4] || r[7] || r[1])
     ];
 
@@ -1792,7 +1967,7 @@
 
   function exportCsv() {
     const rows = [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen']]
-      .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '',p.notes || '']));
+      .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince ? fmtDateOnly(p.customerSince) : '',p.notes || '']));
     downloadExcelXml(`lumian-kunden-export-${new Date().toISOString().slice(0,10)}.xls`, [
       ['Kunden', rows, [90,90,170,120,180,180,130,120,110,110,240]]
     ]);
@@ -1828,8 +2003,9 @@
 
   function normalizeAppointmentInput(value = '') {
     const raw = String(value || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw + 'T09:00';
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return raw.slice(0,16);
+    if (!raw) return '';
+    const parsed = dateForInput(raw);
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(parsed)) return parsed.slice(0,16);
     return '';
   }
 
@@ -1877,8 +2053,9 @@
       });
     }
 
+    const normalizedAppointment = normalizeAppointmentInput(row.desiredDate || '');
     const notes = [
-      row.desiredDate ? `Wunsch-Termin: ${row.desiredDate}` : '',
+      normalizedAppointment ? `Wunsch-Termin: ${fmtDate(normalizedAppointment)}` : (row.desiredDate ? `Wunsch-Termin: ${row.desiredDate}` : ''),
       row.message ? `Beschreibung: ${row.message}` : ''
     ].filter(Boolean).join('\n');
 
@@ -1888,7 +2065,7 @@
       service: row.service || '',
       source,
       expectedValue: '',
-      appointmentAt: normalizeAppointmentInput(row.desiredDate || ''),
+      appointmentAt: normalizedAppointment,
       referredById: referral,
       status: row.status || 'Offen',
       createdAt: now,
@@ -1924,7 +2101,8 @@
   }
 
   function currentScriptUrl() {
-    const formUrl = $('[data-settings-form]')?.elements?.scriptUrl?.value;
+    const form = $('[data-settings-form]');
+    const formUrl = form?.dataset?.filled === 'yes' ? form.elements?.scriptUrl?.value : '';
     return String(formUrl || getSetting('scriptUrl') || '').trim();
   }
 
@@ -1975,7 +2153,7 @@
     suppressAutoCloudSync = false;
     const url = currentScriptUrl();
     if (!url) {
-      const msg = 'Bitte zuerst Google Apps Script URL im Setup eintragen.';
+      const msg = 'Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.';
       if (!silent) { toast(msg); setWebLeadsStatus(msg, 'error'); }
       return;
     }
@@ -2019,17 +2197,62 @@
     document.body.appendChild(script);
   }
 
+  function hasLocalPhotoData(s = state) {
+    return (s.jobs || []).some(j => j?.beforePhoto?.dataUrl || j?.afterPhoto?.dataUrl || j?.beforePhoto?.localOnly || j?.afterPhoto?.localOnly);
+  }
+
+  function refreshCloudAfterSync(expectedUpdatedAt = '', silent = true) {
+    const url = currentScriptUrl();
+    if (!url) return;
+    const callbackName = `lumianAfterPhotoSync_${Date.now()}`;
+    const script = document.createElement('script');
+    const cleanup = () => { try { delete window[callbackName]; } catch {} script.remove(); };
+    window[callbackName] = data => {
+      try {
+        const cloudState = data?.state;
+        if (cloudState && (!expectedUpdatedAt || cloudState.updatedAt === expectedUpdatedAt)) {
+          suppressAutoCloudSync = true;
+          state = migrateState(cloudState);
+          localStorage.setItem(STORE_KEY, JSON.stringify(state));
+          suppressAutoCloudSync = false;
+          renderAll();
+          if (!silent) toast('Sync geprüft. Drive-/Kalender-Status ist jetzt auf den Job-Karten sichtbar.');
+        } else if (!silent) {
+          toast('Sync nicht bestätigt. Apps Script Deployment, Drive-Ordner und Kalender-Berechtigung prüfen.');
+        }
+      } catch { if (!silent) toast('Sync-Antwort konnte nicht gelesen werden.'); }
+      cleanup();
+    };
+    script.onerror = cleanup;
+    script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}&t=${Date.now()}`;
+    document.body.appendChild(script);
+  }
+
+  function calendarSyncTarget(s = state) {
+    const form = $('[data-settings-form]');
+    const formValue = form?.dataset?.filled === 'yes' ? form.elements?.calendarId?.value : '';
+    return String(formValue || s?.settings?.calendarId || DEFAULT_SETTINGS.calendarId || '').trim();
+  }
+  function calendarSyncNeeded(s = state) {
+    return !!calendarSyncTarget(s) && (s.jobs || []).some(j => j && j.appointmentAt && !isCancelledJob(j));
+  }
+
   function makeCloudPayload() { saveState('before sync', { cloud: false }); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
   async function syncCloud(silent = false) {
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
     suppressAutoCloudSync = false;
-    const url = currentScriptUrl(); if (!url) { if (!silent) toast('Bitte zuerst Google Apps Script URL im Setup eintragen.'); return; }
+    const url = currentScriptUrl(); if (!url) { if (!silent) toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.'); return; }
     if (cloudSyncInProgress) return;
     cloudSyncInProgress = true;
+    const payload = makeCloudPayload();
+    const refreshPhotos = hasLocalPhotoData(payload.state);
+    const refreshCalendar = calendarSyncNeeded(payload.state);
+    const refreshAfterSync = refreshPhotos || refreshCalendar;
     try {
-      await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(makeCloudPayload()) });
-      if (!silent) toast('Sync gesendet. Google Sheet/Drive prüfen.');
+      await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(payload) });
+      if (!silent) toast(refreshPhotos ? 'Sync gesendet. Fotos/Termine werden gespeichert...' : (refreshCalendar ? 'Sync gesendet. Google Calendar wird aktualisiert...' : 'Sync gesendet. Google Sheet/Drive prüfen.'));
+      if (refreshAfterSync || !silent) setTimeout(() => refreshCloudAfterSync(payload.state.updatedAt, silent), 8500);
     }
     catch { if (!silent) toast('Sync konnte nicht gesendet werden.'); }
     finally { cloudSyncInProgress = false; }
@@ -2038,7 +2261,7 @@
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
     suppressAutoCloudSync = false;
-    const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+    const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
     const callbackName = `lumianCloud_${Date.now()}`;
     const script = document.createElement('script');
     window[callbackName] = data => {
@@ -2059,7 +2282,7 @@
     if (!isAdmin()) return toast('Nur Admins können Cloud-Daten löschen.');
     saveSettingsFromForm(false);
     const url = currentScriptUrl();
-    if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+    if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
     if (!(await confirmSensitiveAction('Cloud + Website-Anfragen wirklich löschen?'))) return;
     const typed = prompt('Letzte Bestätigung: Schreibe RESET, um Google Sheet, Cloud-State und Website-Anfragen zu leeren.');
     if (typed !== 'RESET') return toast('Löschen abgebrochen.');
@@ -2157,7 +2380,7 @@
   async function biometricLogin() {
     const select = $('[data-login-form]').elements.user;
     const user = state.users.find(u => u.id === select.value);
-    if (!user?.credentialId) return toast('Für diesen Benutzer zuerst im Setup Biometrie aktivieren.');
+    if (!user?.credentialId) return toast('Für diesen Benutzer zuerst in den Einstellungen Biometrie aktivieren.');
     if (!navigator.credentials?.get) return toast('Biometrie/Passkey wird auf diesem Browser nicht unterstützt.');
     try {
       await navigator.credentials.get({ publicKey: { challenge: randomChallenge(), allowCredentials: [{ type:'public-key', id: fromB64url(user.credentialId) }], userVerification:'preferred', timeout:60000 }});

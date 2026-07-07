@@ -165,3 +165,17 @@ Update v61:
 - iPhone/PWA safe-area oben erweitert, damit Logo und Top-Buttons nicht unter Batterie/Notch liegen.
 - Job-Karte zeigt den WhatsApp-Button jetzt klar als „Erinnerung senden“.
 - Hauptseite: Gratis/kostenlos in unverbindlich geändert; Impressum-Adresse sauber ohne zusätzliche Einrückungen formatiert.
+
+V67 Buchhaltung bis heute + Google Calendar Sync
+- Buchhaltung Zeitraum "Bisher / bis heute" ergänzt. Zählt alles bis zum aktuellen Tag und ist auch im Excel-Report verfügbar.
+- Einstellungen akzeptieren Google Calendar ID oder iCal-Link. Der iCal-Link von lumianservices@gmail.com wird im Apps Script zur Calendar ID aufgelöst.
+- Jobs mit Termin werden beim Google Sync automatisch im Lumian Google Calendar erstellt oder aktualisiert. Bestehende Kalendertermine werden über Job-ID/Event-ID wiedergefunden, damit keine Duplikate entstehen.
+- Neue Google-Sheet-Spalte/Tab "Calendar Sync" zeigt CalendarEventId, Sync-Zeit und Status.
+
+V70 Drive-/Kalender-Sync stabilisiert
+-------------------------------------
+- Hintergrund-Sync füllt die Einstellungen jetzt zuerst korrekt, damit leere Setup-Felder nicht versehentlich Drive/Calendar-Konfiguration überschreiben.
+- Drive-Fehler blockieren den restlichen Sync nicht mehr. Wenn der Foto-Ordner fehlt oder keine Berechtigung besteht, werden Google Sheet und Calendar trotzdem weiter synchronisiert.
+- Neuer Sheet-Tab "Photo Sync" zeigt Drive-Status/Fehler je Foto.
+- Job-Karten zeigen Status-Badges: "Foto wartet auf Drive", "Fotos in Drive", "Kalender wartet", "Kalender sync" oder Fehler.
+- Hinweis: Der iCal-Link ist nur lesbar. Für echten Google-Calendar-Sync muss das Google-Konto, unter dem Apps Script läuft, Schreibzugriff auf den Kalender lumianservices@gmail.com haben.

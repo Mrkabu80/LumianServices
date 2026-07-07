@@ -31,7 +31,7 @@
     bonusAmount: 50,
     minOrder: 300,
     businessPhone: '0772794707',
-    referralBase: 'https://www.lumianservices.ch/?ref={{customerId}}#booking',
+    referralBase: 'https://www.lumianservices.ch/empfehlung/?ref={{customerId}}',
     scriptUrl: '',
     driveFolderId: '',
     calendarId: '',
@@ -87,6 +87,8 @@
     const merged = { ...base, ...s };
     merged.version = 6;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+    // v27: move default referral links from homepage booking anchor to dedicated referral page.
+    if (String(merged.settings.referralBase || '').includes('#booking')) merged.settings.referralBase = DEFAULT_SETTINGS.referralBase;
     merged.counters = { ...base.counters, ...(s.counters || {}) };
     const incomingUsers = Array.isArray(s.users) ? s.users : [];
     const defaultUsers = USERS.map(u => {
@@ -250,6 +252,17 @@
     return `${type}-${Date.now()}`;
   }
 
+  function bumpCountersFromIds(personId = '', leadId = '') {
+    const p = String(personId || '').match(/^LM(\d+)$/i);
+    if (p) state.counters.nextPerson = Math.max(state.counters.nextPerson || 1001, Number(p[1]) + 1);
+    const l = String(leadId || '').match(/^L(\d+)$/i);
+    if (l) state.counters.nextLead = Math.max(state.counters.nextLead || 1, Number(l[1]) + 1);
+  }
+
+  function cleanReferralCode(value) {
+    return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+  }
+
   function findOrCreatePerson(data) {
     const parsedPhone = parseSwissPhone(data.phone || '');
     const phoneTel = parsedPhone.ok && !parsedPhone.empty ? parsedPhone.tel : '';
@@ -329,6 +342,10 @@
     $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)}${u?.role==='admin'?' · Admin':''}`;
     setTab(activeTab);
     setTimeout(setupSmartStickyNav, 120);
+    if (!renderLogin._checkedWebsiteLeads && getSetting('scriptUrl')) {
+      renderLogin._checkedWebsiteLeads = true;
+      setTimeout(() => checkWebsiteLeads(true), 900);
+    }
   }
 
   $('[data-login-form]')?.addEventListener('submit', async event => {
@@ -398,7 +415,7 @@
       const p = personById(j.personId) || {};
       const overdue = new Date(j.appointmentAt).getTime() < now;
       return `<article class="item-card">
-        <div class="item-top"><div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge">${esc(p.id || '')}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · ${esc(p.address || '')}</div></div><span class="badge ${overdue?'danger':'warn'}">${esc(j.status)}</span></div>
+        <div class="item-top"><div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge">${esc(p.id || '')}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · ${esc(fullAddressForPerson(p))}</div></div><span class="badge ${overdue?'danger':'warn'}">${esc(j.status)}</span></div>
         <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}</div>
       </article>`;
     }).join('') : '<div class="empty">Keine offenen Termine.</div>';
@@ -456,7 +473,7 @@
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy || l.assignedTo || currentUser))}</div></div>
         <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empf. ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
       </div>
-      <div class="item-sub">${esc(p.address || '')}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}</div>
+      <div class="item-sub">${esc(fullAddressForPerson(p))}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}</div>
       <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p)}${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
     </article>`;
   }
@@ -486,7 +503,7 @@
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
         <div class="badges"><span class="badge ${done?'ok':j.status==='Abgesagt'?'danger':'warn'}">${esc(j.status)}</span>${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
       </div>
-      <div class="item-sub">${esc(p.address || '')}</div>
+      <div class="item-sub">${esc(fullAddressForPerson(p))}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
       <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!done?`<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button><button class="secondary" data-paid-job="${esc(j.id)}">Bezahlt</button>`:whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true)}</div>
     </article>`;
@@ -700,11 +717,11 @@
     return fillTemplate(getSetting('referralTemplate'), { name:p.name||'', customerId:p.id||'', code:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), referralLink:referralLink(p.id) });
   }
   function newCustomerText(p,l={}) {
-    return fillTemplate(getSetting('newCustomerTemplate'), { name:p.name||'', customerId:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), service:l.service||'', amount:l.expectedValue||'', address:p.address||'' });
+    return fillTemplate(getSetting('newCustomerTemplate'), { name:p.name||'', customerId:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), service:l.service||'', amount:l.expectedValue||'', address:fullAddressForPerson(p)||'' });
   }
   function reminderText(j) {
     const p = personById(j.personId) || {};
-    return fillTemplate(getSetting('reminderTemplate'), { name:p.name||'', customerId:p.id||'', date:fmtDate(j.appointmentAt), service:j.service||'', amount:j.amount||'', address:p.address||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder') });
+    return fillTemplate(getSetting('reminderTemplate'), { name:p.name||'', customerId:p.id||'', date:fmtDate(j.appointmentAt), service:j.service||'', amount:j.amount||'', address:fullAddressForPerson(p)||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder') });
   }
 
   function openCustomerDialog() {
@@ -1063,15 +1080,15 @@
   }
   function downloadCustomersTemplate() {
     const rows = [
-      ['LumianNr','Name','Telefon','Email','Adresse','Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen'],
-      ['', 'Maria Müller', '077 535 05 71', 'maria@email.ch', 'Musterstrasse 1, 5600 Lenzburg', 'Lenzburg', 'Empfehlung', 'LM1001', '', 'bestehender Kunde']
+      ['LumianNr','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen'],
+      ['', 'Maria Müller', '077 535 05 71', 'maria@email.ch', 'Musterstrasse 1', '5600 Lenzburg', 'Empfehlung', 'LM1001', '', 'bestehender Kunde']
     ];
     downloadText('lumian-kunden-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
   }
   function downloadLeadsTemplate() {
     const rows = [
-      ['Name','Telefon','Email','Adresse','Ort','Service','Quelle','Betrag','Termin','EmpfohlenVon','Notizen'],
-      ['Peter Beispiel', '079 123 45 67', '', 'Beispielweg 2, 5400 Baden', 'Baden', 'Fensterreinigung', 'Google', '350', '2026-07-20 14:00', 'LM1001', 'Besichtigung nötig']
+      ['Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Service','Quelle','Betrag','Termin','EmpfohlenVon','Notizen'],
+      ['Peter Beispiel', '079 123 45 67', '', 'Beispielweg 2', '5400 Baden', 'Fensterreinigung', 'Google', '350', '2026-07-20 14:00', 'LM1001', 'Besichtigung nötig']
     ];
     downloadText('lumian-leads-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
   }
@@ -1103,6 +1120,14 @@
     const headers = rows[0].map(normHeader);
     return rows.slice(1).map(r => Object.fromEntries(headers.map((h,i)=>[h, r[i] || '']))).filter(o => Object.values(o).some(Boolean));
   }
+
+  function csvAddress(o) {
+    return o.strassenr || o.strassenummer || o.strassennr || o.strasse || o.adresse || o.address || '';
+  }
+  function csvPlace(o) {
+    return o.plzort || o.plzundort || o.postleitzahlort || o.ort || o.place || '';
+  }
+
   function findReferral(input) {
     const q = String(input || '').trim().toLowerCase();
     if (!q) return '';
@@ -1145,8 +1170,8 @@
         name: name || person.name || '',
         phone: parsed.ok && !parsed.empty ? parsed.tel : (person.phone || ''),
         email: email || person.email || '',
-        address: o.adresse || o.address || person.address || '',
-        place: o.ort || o.place || person.place || '',
+        address: csvAddress(o) || person.address || '',
+        place: csvPlace(o) || person.place || '',
         source: o.quelle || o.source || person.source || 'Import',
         referredById: findReferral(o.empfohlenvon || o.referral || o.referredby) || person.referredById || '',
         customerSince: dateForInput(o.kundeseit || o.customersince) || person.customerSince || new Date().toISOString(),
@@ -1174,8 +1199,8 @@
       if ((email || '').trim() && !validateEmail(email)) { skipped++; errors.push(`${name || email}: E-Mail ungültig`); continue; }
       const person = findOrCreatePerson({
         name, phone, email,
-        address: o.adresse || o.address || '',
-        place: o.ort || o.place || '',
+        address: csvAddress(o) || '',
+        place: csvPlace(o) || '',
         source: o.quelle || o.source || 'Import',
         referredById: findReferral(o.empfohlenvon || o.referral || o.referredby)
       });
@@ -1439,7 +1464,7 @@
 
 
   function exportCsv() {
-    const rows = [['LumianNr','Status','Name','Telefon','Email','Adresse','Ort','Quelle','EmpfohlenVon','KundeSeit']]
+    const rows = [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','KundeSeit']]
       .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '']));
     downloadText('lumian-kunden-excel.csv', rows.map(row => row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';')).join('\n'), 'text/csv;charset=utf-8');
   }
@@ -1466,6 +1491,115 @@
     }
   });
 
+
+  function websiteLeadKey(row = {}) {
+    return String(row.websiteLeadKey || row.WebsiteLeadKey || row.key || `${row.createdAt || ''}|${row.phone || ''}|${row.name || ''}|${row.referral || ''}`).trim();
+  }
+
+  function importWebsiteLead(row = {}) {
+    const key = websiteLeadKey(row);
+    if (!key) return false;
+    if (state.leads.some(l => l.websiteLeadKey === key) || state.people.some(p => p.websiteLeadKey === key)) return false;
+
+    const existingByPhone = row.phone ? state.people.find(p => parseSwissPhone(p.phone).tel && parseSwissPhone(p.phone).tel === parseSwissPhone(row.phone).tel) : null;
+    const personId = existingByPhone?.id || (row.lumianNr && !personById(row.lumianNr) ? String(row.lumianNr) : nextId('person'));
+    const leadId = row.leadId && !leadById(row.leadId) ? String(row.leadId) : nextId('lead');
+    bumpCountersFromIds(personId, leadId);
+
+    const referral = cleanReferralCode(row.referral || row.referredById || '');
+    const source = referral ? 'Website Empfehlung' : (row.source || 'Website Anfrage');
+    const now = row.createdAt || new Date().toISOString();
+
+    let p = existingByPhone || personById(personId);
+    if (!p) {
+      p = {
+        id: personId,
+        status: 'lead',
+        name: row.name || '',
+        phone: row.phone || '',
+        email: '',
+        address: row.address || '',
+        place: row.place || '',
+        source,
+        referredById: referral,
+        createdAt: now,
+        createdBy: 'website',
+        customerSince: '',
+        websiteLeadKey: key
+      };
+      state.people.push(p);
+    } else {
+      Object.assign(p, {
+        name: row.name || p.name || '',
+        phone: row.phone || p.phone || '',
+        address: row.address || p.address || '',
+        place: row.place || p.place || '',
+        source: p.source || source,
+        referredById: p.referredById || referral,
+        websiteLeadKey: p.websiteLeadKey || key
+      });
+    }
+
+    const notes = [
+      row.desiredDate ? `Wunsch-Termin: ${row.desiredDate}` : '',
+      row.message ? `Beschreibung: ${row.message}` : ''
+    ].filter(Boolean).join('\n');
+
+    state.leads.push({
+      id: leadId,
+      personId: p.id,
+      service: row.service || '',
+      source,
+      expectedValue: '',
+      appointmentAt: '',
+      referredById: referral,
+      status: row.status || 'Offen',
+      createdAt: now,
+      createdBy: 'website',
+      notes,
+      websiteLeadKey: key
+    });
+
+    return true;
+  }
+
+  function importWebsiteLeads(rows = []) {
+    let count = 0;
+    rows.forEach(row => { if (importWebsiteLead(row)) count++; });
+    if (count) {
+      saveState(`website leads imported ${count}`);
+      listPages.leads = 1;
+      renderAll();
+      if (activeTab !== 'leads') {
+        setTab('leads');
+      }
+    }
+    return count;
+  }
+
+  function checkWebsiteLeads(silent = false) {
+    const url = getSetting('scriptUrl');
+    if (!url) {
+      if (!silent) toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
+      return;
+    }
+    const callbackName = `lumianWebsiteLeads_${Date.now()}`;
+    const script = document.createElement('script');
+    window[callbackName] = data => {
+      try {
+        const count = importWebsiteLeads(data?.leads || []);
+        if (count) toast(`${count} neue Website-Anfrage(n) importiert.`);
+        else if (!silent) toast('Keine neuen Website-Anfragen.');
+      } catch {
+        if (!silent) toast('Website-Anfragen konnten nicht importiert werden.');
+      }
+      delete window[callbackName]; script.remove();
+    };
+    script.src = `${url}${url.includes('?')?'&':'?'}action=websiteLeads&callback=${callbackName}`;
+    script.onerror = () => { if (!silent) toast('Website-Anfragen laden fehlgeschlagen.'); delete window[callbackName]; script.remove(); };
+    document.body.appendChild(script);
+  }
+
   function makeCloudPayload() { saveState('before sync'); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
   async function syncCloud() {
     const url = getSetting('scriptUrl'); if (!url) return toast('Bitte zuerst Google Apps Script URL im Setup eintragen.');
@@ -1491,6 +1625,7 @@
   }
   $$('[data-sync-now]').forEach(btn => btn.addEventListener('click', syncCloud));
   $('[data-load-cloud]')?.addEventListener('click', loadCloud);
+  $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
 
   // PWA install button: works on Android/Chrome. iPhone shows clear manual instructions.
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; });

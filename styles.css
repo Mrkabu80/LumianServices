@@ -941,3 +941,412 @@ details p { padding: 0 22px 20px; margin: 0; }
 @media (max-width: 720px){
   .booking-form{grid-template-columns:1fr}
 }
+
+
+/* v27 referral landing page */
+.referral-header{
+  width:min(100% - 40px, 1180px);
+  margin:24px auto 0;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+}
+.referral-main{
+  width:min(100% - 40px, 1180px);
+  margin:42px auto 70px;
+}
+.referral-hero{
+  display:grid;
+  grid-template-columns:.88fr 1.12fr;
+  gap:34px;
+  align-items:start;
+}
+.referral-hero-copy{
+  position:sticky;
+  top:28px;
+}
+.referral-hero h1{
+  margin:0 0 16px;
+  font-size:clamp(44px, 7vw, 88px);
+  line-height:.94;
+  letter-spacing:-.06em;
+}
+.referral-hero .lead{
+  color:var(--soft);
+  font-size:clamp(18px,2vw,24px);
+  line-height:1.55;
+}
+.ref-code-card{
+  margin:22px 0;
+  padding:18px 20px;
+  border-radius:24px;
+  border:1px solid rgba(19,200,243,.34);
+  background:linear-gradient(135deg,rgba(19,200,243,.14),rgba(255,255,255,.045));
+  box-shadow:0 22px 60px rgba(0,0,0,.22);
+}
+.ref-code-card span{
+  display:block;
+  color:var(--cyan);
+  font-weight:950;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  font-size:13px;
+}
+.ref-code-card strong{
+  display:block;
+  margin-top:8px;
+  font-size:34px;
+  letter-spacing:.04em;
+}
+.ref-code-card small{
+  display:block;
+  margin-top:8px;
+  color:var(--soft);
+}
+.referral-form{
+  position:relative;
+}
+.referral-form::before{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  pointer-events:none;
+  background:linear-gradient(135deg,rgba(19,200,243,.35),transparent 40%,rgba(255,255,255,.08));
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  padding:1px;
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+}
+.referral-slot{
+  margin-top:16px;
+}
+.referral-footer{
+  margin-top:60px;
+}
+@media(max-width:900px){
+  .referral-header,
+  .referral-main{
+    width:min(100% - 28px, 1180px);
+  }
+  .referral-hero{
+    grid-template-columns:1fr;
+  }
+  .referral-hero-copy{
+    position:static;
+  }
+  .referral-header{
+    margin-top:16px;
+  }
+}
+
+
+/* v28 referral page: code must be obvious and auto-filled */
+.referral-page .booking-form{
+  border-color:rgba(19,200,243,.34);
+  background:linear-gradient(180deg,rgba(12,31,45,.94),rgba(7,17,28,.96));
+}
+.referral-page.has-referral-code .referral-form{
+  box-shadow:0 30px 90px rgba(19,200,243,.14), var(--shadow);
+}
+.referral-code-field{
+  position:relative;
+  padding:14px;
+  border-radius:20px;
+  border:1px solid rgba(19,200,243,.28);
+  background:rgba(19,200,243,.055);
+}
+.referral-code-field input,
+input.is-filled-referral{
+  border-color:rgba(19,200,243,.75) !important;
+  background:rgba(19,200,243,.12) !important;
+  color:#e8fbff !important;
+  font-weight:950;
+  letter-spacing:.04em;
+  box-shadow:0 0 0 4px rgba(19,200,243,.12), inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
+.referral-code-field input::placeholder{
+  color:rgba(220,245,255,.55);
+}
+.referral-detected{
+  display:block;
+  margin-top:9px;
+  color:#8eeaff;
+  font-size:13px;
+  font-weight:950;
+}
+.referral-detected[hidden]{display:none}
+.referral-benefit-mini{
+  margin:18px 0;
+  padding:14px 16px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:20px;
+  background:rgba(255,255,255,.045);
+  color:var(--soft);
+}
+.referral-benefit-mini strong{
+  display:block;
+  color:#fff;
+  margin-bottom:4px;
+}
+.referral-page .ref-code-card{
+  border-color:rgba(19,200,243,.48);
+  background:linear-gradient(135deg,rgba(19,200,243,.18),rgba(255,255,255,.055));
+}
+.referral-page .ref-code-card strong{
+  color:#e8fbff;
+}
+@media(max-width:720px){
+  .referral-page .booking-form{
+    padding:22px;
+  }
+}
+
+
+/* v30: smaller referral landing page + correct visible code state */
+.footer-copy{
+  width:min(100% - 40px, var(--container));
+  margin:22px auto 0;
+  padding-top:18px;
+  border-top:1px solid rgba(255,255,255,.08);
+  color:var(--muted);
+  font-size:13px;
+  text-align:center;
+}
+.referral-main{
+  margin:26px auto 46px !important;
+}
+.referral-header{
+  margin-top:14px !important;
+}
+.referral-header .brand img{
+  width:64px !important;
+  height:64px !important;
+}
+.referral-hero{
+  gap:24px !important;
+  grid-template-columns:.82fr 1fr !important;
+}
+.referral-hero h1{
+  font-size:clamp(34px,5.4vw,62px) !important;
+  line-height:.98 !important;
+  margin-bottom:12px !important;
+}
+.referral-hero .lead{
+  font-size:clamp(16px,1.35vw,19px) !important;
+  line-height:1.48 !important;
+}
+.referral-page .booking-form{
+  gap:12px !important;
+  padding:clamp(18px,2.7vw,26px) !important;
+  border-radius:24px !important;
+}
+.referral-page .booking-form label{
+  font-size:13px !important;
+}
+.referral-page input,
+.referral-page textarea,
+.referral-page select{
+  padding:12px 13px !important;
+  border-radius:14px !important;
+  margin-top:6px !important;
+}
+.referral-page textarea{
+  min-height:86px !important;
+}
+.ref-code-card{
+  margin:14px 0 !important;
+  padding:13px 15px !important;
+  border-radius:18px !important;
+}
+.ref-code-card strong{
+  font-size:26px !important;
+  line-height:1.05 !important;
+}
+.referral-benefit-mini{
+  margin:12px 0 !important;
+  padding:11px 13px !important;
+  border-radius:16px !important;
+}
+.referral-code-field{
+  padding:10px 12px !important;
+  border-radius:16px !important;
+}
+.referral-code-field input.is-filled-referral,
+.referral-code-field input:not(:placeholder-shown){
+  border-color:rgba(19,200,243,.8) !important;
+  background:rgba(19,200,243,.13) !important;
+}
+.referral-detected{
+  margin-top:7px !important;
+}
+@media(max-width:900px){
+  .referral-hero{
+    grid-template-columns:1fr !important;
+    gap:18px !important;
+  }
+  .referral-main{
+    margin-top:18px !important;
+  }
+  .referral-hero .check-list{
+    display:none !important;
+  }
+  .referral-benefit-mini{
+    font-size:14px !important;
+  }
+}
+@media(max-width:520px){
+  .referral-header,
+  .referral-main{
+    width:min(100% - 24px,1180px) !important;
+  }
+  .referral-header .brand img{
+    width:54px !important;
+    height:54px !important;
+  }
+  .referral-header .brand span{
+    font-size:15px !important;
+  }
+  .referral-hero h1{
+    font-size:36px !important;
+  }
+  .referral-hero .lead{
+    font-size:15.5px !important;
+  }
+  .ref-code-card strong{
+    font-size:23px !important;
+  }
+  .referral-page .booking-form{
+    padding:18px !important;
+  }
+}
+
+
+/* v31: referral code must be visibly recognized and form-filled */
+.ref-code-card[hidden],
+.ref-code-missing[hidden]{display:none !important;}
+.ref-code-card{
+  border:1px solid rgba(19,200,243,.62) !important;
+  background:linear-gradient(135deg,rgba(19,200,243,.20),rgba(255,255,255,.06)) !important;
+  box-shadow:0 18px 50px rgba(19,200,243,.14) !important;
+}
+.ref-code-card span{
+  color:#7feaff !important;
+}
+.ref-code-card strong{
+  color:#ffffff !important;
+  text-shadow:0 0 18px rgba(19,200,243,.35);
+}
+.ref-code-missing{
+  margin:12px 0;
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  background:rgba(255,255,255,.04);
+  color:var(--soft);
+  font-size:14px;
+}
+.ref-code-missing strong{
+  display:block;
+  color:#fff;
+  margin-bottom:4px;
+}
+.referral-code-field input.is-filled-referral{
+  border-color:#46dfff !important;
+  background:rgba(19,200,243,.16) !important;
+  box-shadow:0 0 0 4px rgba(19,200,243,.15), inset 0 1px 0 rgba(255,255,255,.10) !important;
+  color:#fff !important;
+}
+button[disabled]{
+  opacity:.72;
+  cursor:wait;
+}
+
+
+/* v35: referral page compact balanced form */
+.referral-page .booking-form.referral-form{
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:12px 16px !important;
+  padding:clamp(16px,2.4vw,24px) !important;
+}
+.referral-page .booking-form.referral-form label{
+  margin:0 !important;
+}
+.referral-page .booking-form.referral-form input,
+.referral-page .booking-form.referral-form select,
+.referral-page .booking-form.referral-form textarea{
+  min-height:48px !important;
+}
+.referral-page .booking-form.referral-form input[type="date"]{
+  color-scheme:dark;
+  appearance:auto;
+  -webkit-appearance:auto;
+  font-weight:850;
+}
+.referral-page .booking-form.referral-form textarea{
+  min-height:92px !important;
+}
+.referral-page .booking-form.referral-form .full,
+.referral-page .booking-form.referral-form .consent,
+.referral-page .booking-form.referral-form button.full,
+.referral-page .booking-form.referral-form .form-note{
+  grid-column:1 / -1 !important;
+}
+.referral-page .referral-code-field{
+  margin-top:2px !important;
+}
+.referral-page .consent{
+  margin-top:4px !important;
+}
+.referral-page .form-note{
+  margin-top:0 !important;
+}
+@media(max-width:640px){
+  .referral-page .booking-form.referral-form{
+    grid-template-columns:1fr !important;
+    gap:11px !important;
+  }
+  .referral-page .booking-form.referral-form input,
+  .referral-page .booking-form.referral-form select{
+    min-height:46px !important;
+  }
+  .referral-page .booking-form.referral-form textarea{
+    min-height:84px !important;
+  }
+}
+
+
+/* v36: keep main-page Danke-Code CTA, remove old booking slot feel */
+.booking-copy .referral-slot{
+  margin-top:18px;
+  padding:20px;
+  border-radius:24px;
+  border:1px solid rgba(19,200,243,.30);
+  background:linear-gradient(135deg,rgba(19,200,243,.10),rgba(255,255,255,.035));
+}
+.booking-copy .referral-slot h3{
+  margin:0 0 8px;
+  font-size:clamp(22px,2.2vw,30px);
+}
+.booking-copy .referral-slot p{
+  margin:0 0 16px;
+  color:var(--soft);
+  line-height:1.45;
+}
+.booking-copy .referral-slot .btn{
+  width:auto;
+  min-width:0;
+  padding-inline:24px;
+}
+@media(max-width:720px){
+  .booking-copy .referral-slot{
+    padding:16px;
+    border-radius:20px;
+  }
+  .booking-copy .referral-slot .btn{
+    width:100%;
+    justify-content:center;
+  }
+}

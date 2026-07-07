@@ -41,24 +41,102 @@ function doPost(e) {
 
 
 function saveWebsiteLead_(lead) {
+  var now = lead.createdAt || new Date().toISOString();
+  var state = loadState_() || {
+    version: 6,
+    createdAt: now,
+    updatedAt: now,
+    users: [],
+    settings: {},
+    counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
+    people: [],
+    leads: [],
+    jobs: [],
+    rewards: [],
+    finance: { manualIncome: [], expenses: [] },
+    audit: []
+  };
+
+  state.counters = state.counters || {};
+  state.counters.nextPerson = state.counters.nextPerson || 1001;
+  state.counters.nextLead = state.counters.nextLead || 1;
+  state.people = state.people || [];
+  state.leads = state.leads || [];
+  state.jobs = state.jobs || [];
+  state.rewards = state.rewards || [];
+  state.finance = state.finance || { manualIncome: [], expenses: [] };
+  state.audit = state.audit || [];
+
+  var key = String(lead.websiteLeadKey || '').trim();
+  if (key && state.leads.some(function(l) { return l.websiteLeadKey === key; })) {
+    return json_({ ok: true, duplicate: true, savedAt: new Date().toISOString() });
+  }
+
+  var referral = cleanCode_(lead.referral || '');
+  var personId = 'LM' + (state.counters.nextPerson++);
+  var leadId = 'L' + String(state.counters.nextLead++).padStart(4, '0');
+  var source = referral ? 'Website Empfehlung' : 'Website Anfrage';
+
+  var person = {
+    id: personId,
+    status: 'lead',
+    name: lead.name || '',
+    phone: lead.phone || '',
+    email: '',
+    address: lead.address || lead.place || '',
+    place: lead.place || '',
+    source: source,
+    referredById: referral,
+    createdAt: now,
+    createdBy: 'website',
+    customerSince: ''
+  };
+
+  var notes = [
+    lead.desiredDate ? ('Wunsch-Termin: ' + lead.desiredDate) : '',
+    lead.message ? ('Beschreibung: ' + lead.message) : ''
+  ].filter(Boolean).join('
+');
+
+  var leadObj = {
+    id: leadId,
+    personId: personId,
+    service: lead.service || '',
+    source: source,
+    expectedValue: '',
+    appointmentAt: '',
+    referredById: referral,
+    status: 'Offen',
+    createdAt: now,
+    createdBy: 'website',
+    notes: notes,
+    websiteLeadKey: key
+  };
+
+  state.people.push(person);
+  state.leads.push(leadObj);
+  state.audit.push({ at: now, by: 'website', reason: 'website lead created ' + leadId });
+  state.updatedAt = new Date().toISOString();
+
+  writeSheets_(state);
+  saveState_(state, null);
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = getOrCreateSheet_(ss, 'Website Leads', [
-    'createdAt','name','phone','place','service','desiredDate','referral','message','source','status'
+    'websiteLeadKey','createdAt','leadId','lumianNr','name','phone','address','place','service','desiredDate','referral','message','source','status'
   ]);
   sheet.appendRow([
-    lead.createdAt || new Date().toISOString(),
-    lead.name || '',
-    lead.phone || '',
-    lead.place || '',
-    lead.service || '',
-    lead.desiredDate || '',
-    lead.referral || '',
-    lead.message || '',
-    lead.source || 'Website Anfrage',
-    'Neu'
+    key, now, leadId, personId, lead.name || '', lead.phone || '', lead.address || '', lead.place || '', lead.service || '',
+    lead.desiredDate || '', referral, lead.message || '', source, 'Offen'
   ]);
-  return json_({ ok: true, savedAt: new Date().toISOString() });
+
+  return json_({ ok: true, leadId: leadId, personId: personId, savedAt: new Date().toISOString() });
 }
+
+function cleanCode_(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+}
+
 
 function doGet(e) {
   var action = (e.parameter.action || '').toLowerCase();
@@ -69,7 +147,36 @@ function doGet(e) {
       .createTextOutput(callback + '(' + JSON.stringify({ ok: true, state: state }) + ');')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
+  if (action === 'websiteleads') {
+    return ContentService
+      .createTextOutput(callback + '(' + JSON.stringify({ ok: true, leads: readWebsiteLeads_() }) + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
   return json_({ ok: true, message: 'Lumian Portal backend is running.' });
+}
+
+
+
+function normalizeWebsiteLeadRow_(obj) {
+  obj.address = obj.address || obj['Strasse/Nr'] || obj['StrasseNr'] || obj['Adresse'] || '';
+  obj.place = obj.place || obj['PLZ/Ort'] || obj['PLZOrt'] || obj['Ort'] || '';
+  return obj;
+}
+
+function readWebsiteLeads_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Website Leads');
+  if (!sheet) return [];
+  var values = sheet.getDataRange().getValues();
+  if (!values || values.length < 2) return [];
+  var headers = values[0].map(function(h) { return String(h || '').trim(); });
+  return values.slice(1).filter(function(row) {
+    return row.some(function(cell) { return String(cell || '').trim() !== ''; });
+  }).map(function(row) {
+    var obj = {};
+    headers.forEach(function(h, i) { obj[h] = row[i] instanceof Date ? row[i].toISOString() : row[i]; });
+    return normalizeWebsiteLeadRow_(obj);
+  });
 }
 
 function savePhoto_(folder, job, photo, type) {
@@ -119,7 +226,7 @@ function loadState_() {
 
 function writeSheets_(state) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  writeSheet_(ss, 'People', ['LumianNr','Status','Name','Phone','Email','Address','Place','Source','ReferredBy','CreatedAt','CreatedBy','CustomerSince'], (state.people || []).map(function(p) {
+  writeSheet_(ss, 'People', ['LumianNr','Status','Name','Phone','Email','Strasse/Nr','PLZ/Ort','Source','ReferredBy','CreatedAt','CreatedBy','CustomerSince'], (state.people || []).map(function(p) {
     return [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.createdAt,p.createdBy,p.customerSince];
   }));
   writeSheet_(ss, 'Leads', ['LeadId','LumianNr','Service','Source','ExpectedValue','AppointmentAt','ReferredBy','Status','CreatedAt','CreatedBy','Notes'], (state.leads || []).map(function(l) {

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Danke-Code einlösen | Lumian Services</title>
+<meta name="description" content="Sie wurden von einem Lumian Kunden empfohlen. Senden Sie kurz Ihre Anfrage – Lumian Services meldet sich persönlich für Termin, Preis und Details."/>
+<link rel="canonical" href="https://www.lumianservices.ch/empfehlung/"/>
+<link rel="icon" href="https://www.lumianservices.ch/favicon.ico" sizes="any"/>
+<link rel="icon" href="https://www.lumianservices.ch/favicon-192.png" sizes="192x192" type="image/png"/>
+<link rel="apple-touch-icon" href="https://www.lumianservices.ch/apple-touch-icon.png" sizes="180x180"/>
+<meta property="og:title" content="Danke-Code einlösen | Lumian Services"/>
+<meta property="og:description" content="Sie wurden von einem Lumian Kunden empfohlen. Anfrage kurz senden – Lumian meldet sich persönlich."/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://www.lumianservices.ch/empfehlung/"/>
+<meta property="og:image" content="https://www.lumianservices.ch/assets/img/lumian-logo-dark.png"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:image" content="https://www.lumianservices.ch/assets/img/lumian-logo-dark.png"/>
+<link rel="stylesheet" href="../styles.css?v=36"/>
+</head>
+<body class="referral-page">
+<a class="skip-link" href="#main">Direkt zum Inhalt</a>
+<div class="liquid-bg" aria-hidden="true">
+<span class="bubble bubble-1"></span>
+<span class="bubble bubble-2"></span>
+<span class="bubble bubble-3"></span>
+</div>
+
+<header class="referral-header">
+  <a class="brand" href="../index.html" aria-label="Lumian Services Startseite">
+    <img src="../assets/img/lumian-logo-dark.png" width="92" height="92" alt="Lumian Services Logo"/>
+    <span>Lumian Services</span>
+  </a>
+  <a class="btn btn-ghost btn-small" href="../index.html">Zur Website</a>
+</header>
+
+<main id="main" class="referral-main">
+  <section class="referral-hero">
+    <div class="referral-hero-copy reveal in-view">
+      <p class="section-kicker">Empfehlung</p>
+      <h1>Danke-Code erhalten?</h1>
+      <p class="lead">Willkommen bei Lumian Services. Wenn Sie einen Danke-Code oder Empfehlungslink erhalten haben, wird der Code automatisch übernommen. Senden Sie uns kurz Ihre Angaben — wir melden uns persönlich per WhatsApp oder Telefon.</p>
+      <div class="ref-code-card" data-ref-code-card hidden>
+        <span>Empfehlungs-/Danke-Code erkannt</span>
+        <strong data-ref-code-display></strong>
+        <small>Dieser Code wird mit Ihrer Anfrage mitgesendet.</small>
+      </div>
+      <div class="ref-code-missing" data-ref-code-missing>
+        <strong>Kein Code erkannt?</strong>
+        <span>Tragen Sie den Empfehlungs-/Danke-Code unten ein, falls Sie ihn separat erhalten haben.</span>
+      </div>
+      <div class="referral-benefit-mini">
+        <strong>So läuft es:</strong>
+        <span>Anfrage senden → Lumian meldet sich → Termin & Preis werden persönlich bestätigt.</span>
+      </div>
+      <ul class="check-list compact">
+        <li>Keine Online-Zahlung.</li>
+        <li>Fotos können danach per WhatsApp gesendet werden.</li>
+        <li>Termin erst nach persönlicher Bestätigung fix.</li>
+      </ul>
+    </div>
+
+    <form class="booking-form referral-form reveal in-view" data-booking-form="" data-referral-form="" data-lead-webhook="">
+      <label>
+        Name
+        <input autocomplete="name" name="name" placeholder="Ihr Name" required type="text"/>
+      </label>
+      <label>
+        Telefon / WhatsApp
+        <input autocomplete="tel" inputmode="tel" name="phone" placeholder="z.B. 077 123 45 67" required type="tel"/>
+      </label>
+      <label>
+        Strasse / Nr.
+        <input autocomplete="street-address" name="address" placeholder="z.B. Bahnhofstrasse 8" required type="text"/>
+      </label>
+      <label>
+        Ort / PLZ
+        <input autocomplete="address-level2" name="place" placeholder="z.B. 5600 Lenzburg" required type="text"/>
+      </label>
+      <label>
+        Service
+        <select name="service" required>
+          <option value="">Bitte wählen</option>
+          <option>Fensterreinigung</option>
+          <option>Storen / Rollläden</option>
+          <option>Dachrinnenreinigung</option>
+          <option>Terrasse / Balkon</option>
+          <option>Aussenreinigung</option>
+          <option>Kombination / weiss noch nicht</option>
+        </select>
+      </label>
+      <label>
+        Wunsch-Datum
+        <input name="date" type="date" data-date-input/>
+      </label>
+      <label class="full">
+        Kurze Beschreibung
+        <textarea name="message" placeholder="z.B. 8 Fenster, 2 Storen, Balkon, Fotos sende ich gleich." rows="4"></textarea>
+      </label>
+      <label class="full referral-line referral-code-field">
+        Ihr Empfehlungs-/Danke-Code
+        <input id="referralCodeInput" name="referral" placeholder="Code aus Ihrer Empfehlung" type="text" data-referral-input/>
+        <small class="referral-detected" data-referral-detected hidden>Code wurde erkannt und automatisch eingetragen.</small>
+      </label>
+      <label class="consent full">
+        <input required type="checkbox"/>
+        <span>Ich habe die <a href="../datenschutz.html">Datenschutzerklärung</a> gelesen und bin einverstanden, dass Lumian Services meine Anfrage beantwortet.</span>
+      </label>
+      <button class="btn btn-primary full" type="submit">Anfrage per WhatsApp senden</button>
+      <p class="form-note full">WhatsApp öffnet sich mit allen Angaben inklusive Empfehlungs-/Danke-Code.</p>
+    </form>
+  </section>
+</main>
+
+<footer class="site-footer referral-footer">
+  <div class="container footer-grid">
+    <div>
+      <img src="../assets/img/lumian-logo-dark.png" width="92" height="92" alt="Lumian Services Logo"/>
+      <p>Lumian Services. Reinigung mit frischem Anspruch.</p>
+    </div>
+    <div>
+      <h3>Kontakt</h3>
+      <a href="tel:+41772794707">+41 77 279 47 07</a>
+      <a href="https://wa.me/41772794707" rel="noopener" target="_blank">WhatsApp</a>
+      <a href="mailto:info@lumianservices.ch">info@lumianservices.ch</a>
+    </div>
+    <div>
+      <h3>Rechtliches</h3>
+      <a href="../impressum.html">Impressum</a>
+      <a href="../datenschutz.html">Datenschutz</a>
+      <a href="../cookies.html">Cookies</a>
+    </div>
+  </div>
+<p class="footer-copy">© 2026 Lumian Services. Alle Rechte vorbehalten.</p>
+</footer>
+
+
+<script>
+(function(){
+  function clean(v){return String(v||'').trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'');}
+  function getCode(){
+    try{
+      var s=new URLSearchParams(location.search);
+      var h=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+      return clean(s.get('ref')||s.get('code')||s.get('danke')||s.get('dankecode')||h.get('ref')||h.get('code')||h.get('danke')||'');
+    }catch(e){return '';}
+  }
+  function apply(){
+    var code=getCode();
+    if(!code) return;
+    try{ sessionStorage.setItem('lumianReferralCode', code); }catch(e){}
+    var input=document.querySelector('[name="referral"]');
+    var card=document.querySelector('[data-ref-code-card]');
+    var display=document.querySelector('[data-ref-code-display]');
+    var note=document.querySelector('[data-referral-detected]');
+    var missing=document.querySelector('[data-ref-code-missing]');
+    if(input){ input.value=code; input.classList.add('is-filled-referral'); }
+    if(display) display.textContent=code;
+    if(card) card.hidden=false;
+    if(note) note.hidden=false;
+    if(missing) missing.hidden=true;
+    document.body.classList.add('has-referral-code');
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', apply);
+  else apply();
+})();
+</script>
+
+<script defer src="../lead-config.js?v=36"></script>
+<script defer src="../script.js?v=36"></script>
+</body>
+</html>

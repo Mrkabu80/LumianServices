@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=26">
+  <link rel="stylesheet" href="portal.css?v=39">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -81,7 +81,8 @@
           </ol>
         </div>
         <div class="quick-actions">
-          <button class="primary" data-open-lead>+ Lead hinzufügen</button>
+            <button class="primary" data-open-lead>+ Lead hinzufügen</button>
+            <button class="secondary small-inline" type="button" data-check-website-leads>Neue Anfragen prüfen</button>
           <button class="secondary" data-open-job>+ Job erstellen</button>
           <button class="secondary" data-sync-now>Google Sheet syncen</button>
         </div>
@@ -103,7 +104,7 @@
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
           </div>
         </div>
-        <div class="import-hint">Excel-Vorlage herunterladen, ausfüllen, als CSV speichern und importieren. Neue Lumian-Nrn. werden automatisch erzeugt.</div>
+        <div class="import-hint">CSV-Vorlage: Strasse/Nr. und PLZ/Ort getrennt ausfüllen.</div>
         <div class="search-row">
           <input data-lead-search placeholder="Lead suchen: M, Müller, Ort, Service, LM-Nr.">
           <select data-lead-filter>
@@ -432,8 +433,8 @@
         <label>Name<input name="name" required autocomplete="name" placeholder="z.B. Maria Müller"></label>
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
-        <label class="wide">Adresse<input name="address" autocomplete="street-address" placeholder="Strasse, PLZ Ort"></label>
-        <label>Ort<input name="place" autocomplete="address-level2" placeholder="Lenzburg"></label>
+        <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
+        <label>PLZ / PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination / weiss noch nicht</option></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label>Betrag/Schätzung CHF<input name="expectedValue" type="number" min="0" step="10" placeholder="350"></label>
@@ -461,8 +462,8 @@
         <label>Name<input name="name" required autocomplete="name" placeholder="z.B. Maria Müller"></label>
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
-        <label class="wide">Adresse<input name="address" autocomplete="street-address" placeholder="Strasse, PLZ Ort"></label>
-        <label>Ort<input name="place" autocomplete="address-level2" placeholder="Lenzburg"></label>
+        <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
+        <label>PLZ / PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Quelle<select name="source"><option>Import / Manuell</option><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Andere</option></select></label>
         <label class="wide">Notizen<textarea name="notes" rows="3" placeholder="z.B. Stammkunde, bevorzugte Zeiten, Besonderheiten..."></textarea></label>
       </div>
@@ -489,8 +490,8 @@
         <label>Name<input name="name" required autocomplete="name"></label>
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email"></label>
-        <label class="wide">Adresse<input name="address" autocomplete="street-address"></label>
-        <label>Ort<input name="place" autocomplete="address-level2"></label>
+        <label>Strasse / Nr.<input name="address" autocomplete="street-address" placeholder="z.B. Bahnhofstrasse 8"></label>
+        <label>PLZ / PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination</option></select></label>
         <label>Termin<input name="appointmentAt" type="datetime-local"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
@@ -541,6 +542,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=26"></script>
+  <script src="portal.js?v=39"></script>
 </body>
 </html>

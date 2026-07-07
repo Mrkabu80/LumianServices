@@ -1,36 +1,53 @@
-Lumian Portal v5 — einfache interne Handy-App
-==============================================
+Lumian Portal v6 — SEO + internes Portal
+=========================================
 
 URL nach Upload:
 https://www.lumianservices.ch/portal/
 
 Wichtig:
+- Das öffentliche SEO der Lumian Website bleibt enthalten.
 - Das Portal ist in robots.txt blockiert und hat noindex/nofollow.
 - Es ist eine einfache statische Web-App für GitHub Pages.
 - Login/Passwort schützen lokal auf dem Gerät, sind aber keine echte Server-Security.
 - Für echte Sicherheit später: Cloudflare Access, Firebase/Supabase Login oder Google Login.
 
-Was neu ist in v5:
-- Separates Portal-App-Icon und eigener PWA-Start unter /portal/.
-- Button "Als App speichern" mit iPhone/Android Anleitung.
-- Noah und Timo setzen beim ersten Login ihr eigenes Passwort.
-- Passwortänderung im Setup.
-- Passwort vergessen über Reset-Code im Setup.
-- Face ID / Touch ID / Passkey kann pro Gerät im Setup aktiviert werden, wenn Browser und Handy es unterstützen.
-- Leads, Jobs und Kunden sind klar getrennt:
-  Lead = Anfrage.
-  Job = geplanter/bestätigter Termin oder Auftrag.
-  Kunde = automatisch nach erledigtem oder bezahltem Job.
-- Bei Lead oder direktem Job wird sofort eine Lumian-Nr. erstellt, z.B. LM1001.
-- Wenn ein direkter Job noch nicht erledigt ist, bleibt die Person als Lead/Kontakt geführt.
-- Telefonnummern werden auf Schweizer Format geprüft.
-- WhatsApp nutzt automatisch +41 ohne die erste 0.
-- Wenn keine Telefonnummer vorhanden ist, erscheinen keine Anruf-/WhatsApp-Buttons.
-- E-Mail-Felder werden validiert.
-- "Reminder an Kunden" ist klar als Kunden-WhatsApp bezeichnet.
-- Kalender-Button erzeugt eine .ics Datei für Apple/Google Kalender.
-- Vorher/Nachher Fotos werden im Browser komprimiert.
-- Mit Google Apps Script + Drive Folder ID werden Fotos beim Sync in Google Drive gespeichert.
+Neu in v6:
+- Dark Theme wieder verbessert, näher an der besseren früheren Version.
+- Login-Screen nutzt das originale Lumian Logo auf hellem Logo-Feld.
+- Desktop/Web-Ansicht verbessert: Tabs, Buttons, Importbereiche und Karten sind besser nutzbar.
+- Mobile-App-Ansicht bleibt optimiert.
+- Kunden-Import ergänzt.
+- Lead-Import ergänzt.
+- Excel-kompatible CSV-Vorlagen direkt im Portal herunterladbar.
+- Import ist unter Leads, Kunden und Setup verfügbar.
+- Bei Import ohne Lumian-Nr. wird automatisch LM1001, LM1002 usw. generiert.
+- Wenn eine Lumian-Nr. in der Importdatei steht, wird sie übernommen, sofern sie frei ist oder aktualisiert den bestehenden Datensatz.
+- Schweizer Telefonnummern und E-Mail-Adressen werden beim Import geprüft.
+
+Ablauf im Portal:
+- Lead = Anfrage, noch kein bestätigter Auftrag.
+- Job = Termin, Besichtigung oder Reinigung ist geplant/bestätigt.
+- Kunde = automatisch nach erledigtem oder bezahltem Job.
+- Auch ein direkt erstellter Job erzeugt zuerst eine Person mit Lumian-Nr.; solange der Job nicht erledigt/bezahlt ist, bleibt sie als Lead/Kontakt geführt.
+
+Import Kunden:
+1. Portal -> Kunden -> Vorlage herunterladen.
+2. Datei in Excel oder Numbers öffnen.
+3. Kunden einfüllen.
+4. Als CSV speichern.
+5. Portal -> Kunden importieren.
+
+Kunden-Spalten:
+LumianNr; Name; Telefon; Email; Adresse; Ort; Quelle; EmpfohlenVon; KundeSeit; Notizen
+
+Import Leads:
+1. Portal -> Leads -> Vorlage herunterladen.
+2. Leads einfüllen.
+3. Als CSV speichern.
+4. Portal -> Leads importieren.
+
+Lead-Spalten:
+Name; Telefon; Email; Adresse; Ort; Service; Quelle; Betrag; Termin; EmpfohlenVon; Notizen
 
 Google Sheet/Drive Setup:
 1. Google Sheet erstellen, z.B. "Lumian Portal".

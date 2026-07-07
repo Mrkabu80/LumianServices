@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
-  <meta name="theme-color" content="#0b2f3f">
+  <meta name="theme-color" content="#061018">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lumian Portal">
@@ -95,8 +95,13 @@
             <h2>Leads</h2>
             <p class="muted">Anfragen speichern. Jede Person erhält sofort eine Lumian-Nr. wie LM1001.</p>
           </div>
-          <button class="primary" data-open-lead>+ Lead hinzufügen</button>
+          <div class="panel-actions">
+            <button class="secondary" type="button" data-download-leads-template>Vorlage herunterladen</button>
+            <label class="file-button small">Leads importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
+            <button class="primary" data-open-lead>+ Lead hinzufügen</button>
+          </div>
         </div>
+        <div class="import-hint">Excel-Vorlage herunterladen, ausfüllen, als CSV speichern und importieren. Neue Lumian-Nrn. werden automatisch erzeugt.</div>
         <div class="search-row">
           <input data-lead-search placeholder="Lead suchen: M, Müller, Ort, Service, LM-Nr.">
           <select data-lead-filter>
@@ -134,8 +139,13 @@
             <h2>Kunden</h2>
             <p class="muted">Kunden entstehen automatisch nach erledigtem oder bezahltem Job.</p>
           </div>
-          <button class="secondary" data-export-csv>Excel Export</button>
+          <div class="panel-actions">
+            <button class="secondary" type="button" data-download-customers-template>Vorlage herunterladen</button>
+            <label class="file-button small">Kunden importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-customers hidden></label>
+            <button class="secondary" data-export-csv>Excel Export</button>
+          </div>
         </div>
+        <div class="import-hint">Bestehende Kunden können per Excel/CSV importiert werden. Wenn keine Lumian-Nr. mitgegeben wird, erstellt das Portal automatisch eine.</div>
         <div class="search-row">
           <input data-customer-search placeholder="Kunden suchen: M, Müller, Lenzburg, LM1001">
           <button class="secondary" data-show-all-customers>Alle anzeigen</button>
@@ -232,13 +242,17 @@
           </fieldset>
 
           <fieldset>
-            <legend>Daten & Backup</legend>
+            <legend>Daten, Import & Backup</legend>
             <div class="button-row vertical">
+              <button class="secondary" type="button" data-download-customers-template>Kunden-Vorlage herunterladen</button>
+              <label class="file-button">Kunden importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-customers hidden></label>
+              <button class="secondary" type="button" data-download-leads-template>Lead-Vorlage herunterladen</button>
+              <label class="file-button">Leads importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
               <button class="secondary" type="button" data-export-json>Backup JSON</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
               <button class="secondary danger" type="button" data-reset-demo>Lokale Daten löschen</button>
             </div>
-            <p class="hint">Lokale Daten löschen nur auf diesem Gerät. Vorher JSON exportieren oder Google Sheet syncen.</p>
+            <p class="hint">Excel kann CSV-Dateien öffnen und speichern. Für echte Synchronisation zwischen Handys danach Google Sheet syncen.</p>
           </fieldset>
 
           <button class="primary wide" type="submit">Setup speichern</button>

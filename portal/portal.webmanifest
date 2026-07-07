@@ -5,8 +5,8 @@
   "start_url": "/portal/",
   "scope": "/portal/",
   "display": "standalone",
-  "background_color": "#0b2f3f",
-  "theme_color": "#0b2f3f",
+  "background_color": "#061018",
+  "theme_color": "#061018",
   "orientation": "portrait-primary",
   "lang": "de-CH",
   "icons": [

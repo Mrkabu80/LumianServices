@@ -33,7 +33,7 @@
 
   function newState() {
     return {
-      version: 5,
+      version: 6,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       users: USERS.map(u => ({ ...u, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '' })),
@@ -63,7 +63,7 @@
   function migrateState(s) {
     const base = newState();
     const merged = { ...base, ...s };
-    merged.version = 5;
+    merged.version = 6;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     merged.counters = { ...base.counters, ...(s.counters || {}) };
     merged.users = USERS.map(u => {
@@ -649,6 +649,156 @@
   });
   $('[data-logout]')?.addEventListener('click', () => { currentUser = ''; sessionStorage.removeItem(SESSION_KEY); renderLogin(); });
 
+
+  function csvEscape(value) {
+    return `"${String(value ?? '').replace(/"/g,'""')}"`;
+  }
+  function csvLine(values) {
+    return values.map(csvEscape).join(';');
+  }
+  function downloadCustomersTemplate() {
+    const rows = [
+      ['LumianNr','Name','Telefon','Email','Adresse','Ort','Quelle','EmpfohlenVon','KundeSeit','Notizen'],
+      ['', 'Maria Müller', '077 535 05 71', 'maria@email.ch', 'Musterstrasse 1, 5600 Lenzburg', 'Lenzburg', 'Empfehlung', 'LM1001', '', 'bestehender Kunde']
+    ];
+    downloadText('lumian-kunden-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
+  }
+  function downloadLeadsTemplate() {
+    const rows = [
+      ['Name','Telefon','Email','Adresse','Ort','Service','Quelle','Betrag','Termin','EmpfohlenVon','Notizen'],
+      ['Peter Beispiel', '079 123 45 67', '', 'Beispielweg 2, 5400 Baden', 'Baden', 'Fensterreinigung', 'Google', '350', '2026-07-20 14:00', 'LM1001', 'Besichtigung nötig']
+    ];
+    downloadText('lumian-leads-import-vorlage.csv', rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
+  }
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], field = '', quoted = false;
+    const src = String(text || '').replace(/^\uFEFF/, '');
+    for (let i = 0; i < src.length; i++) {
+      const ch = src[i], next = src[i+1];
+      if (quoted) {
+        if (ch === '"' && next === '"') { field += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else field += ch;
+      } else {
+        if (ch === '"') quoted = true;
+        else if (ch === ';' || ch === ',') { row.push(field.trim()); field = ''; }
+        else if (ch === '\n') { row.push(field.trim()); if (row.some(v => v !== '')) rows.push(row); row = []; field = ''; }
+        else if (ch !== '\r') field += ch;
+      }
+    }
+    row.push(field.trim()); if (row.some(v => v !== '')) rows.push(row);
+    return rows;
+  }
+  function normHeader(h) {
+    return String(h || '').toLowerCase().replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/[^a-z0-9]/g,'');
+  }
+  function rowObjects(rows) {
+    if (!rows.length) return [];
+    const headers = rows[0].map(normHeader);
+    return rows.slice(1).map(r => Object.fromEntries(headers.map((h,i)=>[h, r[i] || '']))).filter(o => Object.values(o).some(Boolean));
+  }
+  function findReferral(input) {
+    const q = String(input || '').trim().toLowerCase();
+    if (!q) return '';
+    const hit = state.people.find(p => [p.id,p.name,p.phone,p.email].join(' ').toLowerCase().includes(q));
+    return hit?.id || '';
+  }
+  function bumpPersonCounterFromId(id) {
+    const m = String(id || '').match(/^LM(\d+)$/i);
+    if (!m) return;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n >= state.counters.nextPerson) state.counters.nextPerson = n + 1;
+  }
+  function dateForInput(value) {
+    const v = String(value || '').trim();
+    if (!v) return '';
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return v.slice(0,16);
+    const cleaned = v.replace(' ', 'T');
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(cleaned)) return cleaned.slice(0,16);
+    return v;
+  }
+  function importCustomersFromObjects(items) {
+    let imported = 0, skipped = 0; const errors = [];
+    for (const o of items) {
+      const name = o.name || o.kundenname || o.customer || '';
+      const phone = o.telefon || o.phone || o.natel || '';
+      const email = o.email || o.mail || '';
+      if (!name && !phone) { skipped++; continue; }
+      const parsed = parseSwissPhone(phone);
+      if (phone && !parsed.ok) { skipped++; errors.push(`${name || phone}: Telefon ungültig`); continue; }
+      if ((email || '').trim() && !validateEmail(email)) { skipped++; errors.push(`${name || email}: E-Mail ungültig`); continue; }
+      const wantedId = (o.lumiannr || o.kundennr || o.kundennummer || o.customerid || '').toUpperCase().replace(/\s/g,'');
+      let person = wantedId ? personById(wantedId) : null;
+      if (!person && parsed.ok && !parsed.empty) person = state.people.find(p => parseSwissPhone(p.phone).tel === parsed.tel);
+      if (!person) {
+        person = { id: wantedId && /^LM\d+$/i.test(wantedId) ? wantedId : nextId('person'), createdAt:new Date().toISOString(), createdBy:currentUser };
+        state.people.push(person);
+      }
+      Object.assign(person, {
+        status:'customer',
+        name: name || person.name || '',
+        phone: parsed.ok && !parsed.empty ? parsed.tel : (person.phone || ''),
+        email: email || person.email || '',
+        address: o.adresse || o.address || person.address || '',
+        place: o.ort || o.place || person.place || '',
+        source: o.quelle || o.source || person.source || 'Import',
+        referredById: findReferral(o.empfohlenvon || o.referral || o.referredby) || person.referredById || '',
+        customerSince: dateForInput(o.kundeseit || o.customersince) || person.customerSince || new Date().toISOString(),
+        notes: o.notizen || o.notes || person.notes || '',
+        updatedAt:new Date().toISOString(), updatedBy:currentUser
+      });
+      bumpPersonCounterFromId(person.id);
+      imported++;
+    }
+    saveState('customers import');
+    renderAll();
+    let msg = `${imported} Kunde(n) importiert.` + (skipped ? ` ${skipped} übersprungen.` : '');
+    if (errors.length) msg += ` Fehler: ${errors.slice(0,3).join(' | ')}`;
+    toast(msg);
+  }
+  function importLeadsFromObjects(items) {
+    let imported = 0, skipped = 0; const errors = [];
+    for (const o of items) {
+      const name = o.name || o.kundenname || '';
+      const phone = o.telefon || o.phone || o.natel || '';
+      const email = o.email || o.mail || '';
+      if (!name && !phone) { skipped++; continue; }
+      const parsed = parseSwissPhone(phone);
+      if (phone && !parsed.ok) { skipped++; errors.push(`${name || phone}: Telefon ungültig`); continue; }
+      if ((email || '').trim() && !validateEmail(email)) { skipped++; errors.push(`${name || email}: E-Mail ungültig`); continue; }
+      const person = findOrCreatePerson({
+        name, phone, email,
+        address: o.adresse || o.address || '',
+        place: o.ort || o.place || '',
+        source: o.quelle || o.source || 'Import',
+        referredById: findReferral(o.empfohlenvon || o.referral || o.referredby)
+      });
+      const exists = state.leads.some(l => l.personId === person.id && l.service === (o.service || 'Fensterreinigung') && l.status === 'Offen');
+      if (!exists) state.leads.push({
+        id: nextId('lead'), personId: person.id,
+        service: o.service || 'Fensterreinigung', source: o.quelle || o.source || 'Import',
+        expectedValue: o.betrag || o.schaetzung || o.expectedvalue || '',
+        appointmentAt: dateForInput(o.termin || o.appointment || o.appointmentat),
+        referredById: person.referredById || '', status:'Offen', notes:o.notizen || o.notes || '',
+        createdAt:new Date().toISOString(), createdBy:currentUser
+      });
+      imported++;
+    }
+    saveState('leads import');
+    renderAll();
+    let msg = `${imported} Lead(s) importiert.` + (skipped ? ` ${skipped} übersprungen.` : '');
+    if (errors.length) msg += ` Fehler: ${errors.slice(0,3).join(' | ')}`;
+    toast(msg);
+  }
+  async function importCsvFile(file, type) {
+    if (!file) return;
+    const rows = parseCsv(await file.text());
+    const objects = rowObjects(rows);
+    if (!objects.length) return toast('Importdatei ist leer oder hat keine Kopfzeile.');
+    if (type === 'customers') importCustomersFromObjects(objects); else importLeadsFromObjects(objects);
+  }
+
   function exportCsv() {
     const rows = [['LumianNr','Status','Name','Telefon','Email','Adresse','Ort','Quelle','EmpfohlenVon','KundeSeit']]
       .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '']));
@@ -656,6 +806,10 @@
   }
   function exportJson() { downloadText(`lumian-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,2), 'application/json'); }
   function downloadText(name, text, type) { const blob = new Blob([text], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+  $$('[data-download-customers-template]').forEach(btn => btn.addEventListener('click', downloadCustomersTemplate));
+  $$('[data-download-leads-template]').forEach(btn => btn.addEventListener('click', downloadLeadsTemplate));
+  $$('[data-import-customers]').forEach(input => input.addEventListener('change', async event => { await importCsvFile(event.target.files?.[0], 'customers'); event.target.value=''; }));
+  $$('[data-import-leads]').forEach(input => input.addEventListener('change', async event => { await importCsvFile(event.target.files?.[0], 'leads'); event.target.value=''; }));
   $('[data-export-csv]')?.addEventListener('click', exportCsv);
   $('[data-export-json]')?.addEventListener('click', exportJson);
   $('[data-import-json]')?.addEventListener('change', async event => {

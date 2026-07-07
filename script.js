@@ -4,6 +4,35 @@ const business = {
   email: 'info@lumianservices.ch'
 };
 
+
+function parseSwissDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  let m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    if (!Number.isNaN(d.getTime())) return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  }
+  m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (!Number.isNaN(d.getTime())) return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  }
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+}
+
+function isPastSwissDate(value) {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!m) return false;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const today = new Date(); today.setHours(0,0,0,0);
+  return d.getTime() < today.getTime();
+}
+
+
 const navToggle = document.querySelector('[data-nav-toggle]');
 const nav = document.querySelector('[data-nav]');
 if (navToggle && nav) {
@@ -129,6 +158,14 @@ if (form) {
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const data = new FormData(form);
+    const dateInput = form.querySelector('[data-date-input]');
+    if (dateInput && dateInput.value.trim()) {
+      const formattedDate = parseSwissDate(dateInput.value);
+      if (!formattedDate) { dateInput.classList.add('invalid'); dateInput.focus(); alert('Bitte Wunsch-Datum im Format TT.MM.JJJJ eingeben.'); return; }
+      if (isPastSwissDate(formattedDate)) { dateInput.classList.add('invalid'); dateInput.focus(); alert('Bitte kein Datum in der Vergangenheit wählen.'); return; }
+      dateInput.value = formattedDate;
+      data.set('date', formattedDate);
+    }
     const referral = currentReferralCode();
     const lead = {
       name: data.get('name') || '',
@@ -178,12 +215,14 @@ if (form) {
 
 
 function initDateInputs() {
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  document.querySelectorAll('input[type="date"][data-date-input]').forEach(input => {
-    input.min = `${yyyy}-${mm}-${dd}`;
+  document.querySelectorAll('[data-date-input][data-ch-date]').forEach(input => {
+    input.placeholder = input.placeholder || 'TT.MM.JJJJ';
+    input.addEventListener('input', () => input.classList.remove('invalid'));
+    input.addEventListener('blur', () => {
+      if (!input.value.trim()) return;
+      const formatted = parseSwissDate(input.value);
+      if (formatted) input.value = formatted;
+    });
   });
 }
 initDateInputs();

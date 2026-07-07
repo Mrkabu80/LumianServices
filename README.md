@@ -97,3 +97,8 @@ Rechtliches aktualisiert:
 
 
 v43: Fixed Google Apps Script syntax error caused by broken newline in join('\n') and added getOrCreateSheet_ helper.
+
+
+## v73
+- Ensured GOOGLE-APPS-SCRIPT.gs is syntactically complete at runSyncTest_.
+- Calendar/Drive sync test function closes correctly and can be deployed in Apps Script.

@@ -1491,3 +1491,75 @@ button[disabled]{
     flex-basis:24px !important;
   }
 }
+
+
+/* v46: final consent checkbox alignment fix on homepage + referral */
+.booking-form label.consent,
+.referral-form label.consent,
+label.consent{
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:flex-start !important;
+  justify-content:flex-start !important;
+  gap:10px !important;
+  column-gap:10px !important;
+  row-gap:0 !important;
+  width:100% !important;
+  max-width:100% !important;
+  margin:8px 0 0 !important;
+  padding:0 !important;
+  text-align:left !important;
+}
+.booking-form label.consent input[type="checkbox"],
+.referral-form label.consent input[type="checkbox"],
+label.consent input[type="checkbox"]{
+  width:22px !important;
+  min-width:22px !important;
+  max-width:22px !important;
+  height:22px !important;
+  min-height:22px !important;
+  max-height:22px !important;
+  flex:0 0 22px !important;
+  margin:2px 0 0 0 !important;
+  padding:0 !important;
+  display:block !important;
+  position:static !important;
+  transform:none !important;
+  appearance:auto !important;
+  -webkit-appearance:checkbox !important;
+  border-radius:5px !important;
+}
+.booking-form label.consent span,
+.referral-form label.consent span,
+label.consent span{
+  display:block !important;
+  flex:1 1 auto !important;
+  min-width:0 !important;
+  max-width:calc(100% - 34px) !important;
+  margin:0 !important;
+  padding:0 !important;
+  line-height:1.35 !important;
+}
+@media(max-width:760px){
+  .booking-form label.consent,
+  .referral-form label.consent,
+  label.consent{
+    gap:10px !important;
+  }
+  .booking-form label.consent input[type="checkbox"],
+  .referral-form label.consent input[type="checkbox"],
+  label.consent input[type="checkbox"]{
+    width:24px !important;
+    min-width:24px !important;
+    max-width:24px !important;
+    height:24px !important;
+    min-height:24px !important;
+    max-height:24px !important;
+    flex-basis:24px !important;
+  }
+  .booking-form label.consent span,
+  .referral-form label.consent span,
+  label.consent span{
+    max-width:calc(100% - 34px) !important;
+  }
+}

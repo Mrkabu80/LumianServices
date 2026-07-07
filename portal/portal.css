@@ -2619,3 +2619,25 @@ input,select,textarea{max-width:100% !important}
     gap:8px;
   }
 }
+
+
+/* v45: checkbox/radio must not inherit full-width portal input styling */
+.portal input[type="checkbox"],
+.portal input[type="radio"],
+.modal-card input[type="checkbox"],
+.modal-card input[type="radio"]{
+  width:22px !important;
+  max-width:22px !important;
+  min-width:22px !important;
+  height:22px !important;
+  min-height:22px !important;
+  max-height:22px !important;
+  padding:0 !important;
+  margin:0 10px 0 0 !important;
+  flex:0 0 22px !important;
+  display:inline-block !important;
+  box-sizing:border-box !important;
+  appearance:auto !important;
+  -webkit-appearance:checkbox !important;
+  accent-color:#22d3ee;
+}

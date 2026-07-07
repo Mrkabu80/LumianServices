@@ -35,7 +35,7 @@
     googleReviewUrl: 'https://g.page/r/CQIaGL8jXr4wEAI/review',
     scriptUrl: 'https://script.google.com/macros/s/AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg/exec',
     driveFolderId: '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr',
-    calendarId: 'https://calendar.google.com/calendar/ical/lumianservices%40gmail.com/public/basic.ics',
+    calendarId: 'lumianservices@gmail.com',
     recoveryCode: 'Lumian-Reset-2026',
     referralTemplate: 'Hoi {{name}}, danke nochmals für dein Vertrauen in Lumian Services.\n\nWenn du uns an Freunde, Familie oder Nachbarn weiterempfiehlst, erhalten sie CHF {{bonus}} Rabatt auf ihren ersten Auftrag ab CHF {{minOrder}}. Du erhältst nach abgeschlossenem Auftrag ebenfalls CHF {{bonus}} Guthaben für deine nächste Reinigung.\n\nDein Empfehlungslink:\n{{referralLink}}\n\nLiebe Grüsse\nLumian Services',
     newCustomerTemplate: 'Hoi {{name}}, danke für deine Anfrage bei Lumian Services.\n\nGerne schauen wir uns dein Anliegen an und melden uns mit einem Vorschlag. Wenn du über eine Empfehlung kommst, gilt der CHF {{bonus}} Vorteil ab einem Auftrag von CHF {{minOrder}}.\n\nLiebe Grüsse\nLumian Services',
@@ -756,21 +756,27 @@
   function paidJobs() {
     return state.jobs.filter(isPaidJob);
   }
+  function isPipelineAllOpen(range) {
+    return range?.period === 'todate';
+  }
   function forecastJobs(range) {
     return state.jobs
       .filter(isOpenJob)
       .filter(j => amountValue(j.amount) > 0)
-      .filter(j => dateInRange(j.appointmentAt || j.createdAt, range.from, range.to))
+      // Bei "Bisher / bis heute" ist die echte Buchhaltung bis heute,
+      // aber die Pipeline soll alle aktuell offenen Jobs zeigen, auch zukünftige Termine.
+      .filter(j => isPipelineAllOpen(range) || dateInRange(j.appointmentAt || j.createdAt, range.from, range.to))
       .map(j => {
         const p = personById(j.personId) || {};
-        return { type:'Forecast', id:j.id, date:j.appointmentAt || j.createdAt, title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:amountValue(j.amount), personId:j.personId, jobId:j.id, status:j.status, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
+        return { type:'Pipeline', id:j.id, date:j.appointmentAt || j.createdAt, title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:amountValue(j.amount), personId:j.personId, jobId:j.id, status:j.status, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
       });
   }
   function forecastLeadItems(range) {
     return state.leads
       .filter(l => !['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden','Verloren'].includes(l.status))
       .filter(l => amountValue(l.expectedValue) > 0)
-      .filter(l => dateInRange(l.appointmentAt || l.createdAt, range.from, range.to))
+      // Bei "Bisher / bis heute" bleibt Pipeline offen = alles, was offen ist.
+      .filter(l => isPipelineAllOpen(range) || dateInRange(l.appointmentAt || l.createdAt, range.from, range.to))
       .map(l => {
         const p = personById(l.personId) || {};
         return { type:'Lead Schätzung', id:l.id, date:l.appointmentAt || l.createdAt, title:`${p.name || l.personId} · ${l.service || 'Reinigung'}`, amount:amountValue(l.expectedValue), personId:l.personId, leadId:l.id, status:l.status || 'Offen', createdBy:l.createdBy || '', assignedTo:'' };
@@ -838,7 +844,7 @@
     $('[data-finance-stats]').innerHTML = [
       ['Bezahlte Jobs', money(s.jobIncome), `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
-      ['Voraussichtlich', money(s.forecastTotal), `${s.forecast.length} Job(s) + ${s.forecastLeads.length} Lead(s)`],
+      ['Pipeline offen', money(s.forecastTotal), `${s.forecast.length} Job(s) + ${s.forecastLeads.length} Lead(s)`],
       ['Ausgaben', money(s.expenseTotal), `${s.expenses.length} Kostenposition(en)`],
       ['Gewinn', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
     ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
@@ -865,7 +871,7 @@
     const max = Math.max(s.incomeTotal, s.forecastTotal || 0, s.expenseTotal, Math.abs(s.profit), 1);
     const rows = [
       ['Bezahlte Einnahmen', s.incomeTotal, 'income'],
-      ['Voraussichtlich', s.forecastTotal, 'forecast'],
+      ['Pipeline offen', s.forecastTotal, 'forecast'],
       ['Ausgaben', s.expenseTotal, 'expense'],
       ['Gewinn', s.profit, s.profit >= 0 ? 'profit' : 'loss']
     ];
@@ -1925,7 +1931,7 @@
       ['Kennzahl','CHF','Info'],
       ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
-      ['Voraussichtlich / noch nicht kassiert', s.forecastTotal, `${s.forecast.length} offene/geplante Jobs`],
+      ['Pipeline offen / noch nicht kassiert', s.forecastTotal, `${s.forecast.length} offene/geplante Jobs + ${s.forecastLeads.length} offene Leads`],
       ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
       ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
     ];
@@ -1936,7 +1942,7 @@
     ];
     const forecastRows = [
       ['Typ','Datum','Kunde/Titel','Status','Betrag CHF','Zuständig','JobID'],
-      ...s.forecastAll.map(x => ['Voraussichtlich', fmtDateOnly(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
+      ...s.forecastAll.map(x => ['Pipeline offen', fmtDateOnly(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
     ];
     const expenseRows = [
       ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID'],
@@ -1956,7 +1962,7 @@
     downloadExcelXml(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.xls`, [
       ['Zusammenfassung', summary, [220,130,280]],
       ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100]],
-      ['Voraussichtlich', forecastRows, [130,90,220,130,90,130,100]],
+      ['Pipeline offen', forecastRows, [130,90,220,130,90,130,100]],
       ['Ausgaben', expenseRows, [90,140,220,90,130,240,100]],
       ['Kundenaktivität', customerRows, [90,170,120,130,100,90,100,80]]
     ]);

@@ -179,3 +179,12 @@ V70 Drive-/Kalender-Sync stabilisiert
 - Neuer Sheet-Tab "Photo Sync" zeigt Drive-Status/Fehler je Foto.
 - Job-Karten zeigen Status-Badges: "Foto wartet auf Drive", "Fotos in Drive", "Kalender wartet", "Kalender sync" oder Fehler.
 - Hinweis: Der iCal-Link ist nur lesbar. Für echten Google-Calendar-Sync muss das Google-Konto, unter dem Apps Script läuft, Schreibzugriff auf den Kalender lumianservices@gmail.com haben.
+
+
+V71 Pipeline + Drive/Calendar Diagnose
+--------------------------------------
+- Buchhaltung: Bei "Bisher / bis heute" bleiben bezahlte Einnahmen/Ausgaben bis heute, aber "Pipeline offen" zählt alle aktuell offenen Leads und offenen Jobs, auch zukünftige Termine.
+- Bezeichnung im Portal und Excel-Report von "Voraussichtlich" auf "Pipeline offen" geändert.
+- Google Calendar Default ist jetzt direkt lumianservices@gmail.com. Der iCal-Link ist nur lesbar und kann nicht zum Schreiben genutzt werden.
+- Apps Script schreibt zusätzlich "Sync Diagnostics" und speichert Cloud State in einem eigenen Sheet, damit grössere Zustände und Foto-Metadaten nicht mehr an Script-Properties scheitern.
+- Drive-Fotos nutzen weiterhin den Ordner 1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr und werden in Kundenordnern LMxxxx als Jxxxx_before.jpg / Jxxxx_after.jpg gespeichert.

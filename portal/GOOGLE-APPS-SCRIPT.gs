@@ -12,6 +12,9 @@
  * 6) Create/paste a Google Drive folder ID for photos in the portal settings.
  */
 
+var DEFAULT_DRIVE_FOLDER_ID = '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr';
+var DEFAULT_CALENDAR_ID = 'lumianservices@gmail.com';
+
 function doPost(e) {
   try {
     var payload = JSON.parse(e.postData.contents || '{}');
@@ -21,19 +24,31 @@ function doPost(e) {
 
     var state = payload.state || {};
     var settings = state.settings || {};
-    var folderId = settings.driveFolderId || '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr';
+    settings.driveFolderId = settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+    settings.calendarId = settings.calendarId || DEFAULT_CALENDAR_ID;
+    state.settings = settings;
+    var folderId = settings.driveFolderId;
     var photoFolder = null;
     state.photoSyncLog = [];
+    state.syncDiagnostics = [];
+    state.syncDiagnostics.push(['Sync gestartet', new Date().toISOString(), '', '']);
+    state.syncDiagnostics.push(['Drive Folder ID', folderId || '', '', '']);
+    state.syncDiagnostics.push(['Calendar ID input', settings.calendarId || '', 'parsed: ' + parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID), '']);
+    state.syncDiagnostics.push(['Jobs mit lokalen Fotos', countLocalPhotoJobs_(state), '', '']);
+    state.syncDiagnostics.push(['Jobs mit Termin', countAppointmentJobs_(state), '', '']);
 
     if (folderId) {
       try {
         photoFolder = DriveApp.getFolderById(folderId);
         state.photoSyncLog.push(['', '', '', '', 'Drive Hauptordner OK: ' + photoFolder.getName(), new Date().toISOString()]);
+        state.syncDiagnostics.push(['Drive Zugriff', 'OK', photoFolder.getName(), photoFolder.getUrl()]);
       } catch (driveErr) {
         state.photoSyncLog.push(['', '', '', '', 'Drive Fehler: Ordner nicht gefunden oder keine Berechtigung für ID ' + folderId + ' · ' + String(driveErr), new Date().toISOString()]);
+        state.syncDiagnostics.push(['Drive Zugriff', 'FEHLER', folderId, String(driveErr)]);
       }
     } else {
       state.photoSyncLog.push(['', '', '', '', 'Kein Drive Folder ID in Einstellungen gesetzt.', new Date().toISOString()]);
+      state.syncDiagnostics.push(['Drive Zugriff', 'FEHLT', '', 'Keine Folder ID gesetzt']);
     }
 
     if (photoFolder && state.jobs) {
@@ -99,7 +114,7 @@ function resetAll_(confirmText) {
   website.clearContents();
   website.appendRow(['websiteLeadKey','createdAt','leadId','lumianNr','name','phone','Strasse/Nr','PLZ/Ort','service','desiredDate','referral','message','source','status']);
 
-  PropertiesService.getScriptProperties().setProperty('LUMIAN_STATE', JSON.stringify(state));
+  saveState_(state, null);
   return json_({ ok: true, resetAt: new Date().toISOString() });
 }
 
@@ -249,6 +264,22 @@ function readWebsiteLeads_() {
   });
 }
 
+function countLocalPhotoJobs_(state) {
+  var count = 0;
+  ((state && state.jobs) || []).forEach(function(j) {
+    if ((j.beforePhoto && j.beforePhoto.dataUrl) || (j.afterPhoto && j.afterPhoto.dataUrl)) count++;
+  });
+  return count;
+}
+
+function countAppointmentJobs_(state) {
+  var count = 0;
+  ((state && state.jobs) || []).forEach(function(j) {
+    if (j && j.appointmentAt && !isCancelledJob_(j)) count++;
+  });
+  return count;
+}
+
 function savePhoto_(rootFolder, state, job, photo, type) {
   if (!photo) return photo;
   if (photo.url && !photo.dataUrl) return photo;
@@ -270,9 +301,16 @@ function savePhoto_(rootFolder, state, job, photo, type) {
   var existing = customerFolder.getFilesByName(filename);
   while (existing.hasNext()) existing.next().setTrashed(true);
   var file = customerFolder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  var shareNote = '';
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (shareErr) {
+    // Some Google accounts/domains block public file sharing. The file is still saved;
+    // the owner can still open it in Drive, but the thumbnail link may not be public.
+    shareNote = ' · Hinweis: Public Sharing nicht gesetzt: ' + String(shareErr);
+  }
 
-  if (state.photoSyncLog) state.photoSyncLog.push([job.id || '', job.personId || '', type, filename, 'gespeichert in ' + customerFolder.getName(), new Date().toISOString()]);
+  if (state.photoSyncLog) state.photoSyncLog.push([job.id || '', job.personId || '', type, filename, 'gespeichert in ' + customerFolder.getName() + shareNote, new Date().toISOString()]);
 
   return {
     type: type,
@@ -332,23 +370,26 @@ function calendarEventForJob_(calendar, job, start) {
 
 function syncCalendar_(state, settings) {
   settings = settings || {};
-  var calendarId = parseCalendarId_(settings.calendarId || '');
-  if (!calendarId) return;
+  var calendarId = parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID);
+  if (!calendarId) calendarId = DEFAULT_CALENDAR_ID;
 
   var calendar = null;
   var rows = [];
   try {
     calendar = calendarId === 'primary' ? CalendarApp.getDefaultCalendar() : CalendarApp.getCalendarById(calendarId);
   } catch (e) {
-    rows.push(['', '', '', '', '', 'Kalender nicht gefunden/keine Schreibberechtigung: ' + calendarId + ' (iCal ist nur lesbar; Apps Script braucht Zugriff zum Schreiben)' + ' · ' + String(e)]);
+    rows.push(['', '', '', '', '', 'Kalender nicht gefunden/keine Schreibberechtigung: ' + calendarId + ' · iCal ist nur lesbar; Apps Script braucht Schreibzugriff auf den Kalender. Prüfe: Script läuft als Konto mit Zugriff oder Kalender ist mit Änderungen freigegeben. Fehler: ' + String(e)]);
     state.calendarSyncLog = rows;
+    if (state.syncDiagnostics) state.syncDiagnostics.push(['Kalender Zugriff', 'FEHLER', calendarId, String(e)]);
     return;
   }
   if (!calendar) {
-    rows.push(['', '', '', '', '', 'Kalender nicht gefunden/keine Schreibberechtigung: ' + calendarId + ' (iCal ist nur lesbar; Apps Script braucht Zugriff zum Schreiben)']);
+    rows.push(['', '', '', '', '', 'Kalender nicht gefunden/keine Schreibberechtigung: ' + calendarId + ' · iCal ist nur lesbar; Apps Script braucht Schreibzugriff auf diesen Kalender.']);
     state.calendarSyncLog = rows;
+    if (state.syncDiagnostics) state.syncDiagnostics.push(['Kalender Zugriff', 'FEHLER', calendarId, 'CalendarApp.getCalendarById returned null']);
     return;
   }
+  if (state.syncDiagnostics) state.syncDiagnostics.push(['Kalender Zugriff', 'OK', calendarId, calendar.getName()]);
 
   var jobs = state.jobs || [];
   for (var i = 0; i < jobs.length; i++) {
@@ -440,18 +481,63 @@ function sanitizeDriveName_(value) {
   return safe.slice(0, 80);
 }
 
+function stateForStorage_(state) {
+  // Never store huge local base64 image payloads in Script Properties / Sheet state.
+  // If Drive upload worked, savePhoto_ already replaced dataUrl with Drive metadata.
+  // If Drive upload failed, keep an error marker but strip the base64 to avoid breaking cloud state.
+  var clean = JSON.parse(JSON.stringify(state || {}));
+  (clean.jobs || []).forEach(function(job) {
+    ['beforePhoto', 'afterPhoto'].forEach(function(key) {
+      var ph = job[key];
+      if (ph && ph.dataUrl) {
+        delete ph.dataUrl;
+        ph.localOnly = true;
+        ph.error = ph.error || 'Foto wurde nicht in Drive gespeichert. Drive Folder ID/Berechtigung prüfen und Foto erneut auswählen.';
+        ph.errorAt = ph.errorAt || new Date().toISOString();
+      }
+    });
+  });
+  return clean;
+}
+
 function saveState_(state, folder) {
-  var json = JSON.stringify(state);
+  var clean = stateForStorage_(state);
+  var json = JSON.stringify(clean);
   if (folder) {
     var filename = 'lumian-portal-state.json';
     var files = folder.getFilesByName(filename);
     while (files.hasNext()) files.next().setTrashed(true);
     folder.createFile(filename, json, 'application/json');
   }
-  PropertiesService.getScriptProperties().setProperty('LUMIAN_STATE', json);
+  saveStateToSheet_(json);
+  try {
+    // Small pointer/cache only. If the state becomes too large, the Sheet remains the source of truth.
+    PropertiesService.getScriptProperties().setProperty('LUMIAN_STATE', json.slice(0, 8000));
+  } catch (e) {}
+}
+
+function saveStateToSheet_(json) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('Cloud State') || ss.insertSheet('Cloud State');
+  sh.clearContents();
+  sh.getRange(1,1,1,3).setValues([['Part','Json','UpdatedAt']]).setFontWeight('bold');
+  var chunkSize = 45000;
+  var rows = [];
+  for (var i = 0; i < json.length; i += chunkSize) {
+    rows.push([rows.length + 1, json.slice(i, i + chunkSize), new Date().toISOString()]);
+  }
+  if (rows.length) sh.getRange(2,1,rows.length,3).setValues(rows);
+  sh.autoResizeColumns(1, 3);
 }
 
 function loadState_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('Cloud State');
+  if (sh && sh.getLastRow() > 1) {
+    var values = sh.getRange(2, 2, sh.getLastRow() - 1, 1).getValues();
+    var rawFromSheet = values.map(function(r) { return String(r[0] || ''); }).join('');
+    if (rawFromSheet) return JSON.parse(rawFromSheet);
+  }
   var raw = PropertiesService.getScriptProperties().getProperty('LUMIAN_STATE') || '';
   if (!raw) return null;
   return JSON.parse(raw);
@@ -471,6 +557,7 @@ function writeSheets_(state) {
   writePhotosSheet_(ss, state);
   writePhotoSyncSheet_(ss, state);
   writeCalendarSyncSheet_(ss, state);
+  writeSyncDiagnosticsSheet_(ss, state);
   writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','CreatedAt','CreatedBy'], (state.rewards || []).map(function(r) {
     return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,r.createdAt,r.createdBy];
   }));
@@ -479,7 +566,7 @@ function writeSheets_(state) {
   writeSheet_(ss, 'Finance Summary', ['Kennzahl','CHF','Info'], [
     ['Bezahlte Jobs', finance.paidJobsTotal, finance.paidJobsCount + ' kassierte Jobs'],
     ['Manuell ergänzt', finance.manualIncomeTotal, finance.manualIncomeCount + ' Eintrag(e)'],
-    ['Voraussichtlich', finance.forecastTotal, finance.forecastJobsCount + ' Job(s) + ' + finance.forecastLeadsCount + ' Lead(s)'],
+    ['Pipeline offen', finance.forecastTotal, finance.forecastJobsCount + ' Job(s) + ' + finance.forecastLeadsCount + ' Lead(s)'],
     ['Ausgaben', finance.expenseTotal, finance.expenseCount + ' Kostenposition(en)'],
     ['Gewinn', finance.paidJobsTotal + finance.manualIncomeTotal - finance.expenseTotal, 'bezahlte Einnahmen minus Ausgaben']
   ]);
@@ -510,6 +597,12 @@ function writeCalendarSyncSheet_(ss, state) {
 function writePhotoSyncSheet_(ss, state) {
   var rows = state.photoSyncLog || [];
   writeSheet_(ss, 'Photo Sync', ['JobId','LumianNr','Type','FileName','Status','SyncedAt'], rows);
+}
+
+function writeSyncDiagnosticsSheet_(ss, state) {
+  var rows = state.syncDiagnostics || [];
+  if (!rows.length) rows = [['Keine Diagnose vorhanden', new Date().toISOString(), '', '']];
+  writeSheet_(ss, 'Sync Diagnostics', ['Check','Wert','Info','Details'], rows);
 }
 
 function writePhotosSheet_(ss, state) {

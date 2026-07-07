@@ -173,7 +173,7 @@
         <div class="panel-head">
           <div>
             <h2>Buchhaltung</h2>
-            <p class="muted">Bezahlte Jobs und manuelle Einnahmen minus Ausgaben. Voraussichtlich enthält offene/geplante Jobs und offene Leads mit Betrag.</p>
+            <p class="muted">Bezahlte Jobs und manuelle Einnahmen minus Ausgaben. Pipeline offen zeigt offene/geplante Jobs und offene Leads mit Betrag. Bei "Bisher / bis heute" bleibt Pipeline offen bewusst zukunftsgerichtet.</p>
           </div>
           <div class="panel-actions">
             <button class="secondary" type="button" data-finance-export>Excel-Report exportieren</button>
@@ -344,9 +344,9 @@
             <label>Google Drive Folder ID für Fotos
               <input name="driveFolderId" placeholder="optional, für Vorher/Nachher Fotos">
             </label>
-            <p class="hint">Fotos werden beim Sync so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Termine werden mit dem Lumian Google Calendar erstellt/aktualisiert. Wichtig: Ein iCal-Link ist nur lesbar; Apps Script braucht Schreibzugriff auf den Kalender. Der iCal-Link wird automatisch zur Calendar ID lumianservices@gmail.com umgewandelt.</p>
-            <label>Google Calendar ID oder iCal-Link
-              <input name="calendarId" placeholder="lumianservices@gmail.com oder iCal-Link">
+            <p class="hint">Fotos werden beim Sync so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Termine werden mit dem Lumian Google Calendar erstellt/aktualisiert. Wichtig: Der iCal-Link ist nur zum Lesen. Für automatisches Erstellen braucht Apps Script Schreibzugriff auf den Kalender lumianservices@gmail.com. Trage deshalb als Calendar ID am besten direkt lumianservices@gmail.com ein.</p>
+            <label>Google Calendar ID
+              <input name="calendarId" placeholder="lumianservices@gmail.com">
             </label>
             <div class="button-row">
               <button class="secondary" type="button" data-sync-now>Sync senden</button>

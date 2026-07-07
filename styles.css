@@ -1563,3 +1563,134 @@ label.consent span{
     max-width:calc(100% - 34px) !important;
   }
 }
+
+
+/* v50: homepage-only mobile centering and overflow fix */
+@media (max-width: 760px){
+  body.page-home{
+    overflow-x:hidden !important;
+  }
+  body.page-home .site-header{
+    overflow:hidden !important;
+  }
+  body.page-home .container{
+    width:calc(100% - 36px) !important;
+    max-width:var(--container) !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+  }
+  body.page-home .hero{
+    padding-top:34px !important;
+    overflow:hidden !important;
+  }
+  body.page-home .hero-grid{
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 auto !important;
+    gap:18px !important;
+  }
+  body.page-home .hero-logo-card{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    margin:0 auto !important;
+    box-sizing:border-box !important;
+    overflow:visible !important;
+  }
+  body.page-home .logo-stage{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    min-height:315px !important;
+    padding:28px 18px 34px !important;
+    box-sizing:border-box !important;
+    border-radius:26px !important;
+    display:grid !important;
+    place-items:center !important;
+    overflow:hidden !important;
+  }
+  body.page-home .hero-logo-img{
+    width:min(82vw,330px) !important;
+    max-width:86% !important;
+    height:auto !important;
+    display:block !important;
+    margin:0 auto !important;
+    object-fit:contain !important;
+  }
+  body.page-home .logo-pill{
+    left:50% !important;
+    right:auto !important;
+    bottom:18px !important;
+    transform:translateX(-50%) !important;
+    width:max-content !important;
+    max-width:calc(100% - 34px) !important;
+    white-space:normal !important;
+    text-align:center !important;
+  }
+  body.page-home .mini-cards{
+    width:100% !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+    grid-template-columns:1fr !important;
+    gap:10px !important;
+  }
+  body.page-home .mini-cards > div{
+    width:100% !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+  }
+  body.page-home h1,
+  body.page-home h2,
+  body.page-home h3,
+  body.page-home p,
+  body.page-home .hero-lead,
+  body.page-home .section-head,
+  body.page-home .service-card,
+  body.page-home .split-card,
+  body.page-home .final-card,
+  body.page-home .area-grid{
+    max-width:100% !important;
+    overflow-wrap:anywhere;
+  }
+}
+@media (max-width: 420px){
+  body.page-home .container{
+    width:calc(100% - 32px) !important;
+  }
+  body.page-home .logo-stage{
+    min-height:300px !important;
+    padding:24px 16px 32px !important;
+  }
+  body.page-home .hero-logo-img{
+    width:min(80vw,305px) !important;
+    max-width:84% !important;
+  }
+}
+
+/* v50: cookie notice should be compact and not cover half the mobile screen */
+@media (max-width: 760px){
+  .cookie-notice{
+    left:16px !important;
+    right:16px !important;
+    bottom:calc(env(safe-area-inset-bottom) + 16px) !important;
+    width:auto !important;
+    max-width:calc(100vw - 32px) !important;
+    padding:16px !important;
+    border-radius:22px !important;
+  }
+  .cookie-notice p{
+    font-size:14px !important;
+    line-height:1.45 !important;
+  }
+  .cookie-actions{
+    display:grid !important;
+    grid-template-columns:1fr 1fr;
+    gap:10px !important;
+    align-items:center !important;
+  }
+  .cookie-actions .btn{
+    grid-column:1 / -1;
+    width:100% !important;
+    min-height:48px !important;
+  }
+}

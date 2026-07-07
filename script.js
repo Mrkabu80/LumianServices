@@ -136,7 +136,7 @@ if (form) {
     if (submitButton) { submitButton.disabled = true; submitButton.textContent = 'Anfrage wird vorbereitet...'; }
 
     // Store in webhook if configured, but always open WhatsApp so the Anfrage is not lost.
-    await sendLeadWebhook(lead);
+    sendLeadWebhook(lead).then(result => { try { sessionStorage.setItem('lumianLastLeadWebhook', JSON.stringify({ at: new Date().toISOString(), result })); } catch (e) {} });
 
     const lines = [
       isReferralPage ? 'Hoi Lumian Services, ich komme über eine Empfehlung und möchte eine Reinigung anfragen:' : 'Hoi Lumian Services, ich möchte eine Reinigung anfragen:',
@@ -281,17 +281,23 @@ const cookieNotice = document.querySelector('[data-cookie-notice]');
 const cookieAccept = document.querySelector('[data-cookie-accept]');
 const cookieKey = 'lumian_cookie_notice_ok_v1';
 
-try {
-  if (cookieNotice && localStorage.getItem(cookieKey) !== 'yes') {
-    cookieNotice.hidden = false;
-  }
-  cookieAccept?.addEventListener('click', () => {
-    localStorage.setItem(cookieKey, 'yes');
-    if (cookieNotice) cookieNotice.hidden = true;
-  });
-} catch (error) {
-  if (cookieNotice) cookieNotice.hidden = false;
+function hasCookieConsent() {
+  try {
+    if (localStorage.getItem(cookieKey) === 'yes') return true;
+  } catch (error) {}
+  return document.cookie.split(';').some(part => part.trim() === `${cookieKey}=yes`);
 }
+function setCookieConsent() {
+  try { localStorage.setItem(cookieKey, 'yes'); } catch (error) {}
+  document.cookie = `${cookieKey}=yes; Max-Age=31536000; Path=/; SameSite=Lax`;
+}
+if (cookieNotice) {
+  cookieNotice.hidden = hasCookieConsent();
+}
+cookieAccept?.addEventListener('click', () => {
+  setCookieConsent();
+  if (cookieNotice) cookieNotice.hidden = true;
+});
 
 // Add to Home Screen / PWA install support.
 let deferredInstallPrompt = null;

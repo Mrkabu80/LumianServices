@@ -33,7 +33,7 @@
     businessPhone: '0772794707',
     referralBase: 'https://www.lumianservices.ch/empfehlung/?ref={{customerId}}',
     googleReviewUrl: 'https://g.page/r/CQIaGL8jXr4wEAI/review',
-    scriptUrl: 'https://script.google.com/macros/s/AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg/exec',
+    scriptUrl: 'https://script.google.com/macros/s/AKfycbxrPY6xXXbHjZXSaJJxujw-4xDCFhLg4aNpB7VqlxAkYmCYljSk4I2JfZ10cm1pjp9S/exec',
     driveFolderId: '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr',
     calendarId: 'lumianservices@gmail.com',
     recoveryCode: 'Lumian-Reset-2026',
@@ -92,6 +92,9 @@
     const merged = { ...base, ...s };
     merged.version = 8;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+    if (!merged.settings.scriptUrl || String(merged.settings.scriptUrl).includes('AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg')) {
+      merged.settings.scriptUrl = DEFAULT_SETTINGS.scriptUrl;
+    }
     // v27: move default referral links from homepage booking anchor to dedicated referral page.
     if (String(merged.settings.referralBase || '').includes('#booking')) merged.settings.referralBase = DEFAULT_SETTINGS.referralBase;
     merged.counters = { ...base.counters, ...(s.counters || {}) };
@@ -325,6 +328,73 @@
     const d = parseDateValue(value);
     if (!d) return value ? String(value) : '-';
     return `${fmtDateOnly(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function fmtDateTimeForField(value) {
+    if (!value) return '';
+    const d = parseDateValue(value);
+    if (!d) return String(value || '');
+    return `${fmtDateOnly(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function fmtDateOnlyForField(value) {
+    if (!value) return '';
+    const d = parseDateValue(value);
+    if (!d) return String(value || '');
+    return fmtDateOnly(d);
+  }
+
+  function isoDateOnlyFromField(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const d = parseDateValue(raw);
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function isoDateTimeFromField(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const d = parseDateValue(raw);
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function isValidSwissDateField(value, withTime = false) {
+    const raw = String(value || '').trim();
+    if (!raw) return true;
+    const re = withTime ? /^\d{1,2}\.\d{1,2}\.\d{4}(?:[,\s]+\d{1,2}:\d{2})$/ : /^\d{1,2}\.\d{1,2}\.\d{4}$/;
+    return re.test(raw) && !!parseDateValue(raw);
+  }
+
+  function markInvalidDateInput(input, label, withTime = false) {
+    if (!input || isValidSwissDateField(input.value, withTime)) { input?.classList?.remove('invalid'); return false; }
+    input.classList.add('invalid');
+    input.focus();
+    toast(`${label}: Bitte im Format ${withTime ? 'TT.MM.JJJJ HH:MM' : 'TT.MM.JJJJ'} eingeben.`);
+    return true;
+  }
+
+  function photoPreviewSrc(photo) {
+    if (!photo) return '';
+    if (photo.dataUrl) return photo.dataUrl;
+    if (photo.thumbnailUrl) return photo.thumbnailUrl;
+    if (photo.url) return photo.url;
+    if (photo.fileId) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.fileId)}&sz=w1200`;
+    return '';
+  }
+
+  function photoPreviewHtml(photos, small = false) {
+    return (photos || []).filter(Boolean).map((ph, i) => {
+      const src = photoPreviewSrc(ph);
+      const label = i ? 'Nachher Foto' : 'Vorher Foto';
+      if (!src) {
+        const drive = ph.driveUrl ? `<a href="${esc(ph.driveUrl)}" target="_blank" rel="noopener">In Drive öffnen</a>` : 'Keine Vorschau verfügbar';
+        return `<div class="photo-placeholder">${esc(label)}<br>${drive}</div>`;
+      }
+      const open = ph.driveUrl ? `<a class="photo-open" href="${esc(ph.driveUrl)}" target="_blank" rel="noopener">In Drive öffnen</a>` : '';
+      return `<div class="photo-box"><img class="${small ? 'thumb' : ''}" src="${esc(src)}" alt="${esc(label)}" loading="lazy">${open}</div>`;
+    }).join('');
   }
 
   function nextId(type) {
@@ -590,7 +660,7 @@
       ? `${currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : ''}<span class="badge money-badge total">Umsatz total ${esc(money(customerTotal))}</span>`
       : (currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : '');
     const syncBadges = jobSyncBadges(j);
-    const photos = [j.beforePhoto, j.afterPhoto].filter(Boolean).map((ph,i)=>`<img class="thumb" src="${esc(ph.dataUrl || ph.url || ph.driveUrl)}" alt="${i?'Nachher':'Vorher'} Foto">`).join('');
+    const photos = photoPreviewHtml([j.beforePhoto, j.afterPhoto], true);
     return `<article class="item-card">
       <div class="item-top">
         <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
@@ -739,8 +809,8 @@
       to = `${now.getFullYear()}-12-31`;
       label = 'Dieses Jahr';
     } else if (period === 'custom') {
-      from = $('[data-finance-from]')?.value || '';
-      to = $('[data-finance-to]')?.value || to;
+      from = isoDateOnlyFromField($('[data-finance-from]')?.value || '');
+      to = isoDateOnlyFromField($('[data-finance-to]')?.value || '') || to;
       label = from || to ? `${from ? fmtDateOnly(from) : '...'} bis ${to ? fmtDateOnly(to) : '...'}` : 'Benutzerdefiniert';
     } else {
       const month = String(now.getMonth()+1).padStart(2,'0');
@@ -826,8 +896,8 @@
     [fromWrap, toWrap].filter(Boolean).forEach(el => { el.hidden = !isCustom; });
     if (applyBtn) applyBtn.hidden = !isCustom;
     if (!isCustom) {
-      if (fromInput) fromInput.value = range.from || '';
-      if (toInput) toInput.value = range.to || '';
+      if (fromInput) fromInput.value = range.from ? fmtDateOnlyForField(range.from) : '';
+      if (toInput) toInput.value = range.to ? fmtDateOnlyForField(range.to) : '';
     }
     if (range.period === 'todate') {
       if (fromInput) fromInput.value = '';
@@ -1001,7 +1071,7 @@
       form.elements.service.value = lead.service || form.elements.service.value;
       form.elements.source.value = lead.source || person.source || 'Website';
       form.elements.expectedValue.value = lead.expectedValue || '';
-      form.elements.appointmentAt.value = lead.appointmentAt || '';
+      form.elements.appointmentAt.value = fmtDateTimeForField(lead.appointmentAt) || '';
       form.elements.referredById.value = lead.referredById || person.referredById || '';
       if (form.elements.referredById.value) setRefField('lead', form.elements.referredById.value);
       form.elements.notes.value = lead.notes || '';
@@ -1028,7 +1098,7 @@
     if (linkedLead) {
       form.elements.leadId.value = linkedLead.id || '';
       form.elements.service.value = linkedLead.service || form.elements.service.value;
-      form.elements.appointmentAt.value = linkedLead.appointmentAt || form.elements.appointmentAt.value || '';
+      form.elements.appointmentAt.value = fmtDateTimeForField(linkedLead.appointmentAt) || form.elements.appointmentAt.value || '';
       form.elements.amount.value = linkedLead.expectedValue || form.elements.amount.value || '';
       form.elements.source.value = linkedLead.source || form.elements.source.value;
       if (linkedLead.referredById) setRefField('job', linkedLead.referredById);
@@ -1043,7 +1113,7 @@
     if (lead) {
       form.elements.leadId.value = lead.id;
       form.elements.service.value = lead.service || form.elements.service.value;
-      form.elements.appointmentAt.value = lead.appointmentAt || '';
+      form.elements.appointmentAt.value = fmtDateTimeForField(lead.appointmentAt) || '';
       form.elements.amount.value = lead.expectedValue || '';
       form.elements.source.value = lead.source || form.elements.source.value;
       if (lead.referredById) setRefField('job', lead.referredById);
@@ -1052,7 +1122,7 @@
       form.elements.jobId.value = job.id;
       form.elements.leadId.value = job.leadId || '';
       form.elements.service.value = job.service || form.elements.service.value;
-      form.elements.appointmentAt.value = job.appointmentAt || '';
+      form.elements.appointmentAt.value = fmtDateTimeForField(job.appointmentAt) || '';
       form.elements.amount.value = job.amount || '';
       form.elements.status.value = job.status || 'Geplant';
       form.elements.assignedTo.value = job.assignedTo || currentUser || 'noah';
@@ -1061,7 +1131,7 @@
       if (job.referredById) setRefField('job', job.referredById);
       stagedPhotos.before = job.beforePhoto || null;
       stagedPhotos.after = job.afterPhoto || null;
-      $('[data-photo-preview]').innerHTML = [stagedPhotos.before, stagedPhotos.after].filter(Boolean).map((ph,i)=>`<img src="${esc(ph.dataUrl || ph.url || ph.driveUrl)}" alt="${i?'Nachher':'Vorher'}">`).join('');
+      $('[data-photo-preview]').innerHTML = photoPreviewHtml([stagedPhotos.before, stagedPhotos.after]);
       $('[data-job-modal-title]').textContent = 'Job bearbeiten';
     } else {
       form.elements.jobId.value = '';
@@ -1104,6 +1174,7 @@
     event.preventDefault();
     const form = event.currentTarget;
     if (!form.reportValidity() || !validateContactFields(form)) return;
+    if (markInvalidDateInput(form.elements.appointmentAt, 'Besichtigung/Termin', true)) return;
     const fd = new FormData(form);
     const p = findOrCreatePerson({
       personId: fd.get('personId'), name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById')
@@ -1122,7 +1193,7 @@
       service: fd.get('service'),
       source: fd.get('source'),
       expectedValue: fd.get('expectedValue'),
-      appointmentAt: fd.get('appointmentAt'),
+      appointmentAt: isoDateTimeFromField(fd.get('appointmentAt')),
       referredById: fd.get('referredById'),
       status: lead.status || 'Offen',
       notes: fd.get('notes'),
@@ -1135,6 +1206,7 @@
     event.preventDefault();
     const form = event.currentTarget;
     if (!form.reportValidity() || !validateContactFields(form)) return;
+    if (markInvalidDateInput(form.elements.appointmentAt, 'Termin', true)) return;
     const fd = new FormData(form);
     const lead = fd.get('leadId') ? leadById(fd.get('leadId')) : null;
     const p = findOrCreatePerson({
@@ -1149,7 +1221,7 @@
       personId: p.id,
       leadId: fd.get('leadId') || job.leadId || '',
       service: fd.get('service'),
-      appointmentAt: fd.get('appointmentAt'),
+      appointmentAt: isoDateTimeFromField(fd.get('appointmentAt')),
       amount: fd.get('amount'),
       status: fd.get('status'),
       assignedTo: fd.get('assignedTo'),
@@ -1268,7 +1340,7 @@
     const photo = await compressImage(event.target.files?.[0]);
     if (!photo) return;
     if (event.target.name === 'beforePhoto') stagedPhotos.before = photo; else stagedPhotos.after = photo;
-    $('[data-photo-preview]').innerHTML = [stagedPhotos.before, stagedPhotos.after].filter(Boolean).map((ph,i)=>`<img src="${esc(ph.dataUrl || ph.url || ph.driveUrl)}" alt="${i?'Nachher':'Vorher'}">`).join('');
+    $('[data-photo-preview]').innerHTML = photoPreviewHtml([stagedPhotos.before, stagedPhotos.after]);
     toast('Foto gespeichert. Beim Sync wird es in Drive abgelegt: Kundenordner LMxxxx → Jxxxx_before/Jxxxx_after.');
   });
 
@@ -1615,14 +1687,12 @@
   function dateForInput(value) {
     const v = String(value || '').trim();
     if (!v) return '';
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) return v.slice(0,16);
-    const cleaned = v.replace(' ', 'T');
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(cleaned)) return cleaned.slice(0,16);
-    let m = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?/);
-    if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}T${String(m[4] || '09').padStart(2,'0')}:${m[5] || '00'}`;
-    m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}T09:00`;
-    return v;
+    const parsed = parseDateValue(v);
+    if (!parsed) return v;
+    const hasTime = /\d{1,2}:\d{2}/.test(v);
+    const hh = hasTime ? String(parsed.getHours()).padStart(2,'0') : '09';
+    const mm = hasTime ? String(parsed.getMinutes()).padStart(2,'0') : '00';
+    return `${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,'0')}-${String(parsed.getDate()).padStart(2,'0')}T${hh}:${mm}`;
   }
   function importCustomersFromObjects(items) {
     let imported = 0, skipped = 0; const errors = [];
@@ -1734,6 +1804,7 @@
 
   function addManualIncome(form) {
     if (!isAdmin()) return toast('Nur Admins können Buchhaltung ändern.');
+    if (markInvalidDateInput(form.elements.from, 'Von') || markInvalidDateInput(form.elements.to, 'Bis')) return;
     const fd = new FormData(form);
     state.finance = state.finance || { manualIncome: [], expenses: [] };
     const id = fd.get('entryId');
@@ -1748,8 +1819,8 @@
     }
     Object.assign(entry, {
       title: fd.get('title'),
-      from: fd.get('from'),
-      to: fd.get('to'),
+      from: isoDateOnlyFromField(fd.get('from')),
+      to: isoDateOnlyFromField(fd.get('to')),
       amount: amountValue(fd.get('amount')),
       notes: fd.get('notes') || ''
     });
@@ -1761,6 +1832,7 @@
   }
   function addExpense(form) {
     if (!isAdmin()) return toast('Nur Admins können Buchhaltung ändern.');
+    if (markInvalidDateInput(form.elements.date, 'Datum')) return;
     const fd = new FormData(form);
     state.finance = state.finance || { manualIncome: [], expenses: [] };
     const id = fd.get('entryId');
@@ -1774,7 +1846,7 @@
       entry.updatedBy = currentUser;
     }
     Object.assign(entry, {
-      date: fd.get('date'),
+      date: isoDateOnlyFromField(fd.get('date')),
       category: fd.get('category'),
       title: fd.get('title'),
       amount: amountValue(fd.get('amount')),
@@ -1850,17 +1922,26 @@
 
   function setDefaultFinanceDates() {
     const today = ymd(new Date());
-    $$('[data-manual-income-form] input[type="date"], [data-expense-form] input[type="date"]').forEach(input => { if (!input.value) input.value = today; });
+    $$('[data-manual-income-form] [data-ch-date], [data-expense-form] [data-ch-date]').forEach(input => { if (!input.value) input.value = fmtDateOnlyForField(today); });
     const range = getFinanceRange();
     updateFinanceDateControls(range);
     if (range.period === 'custom') {
-      if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = range.from;
-      if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = range.to;
+      if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = fmtDateOnlyForField(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+      if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = fmtDateOnlyForField(ymd(new Date()));
     }
   }
   $('[data-manual-income-form]')?.addEventListener('submit', event => { event.preventDefault(); addManualIncome(event.currentTarget); });
   $('[data-expense-form]')?.addEventListener('submit', event => { event.preventDefault(); addExpense(event.currentTarget); });
   $$('[data-finance-period],[data-finance-from],[data-finance-to],[data-customer-activity-sort]').forEach(el => el.addEventListener('change', renderFinance));
+  $$('[data-ch-date],[data-ch-datetime]').forEach(el => {
+    el.addEventListener('input', () => el.classList.remove('invalid'));
+    el.addEventListener('blur', () => {
+      const withTime = el.matches('[data-ch-datetime]');
+      if (withTime && el.value && /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(el.value.trim())) el.value = el.value.trim() + ' 09:00';
+      if (!withTime && el.value) { const iso = isoDateOnlyFromField(el.value); if (iso) el.value = fmtDateOnlyForField(iso); }
+      if (withTime && el.value) { const iso = isoDateTimeFromField(el.value); if (iso) el.value = fmtDateTimeForField(iso); }
+    });
+  });
   $('[data-finance-apply]')?.addEventListener('click', renderFinance);
   document.addEventListener('click', async event => {
     const editIncome = event.target.closest('[data-edit-manual-income]');
@@ -1872,8 +1953,8 @@
       const form = $('[data-manual-income-form]');
       form.elements.entryId.value = entry.id;
       form.elements.title.value = entry.title || '';
-      form.elements.from.value = entry.from || ymd(entry.createdAt);
-      form.elements.to.value = entry.to || entry.from || ymd(entry.createdAt);
+      form.elements.from.value = fmtDateOnlyForField(entry.from || ymd(entry.createdAt));
+      form.elements.to.value = fmtDateOnlyForField(entry.to || entry.from || ymd(entry.createdAt));
       form.elements.amount.value = entry.amount || '';
       form.elements.notes.value = entry.notes || '';
       form.scrollIntoView({ behavior:'smooth', block:'center' });
@@ -1898,7 +1979,7 @@
       if (!(await confirmSensitiveAction('Ausgabe bearbeiten?'))) return;
       const form = $('[data-expense-form]');
       form.elements.entryId.value = entry.id;
-      form.elements.date.value = entry.date || ymd(entry.createdAt);
+      form.elements.date.value = fmtDateOnlyForField(entry.date || ymd(entry.createdAt));
       form.elements.category.value = entry.category || 'Sonstiges';
       form.elements.title.value = entry.title || '';
       form.elements.amount.value = entry.amount || '';

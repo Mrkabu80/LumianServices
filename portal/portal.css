@@ -3028,3 +3028,11 @@ a.file-button{
 [data-finance-apply][hidden]{
   display:none !important;
 }
+
+/* v74: Drive photo previews and Swiss date text fields */
+.photo-box{position:relative;display:grid;gap:6px;min-width:0}
+.photo-box img{background:rgba(255,255,255,.05)}
+.photo-open{display:inline-flex;justify-content:center;align-items:center;min-height:34px;border-radius:10px;background:rgba(35,200,255,.12);border:1px solid rgba(35,200,255,.28);color:#d9f8ff;text-decoration:none;font-weight:900;font-size:.8rem}
+.photo-placeholder{min-height:160px;display:grid;place-items:center;text-align:center;border:1px dashed rgba(255,255,255,.22);border-radius:16px;color:#b8c9ce;background:rgba(255,255,255,.04);padding:14px}
+.photo-placeholder a{color:#6ee7ff;font-weight:900}
+[data-ch-date],[data-ch-datetime]{letter-spacing:.02em}

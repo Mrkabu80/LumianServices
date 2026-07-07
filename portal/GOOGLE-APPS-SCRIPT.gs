@@ -123,6 +123,8 @@ function resetAll_(confirmText) {
 
 function normalizeAppointmentInput_(value) {
   var raw = String(value || '').trim();
+  var m = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?/);
+  if (m) return m[3] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[1]).padStart(2,'0') + 'T' + String(m[4] || '09').padStart(2,'0') + ':' + (m[5] || '00');
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw + 'T09:00';
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return raw.slice(0, 16);
   return '';
@@ -320,7 +322,8 @@ function savePhoto_(rootFolder, state, job, photo, type) {
   return {
     type: type,
     name: filename,
-    url: 'https://drive.google.com/uc?export=view&id=' + file.getId(),
+    url: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200',
+    thumbnailUrl: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200',
     driveUrl: file.getUrl(),
     fileId: file.getId(),
     folderName: customerFolder.getName(),
@@ -348,6 +351,10 @@ function parseCalendarId_(value) {
 function dateFromAppointment_(value) {
   var raw = String(value || '').trim();
   if (!raw) return null;
+  var swiss = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2}))?/);
+  if (swiss) {
+    return new Date(Number(swiss[3]), Number(swiss[2]) - 1, Number(swiss[1]), Number(swiss[4] || 9), Number(swiss[5] || 0), 0);
+  }
   var m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|\s)?(?:(\d{2}):(\d{2}))?/);
   if (m) {
     return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 9), Number(m[5] || 0), 0);
@@ -357,20 +364,49 @@ function dateFromAppointment_(value) {
   return d;
 }
 
-function calendarEventForJob_(calendar, job, start) {
+function calendarSearchWindow_() {
+  var now = new Date();
+  return { from: new Date(now.getFullYear() - 2, 0, 1), to: new Date(now.getFullYear() + 3, 11, 31) };
+}
+
+function findCalendarEventsForJob_(calendar, job) {
+  var events = [];
+  if (!job || !job.id) return events;
   if (job.calendarEventId) {
     try {
       var existing = calendar.getEventById(job.calendarEventId);
-      if (existing) return existing;
+      if (existing) events.push(existing);
     } catch (e) {}
   }
   try {
-    var from = new Date(start.getTime() - 24 * 60 * 60 * 1000);
-    var to = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-    var found = calendar.getEvents(from, to, { search: String(job.id || '') });
-    if (found && found.length) return found[0];
+    var win = calendarSearchWindow_();
+    var found = calendar.getEvents(win.from, win.to, { search: String(job.id || '') }) || [];
+    for (var i = 0; i < found.length; i++) {
+      var duplicate = false;
+      for (var j = 0; j < events.length; j++) {
+        try { if (events[j].getId() === found[i].getId()) duplicate = true; } catch (ignore) {}
+      }
+      if (!duplicate) events.push(found[i]);
+    }
   } catch (e2) {}
-  return null;
+  return events;
+}
+
+function calendarEventForJob_(calendar, job) {
+  var events = findCalendarEventsForJob_(calendar, job);
+  var keep = events.length ? events[0] : null;
+  for (var i = 1; i < events.length; i++) {
+    try { events[i].deleteEvent(); } catch (e) {}
+  }
+  return keep;
+}
+
+function deleteCalendarEventsForJob_(calendar, job) {
+  var events = findCalendarEventsForJob_(calendar, job);
+  for (var i = 0; i < events.length; i++) {
+    try { events[i].deleteEvent(); } catch (e) {}
+  }
+  return events.length;
 }
 
 function syncCalendar_(state, settings) {
@@ -405,10 +441,7 @@ function syncCalendar_(state, settings) {
 
     try {
       if (!start) {
-        if (job.calendarEventId) {
-          var oldEvent = calendar.getEventById(job.calendarEventId);
-          if (oldEvent) oldEvent.deleteEvent();
-        }
+        deleteCalendarEventsForJob_(calendar, job);
         job.calendarEventId = '';
         job.calendarSyncedAt = '';
         job.calendarSyncStatus = 'kein Termin';
@@ -417,10 +450,7 @@ function syncCalendar_(state, settings) {
       }
 
       if (isCancelledJob_(job)) {
-        if (job.calendarEventId) {
-          var cancelledEvent = calendar.getEventById(job.calendarEventId);
-          if (cancelledEvent) cancelledEvent.deleteEvent();
-        }
+        deleteCalendarEventsForJob_(calendar, job);
         job.calendarEventId = '';
         job.calendarSyncedAt = new Date().toISOString();
         job.calendarSyncStatus = 'abgesagt - Kalendereintrag entfernt';
@@ -442,7 +472,7 @@ function syncCalendar_(state, settings) {
         job.notes ? ('Notizen: ' + job.notes) : ''
       ].filter(Boolean).join('\n');
 
-      var event = calendarEventForJob_(calendar, job, start);
+      var event = calendarEventForJob_(calendar, job);
       if (event) {
         event.setTitle(title);
         event.setTime(start, end);

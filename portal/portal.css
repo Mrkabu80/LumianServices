@@ -2689,3 +2689,39 @@ a.file-button{
   align-items:center;
   justify-content:center;
 }
+
+
+/* v50: portal equal mobile gutters */
+@media (max-width: 760px){
+  html, body{
+    overflow-x:hidden !important;
+  }
+  .portal,
+  .portal-shell,
+  .portal-main,
+  .panel{
+    max-width:100% !important;
+    box-sizing:border-box !important;
+  }
+  .portal-shell,
+  .portal-main{
+    padding-left:16px !important;
+    padding-right:16px !important;
+  }
+  .panel,
+  .modal-card{
+    width:100% !important;
+    max-width:100% !important;
+    margin-left:auto !important;
+    margin-right:auto !important;
+    box-sizing:border-box !important;
+  }
+  .panel-actions,
+  .search-row,
+  .stats-grid,
+  .list,
+  .form-grid{
+    max-width:100% !important;
+    overflow-x:hidden !important;
+  }
+}

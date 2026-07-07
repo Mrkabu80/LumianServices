@@ -134,8 +134,7 @@ function saveWebsiteLead_(lead) {
   var notes = [
     lead.desiredDate ? ('Wunsch-Termin: ' + lead.desiredDate) : '',
     lead.message ? ('Beschreibung: ' + lead.message) : ''
-  ].filter(Boolean).join('
-');
+  ].filter(Boolean).join('\n');
 
   var leadObj = {
     id: leadId,
@@ -294,6 +293,20 @@ function writeSheet_(ss, name, headers, rows) {
   if (rows.length) sh.getRange(2,1,rows.length,headers.length).setValues(rows);
   sh.autoResizeColumns(1, headers.length);
 }
+
+
+function getOrCreateSheet_(ss, name, headers) {
+  var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  if (headers && headers.length) {
+    var existing = sh.getRange(1, 1, 1, Math.max(headers.length, sh.getLastColumn() || headers.length)).getValues()[0];
+    var hasHeader = existing.some(function(cell) { return String(cell || '').trim() !== ''; });
+    if (!hasHeader) {
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    }
+  }
+  return sh;
+}
+
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);

@@ -4,15 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive">
-  <meta name="theme-color" content="#081a2f">
+  <meta name="theme-color" content="#071827">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lumian Portal">
   <title>Lumian Portal | Intern</title>
-  <link rel="icon" href="../assets/img/app-icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="../assets/img/app-icon-512.png">
+  <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=8">
+  <link rel="stylesheet" href="portal.css?v=19">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -21,7 +21,7 @@
     <section class="login-card" data-login-view>
       <button class="install-mini" type="button" data-install-portal>Als App speichern</button>
       <div class="brand-lockup">
-        <div class="brand-mark"><img src="../assets/img/app-icon-512.png" alt="Lumian Services"></div>
+        <div class="brand-mark"><img src="../assets/img/portal-v14-icon-512.png" alt="Lumian Portal"></div>
         <div>
           <p class="eyebrow">Internes Arbeitsportal</p>
           <h1>Lumian Portal</h1>
@@ -31,10 +31,7 @@
 
       <form class="login-form" data-login-form>
         <label>Benutzer
-          <select name="user" required>
-            <option value="noah">Noah</option>
-            <option value="timo">Timo</option>
-          </select>
+          <select name="user" required data-user-select></select>
         </label>
         <label>Passwort
           <input name="password" type="password" autocomplete="current-password" placeholder="Passwort" required>
@@ -48,13 +45,17 @@
 
     <section class="portal" data-portal-view hidden>
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Lumian Portal</p>
-          <h1 data-page-title>Übersicht</h1>
+        <div class="topbar-brand">
+          <img class="topbar-logo" src="../assets/img/portal-v14-topbar.png" alt="Lumian Portal">
+          <div>
+            <p class="eyebrow">Lumian Portal</p>
+            <h1 data-page-title>Übersicht</h1>
+          </div>
         </div>
         <div class="top-actions">
           <button class="icon-button" type="button" data-install-portal title="Als App speichern">▣</button>
           <div class="user-pill" data-user-pill></div>
+          <button class="secondary top-logout" type="button" data-logout>Logout</button>
         </div>
       </header>
 
@@ -63,6 +64,7 @@
         <button data-tab="leads">Leads</button>
         <button data-tab="jobs">Jobs</button>
         <button data-tab="customers">Kunden</button>
+        <button data-tab="finance">Buchhaltung</button>
         <button data-tab="rewards">Bonus</button>
         <button data-tab="settings">Setup</button>
       </nav>
@@ -80,7 +82,7 @@
         </div>
         <div class="quick-actions">
           <button class="primary" data-open-lead>+ Lead hinzufügen</button>
-          <button class="secondary" data-open-job>+ Job direkt erstellen</button>
+          <button class="secondary" data-open-job>+ Job erstellen</button>
           <button class="secondary" data-sync-now>Google Sheet syncen</button>
         </div>
         <div class="today-card">
@@ -112,15 +114,16 @@
           </select>
         </div>
         <div data-lead-list class="list"></div>
+        <div data-lead-pager class="pager"></div>
       </section>
 
       <section class="panel" data-panel="jobs">
         <div class="panel-head">
           <div>
             <h2>Jobs</h2>
-            <p class="muted">Termin, Betrag, Fotos, Navigation, Kalender und WhatsApp-Reminder.</p>
+            <p class="muted">Job aus bestehendem Lead/Kunden erstellen oder neue Person erfassen. Solange nicht erledigt/bezahlt, bleibt die Person Lead.</p>
           </div>
-          <button class="primary" data-open-job>+ Job direkt erstellen</button>
+          <button class="primary" data-open-job>+ Job erstellen</button>
         </div>
         <div class="search-row">
           <input data-job-search placeholder="Job suchen: Name, Ort, Datum, Status, LM-Nr.">
@@ -131,6 +134,7 @@
           </select>
         </div>
         <div data-job-list class="list"></div>
+        <div data-job-pager class="pager"></div>
       </section>
 
       <section class="panel" data-panel="customers">
@@ -142,16 +146,139 @@
           <div class="panel-actions">
             <button class="secondary" type="button" data-download-customers-template>Vorlage herunterladen</button>
             <label class="file-button small">Kunden importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-customers hidden></label>
+            <button class="primary" type="button" data-open-customer>+ Kunde manuell</button>
             <button class="secondary" data-export-csv>Excel Export</button>
           </div>
         </div>
         <div class="import-hint">Bestehende Kunden können per Excel/CSV importiert werden. Wenn keine Lumian-Nr. mitgegeben wird, erstellt das Portal automatisch eine.</div>
-        <div class="search-row">
-          <input data-customer-search placeholder="Kunden suchen: M, Müller, Lenzburg, LM1001">
-          <button class="secondary" data-show-all-customers>Alle anzeigen</button>
+        <div class="search-row single">
+          <input data-customer-search placeholder="Kunden suchen: Name, Ort, Telefon oder LM1001">
         </div>
         <div data-customer-list class="list"></div>
+        <div data-customer-pager class="pager"></div>
       </section>
+
+
+      <section class="panel" data-panel="finance">
+        <div class="panel-head">
+          <div>
+            <h2>Buchhaltung</h2>
+            <p class="muted">Einfache Übersicht: fertige Jobs = Einnahmen, manuelle Einnahmen ergänzen, Ausgaben abziehen.</p>
+          </div>
+          <div class="panel-actions">
+            <button class="secondary" type="button" data-finance-export>Buchhaltung exportieren</button>
+          </div>
+        </div>
+
+        <div class="finance-toolbar">
+          <label>Zeitraum
+            <select data-finance-period>
+              <option value="week">Diese Woche</option>
+              <option value="month" selected>Dieser Monat</option>
+              <option value="year">Dieses Jahr</option>
+              <option value="custom">Von / bis</option>
+            </select>
+          </label>
+          <label>Von
+            <input type="date" data-finance-from>
+          </label>
+          <label>Bis
+            <input type="date" data-finance-to>
+          </label>
+          <button class="secondary" type="button" data-finance-apply>Aktualisieren</button>
+        </div>
+
+        <div class="stats-grid finance-stats" data-finance-stats></div>
+
+        <div class="finance-grid">
+          <article class="guide-card finance-chart-card">
+            <div class="panel-head slim">
+              <h2>Entwicklung</h2>
+              <span class="badge" data-finance-period-label></span>
+            </div>
+            <div class="finance-chart" data-finance-chart></div>
+          </article>
+
+          <article class="guide-card">
+            <h2>Manuelle Einnahme hinzufügen</h2>
+            <p class="hint">Für Geld, das schon gemacht wurde, bevor alle Jobs sauber im Portal erfasst waren. Zeitraum von/bis + Betrag.</p>
+            <form class="finance-mini-form" data-manual-income-form>
+              <input type="hidden" name="entryId">
+              <label>Titel
+                <input name="title" placeholder="z.B. Einnahmen Juni bisher" required>
+              </label>
+              <div class="form-pair">
+                <label>Von<input name="from" type="date" required></label>
+                <label>Bis<input name="to" type="date" required></label>
+              </div>
+              <label>Betrag CHF
+                <input name="amount" type="number" min="0" step="0.05" inputmode="decimal" required>
+              </label>
+              <label>Notiz optional
+                <textarea name="notes" rows="2" placeholder="z.B. bar erhalten, alte Jobs"></textarea>
+              </label>
+              <button class="primary" type="submit">Einnahme speichern</button>
+            </form>
+          </article>
+
+          <article class="guide-card">
+            <h2>Ausgabe hinzufügen</h2>
+            <p class="hint">Maschinen, Seife, Mops, Tücher, Benzin oder anderes Material. Wird vom Gewinn abgezogen.</p>
+            <form class="finance-mini-form" data-expense-form>
+              <input type="hidden" name="entryId">
+              <label>Datum<input name="date" type="date" required></label>
+              <label>Kategorie
+                <select name="category">
+                  <option>Maschine / Gerät</option>
+                  <option>Reinigungsmittel / Seife</option>
+                  <option>Mops / Tücher / Material</option>
+                  <option>Fahrzeug / Benzin</option>
+                  <option>Werbung / Druck</option>
+                  <option>Sonstiges</option>
+                </select>
+              </label>
+              <label>Bezeichnung
+                <input name="title" placeholder="z.B. Hochdruckreiniger, Seife, Mikrofasertücher" required>
+              </label>
+              <label>Betrag CHF
+                <input name="amount" type="number" min="0" step="0.05" inputmode="decimal" required>
+              </label>
+              <label>Notiz optional
+                <textarea name="notes" rows="2" placeholder="z.B. Migros, Jumbo, Quittung vorhanden"></textarea>
+              </label>
+              <button class="primary" type="submit">Ausgabe speichern</button>
+            </form>
+          </article>
+        </div>
+
+        <div class="finance-grid two">
+          <article class="today-card">
+            <div class="panel-head slim"><h2>Einnahmen & Jobs</h2><span class="badge" data-income-count></span></div>
+            <div data-income-list class="list compact"></div>
+          </article>
+          <article class="today-card">
+            <div class="panel-head slim"><h2>Ausgaben</h2><span class="badge" data-expense-count></span></div>
+            <div data-expense-list class="list compact"></div>
+          </article>
+        </div>
+
+        <article class="today-card">
+          <div class="panel-head slim">
+            <div>
+              <h2>Kundenaktivität</h2>
+              <p class="muted">Zeigt, welche Kunden im Zeitraum Umsatz gebracht haben und wer lange keinen Job mehr hatte.</p>
+            </div>
+            <select data-customer-activity-sort>
+              <option value="revenue">Nach Umsatz</option>
+              <option value="jobs">Nach Job-Anzahl</option>
+              <option value="last">Nach letztem Job</option>
+              <option value="name">Alphabetisch</option>
+            </select>
+          </div>
+          <div data-customer-activity-list class="list compact"></div>
+        </article>
+      </section>
+
 
       <section class="panel" data-panel="rewards">
         <div class="panel-head">
@@ -170,11 +297,16 @@
             <h2>Setup</h2>
             <p class="muted">Bonus, Texte, Google Sheet, Drive, Passwort, Biometrie und Backup.</p>
           </div>
-          <button class="secondary danger" data-logout>Logout</button>
+          <div class="panel-actions">
+            <button class="primary setup-save-top" type="submit" form="settings-form">Setup speichern</button>
+            <button class="secondary danger" data-logout type="button">Logout</button>
+          </div>
         </div>
 
-        <form class="settings-grid" data-settings-form>
-          <fieldset>
+        <form id="settings-form" class="settings-grid setup-form" data-settings-form>
+          <div class="setup-columns">
+            <div class="setup-col setup-col-left">
+              <fieldset data-admin-only>
             <legend>Aktionen & Bonus</legend>
             <label>Bonus in CHF
               <input name="bonusAmount" type="number" min="0" step="5">
@@ -190,7 +322,7 @@
             </label>
           </fieldset>
 
-          <fieldset>
+              <fieldset data-admin-only>
             <legend>Google Sheet / Drive</legend>
             <label>Google Apps Script Web App URL
               <input name="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
@@ -208,7 +340,7 @@
             <p class="hint">Für zwei Handys: gleiche Web-App-URL eintragen. Fotos gehen in Google Drive, wenn die Folder ID gesetzt ist.</p>
           </fieldset>
 
-          <fieldset class="wide">
+              <fieldset class="wide" data-admin-only>
             <legend>WhatsApp Texte</legend>
             <label>Empfehlung an bestehenden Kunden
               <textarea name="referralTemplate" rows="5"></textarea>
@@ -221,8 +353,10 @@
             </label>
             <p class="hint">Platzhalter: {{name}}, {{customerId}}, {{bonus}}, {{minOrder}}, {{referralLink}}, {{date}}, {{service}}, {{amount}}, {{address}}</p>
           </fieldset>
+            </div>
 
-          <fieldset>
+            <div class="setup-col setup-col-right">
+              <fieldset>
             <legend>Login & Sicherheit</legend>
             <label>Aktuelles Passwort
               <input name="currentPassword" type="password" autocomplete="current-password">
@@ -230,33 +364,62 @@
             <label>Neues Passwort
               <input name="newPassword" type="password" autocomplete="new-password">
             </label>
-            <label>Reset-Code für Passwort vergessen
-              <input name="recoveryCode" autocomplete="off" placeholder="z.B. Lumian-Reset-2026">
+            <label>Dein persönlicher Reset-Code
+              <input name="userRecoveryCode" autocomplete="off" placeholder="z.B. Noah-Reset-2026">
             </label>
             <div class="button-row vertical">
               <button class="secondary" type="button" data-change-password>Passwort ändern</button>
               <button class="secondary" type="button" data-enable-biometric>Face ID / Touch ID auf diesem Gerät aktivieren</button>
               <button class="secondary" type="button" data-disable-biometric>Biometrie entfernen</button>
             </div>
-            <p class="hint">Biometrie funktioniert nur auf HTTPS und nur auf dem jeweiligen Handy. Der Reset-Code ersetzt keine echte E-Mail-Passwortfunktion, ist aber für diese einfache statische App der schnellste Weg.</p>
+            <p class="hint">Jeder Benutzer hat seinen eigenen Reset-Code. Nur Admins können Passwörter ändern und neue Mitarbeiter anlegen.</p>
           </fieldset>
 
-          <fieldset>
+              <fieldset data-admin-only>
+            <legend>Benutzer & Rechte</legend>
+            <p class="hint">Noah und Timo sind Admins. Neue Mitarbeiter sehen nur Übersicht, Leads, Jobs und Kunden. Buchhaltung, Bonus und volle Einstellungen bleiben Admins vorbehalten.</p>
+            <div class="user-mini-form" data-user-form>
+              <label>Benutzername
+                <input name="userId" autocomplete="off" placeholder="z.B. jana" required>
+              </label>
+              <label>Anzeigename
+                <input name="name" autocomplete="name" placeholder="z.B. Jana" required>
+              </label>
+              <label>Initial / Avatar
+                <input name="emoji" maxlength="2" placeholder="J">
+              </label>
+              <label>Start-Passwort
+                <input name="password" type="password" autocomplete="new-password" placeholder="mind. 4 Zeichen" required>
+              </label>
+              <label>Reset-Code
+                <input name="recoveryCode" autocomplete="off" placeholder="z.B. Jana-Reset-2026">
+              </label>
+              <label>Rolle
+                <select name="role">
+                  <option value="staff">Mitarbeiter: Übersicht, Leads, Jobs, Kunden</option>
+                </select>
+              </label>
+              <button class="primary" type="button" data-save-user>Mitarbeiter speichern</button>
+            </div>
+            <div data-user-list class="list compact"></div>
+          </fieldset>
+
+              <fieldset data-admin-only>
             <legend>Daten, Import & Backup</legend>
             <div class="button-row vertical">
               <button class="secondary" type="button" data-download-customers-template>Kunden-Vorlage herunterladen</button>
               <label class="file-button">Kunden importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-customers hidden></label>
               <button class="secondary" type="button" data-download-leads-template>Lead-Vorlage herunterladen</button>
               <label class="file-button">Leads importieren<input type="file" accept=".csv,text/csv,text/plain" data-import-leads hidden></label>
-              <button class="secondary" type="button" data-export-json>Backup JSON</button>
+              <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
               <button class="secondary danger" type="button" data-reset-demo>Lokale Daten löschen</button>
             </div>
-            <p class="hint">Excel kann CSV-Dateien öffnen und speichern. Für echte Synchronisation zwischen Handys danach Google Sheet syncen.</p>
+            <p class="hint">CSV ist für Excel-Import/Export. JSON Backup ist eine komplette Sicherung aller lokalen Portal-Daten auf diesem Gerät: Kunden, Leads, Jobs, Fotos als komprimierte Daten, Einstellungen und Benutzer. Backup-Import und lokale Daten löschen müssen mit Face ID/Touch ID oder Passwort bestätigt werden.</p>
           </fieldset>
-
-          <button class="primary wide" type="submit">Setup speichern</button>
-        </form>
+            </div>
+          </div>
+</form>
       </section>
     </section>
   </main>
@@ -289,14 +452,40 @@
     </form>
   </dialog>
 
+
+  <dialog data-customer-dialog class="modal">
+    <form method="dialog" class="modal-card" data-customer-form novalidate>
+      <header><h2>Kunde manuell hinzufügen</h2><button type="button" data-close-modal>×</button></header>
+      <p class="hint">Für bestehende Kunden aus der Vergangenheit. Neue Anfragen zuerst als Lead erfassen; ein Kunde bekommt automatisch eine Lumian-Nr.</p>
+      <div class="form-grid">
+        <label>Name<input name="name" required autocomplete="name" placeholder="z.B. Maria Müller"></label>
+        <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
+        <label>E-Mail optional<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
+        <label class="wide">Adresse<input name="address" autocomplete="street-address" placeholder="Strasse, PLZ Ort"></label>
+        <label>Ort<input name="place" autocomplete="address-level2" placeholder="Lenzburg"></label>
+        <label>Quelle<select name="source"><option>Import / Manuell</option><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Andere</option></select></label>
+        <label class="wide">Notizen<textarea name="notes" rows="3" placeholder="z.B. Stammkunde, bevorzugte Zeiten, Besonderheiten..."></textarea></label>
+      </div>
+      <footer>
+        <button type="button" class="secondary" data-close-modal>Abbrechen</button>
+        <button class="primary" type="submit">Kunde speichern</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog data-job-dialog class="modal">
     <form method="dialog" class="modal-card" data-job-form novalidate>
       <header><h2 data-job-modal-title>Job erstellen</h2><button type="button" data-close-modal>×</button></header>
       <input type="hidden" name="jobId">
       <input type="hidden" name="leadId">
       <input type="hidden" name="personId">
-      <p class="hint">Job = Termin/Besichtigung/Reinigung. Wenn der Job erledigt oder bezahlt ist, wird die Person automatisch Kunde.</p>
+      <p class="hint">Job = Termin/Besichtigung/Reinigung. Bestehenden Lead/Kunden oben suchen oder neue Person unten erfassen. Erst bei Erledigt/Bezahlt wird sie Kunde.</p>
       <div class="form-grid">
+        <label class="wide autocomplete-wrap">Bestehenden Lead/Kunden suchen
+          <input name="personSearch" data-person-search="job" autocomplete="off" placeholder="Name, Telefon oder LM-Nr. tippen – z.B. Müller oder LM1001">
+          <div class="suggestions" data-person-suggestions="job" hidden></div>
+        </label>
+        <p class="hint wide">Für bestehende Kunden/Leads zuerst hier suchen und auswählen. Falls die Person neu ist, unten einfach Name und Telefon eingeben.</p>
         <label>Name<input name="name" required autocomplete="name"></label>
         <label>Telefon Schweiz<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 535 05 71"></label>
         <label>E-Mail optional<input name="email" type="email" autocomplete="email"></label>
@@ -306,7 +495,7 @@
         <label>Termin<input name="appointmentAt" type="datetime-local"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
         <label>Status<select name="status"><option>Geplant</option><option>Bestätigt</option><option>Erledigt</option><option>Bezahlt</option><option>Abgesagt</option></select></label>
-        <label>Zuständig<select name="assignedTo"><option value="noah">Noah</option><option value="timo">Timo</option></select></label>
+        <label>Zuständig<select name="assignedTo" data-assigned-select></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
           <input name="referredBySearch" data-ref-search="job" autocomplete="off" placeholder="Name oder LM-Nr. tippen">
@@ -328,9 +517,9 @@
   <dialog data-reset-dialog class="modal">
     <form method="dialog" class="modal-card small" data-reset-form novalidate>
       <header><h2>Passwort zurücksetzen</h2><button type="button" data-close-modal>×</button></header>
-      <p class="hint">Für diese einfache statische App funktioniert Reset über den im Setup gespeicherten Reset-Code.</p>
+      <p class="hint">Jeder Benutzer hat seinen eigenen Reset-Code. Noahs Code setzt nur Noah zurück, Timos Code nur Timo.</p>
       <label>Benutzer
-        <select name="user" required><option value="noah">Noah</option><option value="timo">Timo</option></select>
+        <select name="user" required data-user-select></select>
       </label>
       <label>Reset-Code<input name="code" autocomplete="off" required></label>
       <label>Neues Passwort<input name="newPassword" type="password" autocomplete="new-password" required></label>
@@ -352,6 +541,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=8"></script>
+  <script src="portal.js?v=19"></script>
 </body>
 </html>

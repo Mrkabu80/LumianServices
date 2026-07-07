@@ -84,3 +84,71 @@ Biometrie:
 
 
 v8 Hinweis: Nach Upload alte Portal-App vom Home-Screen löschen und neu hinzufügen. Falls altes Design bleibt: Safari/Chrome Cache leeren oder einmal /portal/?v=8 öffnen.
+
+
+V9 Sicherheit / Reset-Code
+--------------------------
+- Noah und Timo haben jeweils einen eigenen Reset-Code.
+- Der Code wird unter Setup > Login & Sicherheit als "Dein persönlicher Reset-Code" geändert.
+- Wenn Noah seinen Code ändert, ändert sich Timos Code nicht.
+- Standard-Codes bei ganz neuem Portal:
+  - Noah: Noah-Reset-2026
+  - Timo: Timo-Reset-2026
+- JSON Backup = komplette lokale Sicherung der Portal-Daten auf diesem Gerät.
+- Backup importieren und Lokale Daten löschen verlangen Face ID/Touch ID oder Passwortbestätigung.
+
+
+V10 Workflow-Klarstellung
+-------------------------
+- Kundenliste zeigt Kunden jetzt direkt alphabetisch; keine extra Taste nötig.
+- Leads sind durchsuchbar nach Name, Ort, Telefon und Lumian-Nr.
+- Jobs können aus bestehendem Lead/Kunden erstellt werden: im Job-Dialog oben Name oder LM-Nr. suchen und auswählen.
+- + Job erstellen ohne Auswahl erstellt eine neue Person als Lead; Kunde wird sie erst bei Erledigt/Bezahlt.
+- Kunden können zusätzlich manuell erfasst oder per CSV importiert werden.
+- WhatsApp-Buttons erscheinen nur für Schweizer Mobilnummern. Wenn die Nummer nicht bei WhatsApp registriert ist, zeigt WhatsApp trotzdem eine Meldung; das kann die App nicht vorher prüfen. Für nicht-mobile Nummern bleibt Anrufen/SMS.
+
+
+V11 Buchhaltung
+---------------
+- Neuer Tab "Buchhaltung".
+- Erledigte/bezahlte Jobs werden automatisch als Einnahmen gerechnet.
+- Manuelle Einnahmen können mit Zeitraum von/bis ergänzt werden, z.B. bisherige Einnahmen vor Portal-Nutzung.
+- Ausgaben können mit Datum, Kategorie, Bezeichnung und Betrag erfasst werden.
+- Übersicht pro Woche, Monat, Jahr oder eigenem Zeitraum.
+- Einfache Grafik für Einnahmen, Ausgaben und groben Gewinn.
+- Kundenaktivität zeigt Job-Anzahl, Umsatz im Zeitraum und Kunden, bei denen man nachfassen kann.
+- Buchhaltung kann als Excel-kompatible CSV exportiert werden.
+
+
+V12 Benutzerrechte & Buchhaltung Bearbeitung
+--------------------------------------------
+- Noah und Timo sind Admins.
+- Neue Mitarbeiter können unter Setup > Benutzer & Rechte erstellt werden.
+- Mitarbeiter sehen nur Übersicht, Leads, Jobs und Kunden.
+- Buchhaltung, Bonus, Google/Drive, Backup und globale Einstellungen bleiben Admins vorbehalten.
+- Bei Jobs kann "Zuständig" nun aus allen aktiven Benutzern gewählt werden.
+- In der Buchhaltung wird angezeigt, wer einen manuellen Einnahmen- oder Ausgabeneintrag erstellt hat.
+- Manuelle Einnahmen und Ausgaben können nachträglich bearbeitet oder gelöscht werden.
+- Bearbeiten/Löschen ist nur für den Ersteller möglich und verlangt Face ID/Touch ID oder Passwortbestätigung.
+- Die Jahresansicht ist im Zeitraum-Filter "Dieses Jahr" enthalten.
+
+
+V13 Responsiveness + Portal App Icon
+------------------------------------
+- Portal-only home-screen icon updated to the 3D LS Portal icon.
+- Public website favicon/app icon is not changed.
+- Portal manifest now starts at /portal/?v=13 to reduce old icon/cache issues.
+- Responsive layout improved for iPhone, Android, tablet, and laptop:
+  - horizontal safe navigation for many tabs
+  - better bottom navigation on mobile
+  - better forms/cards/buttons on small screens
+  - finance/accounting layout improved on desktop and mobile
+
+
+V14 Final polish
+----------------
+- Portal logo, portal favicon and home-screen icon now use the uploaded LS PORTAL icon.
+- Leads now use WhatsApp instead of SMS.
+- Buchhaltung cards show clearer creator/responsible info.
+- Setup / Login & Sicherheit spacing and paddings improved.
+- Additional overall polish for portal feel and responsiveness.

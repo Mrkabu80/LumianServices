@@ -8,6 +8,25 @@
     { id: 'noah', name: 'Noah', emoji: 'N' },
     { id: 'timo', name: 'Timo', emoji: 'T' }
   ];
+  const ADMIN_IDS = ['noah','timo'];
+  function defaultRecoveryCode(userId) {
+    const u = state?.users?.find?.(x => x.id === userId) || USERS.find(x => x.id === userId);
+    return `${u?.name || 'Lumian'}-Reset-2026`;
+  }
+  function normalizeUserId(value) {
+    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  }
+  function isAdmin(id = currentUser) {
+    const u = state?.users?.find?.(x => x.id === id);
+    return ADMIN_IDS.includes(id) || u?.role === 'admin';
+  }
+  function activeUsers() {
+    return (state?.users || []).filter(u => u.active !== false);
+  }
+  function canAccessTab(tab) {
+    if (isAdmin()) return true;
+    return ['dashboard','leads','jobs','customers'].includes(tab);
+  }
   const DEFAULT_SETTINGS = {
     bonusAmount: 50,
     minOrder: 300,
@@ -26,6 +45,8 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   let currentUser = sessionStorage.getItem(SESSION_KEY) || '';
   let activeTab = 'dashboard';
+  const PAGE_SIZE = 20;
+  let listPages = { leads: 1, jobs: 1, customers: 1 };
   let customerListMode = 'search';
   let stagedPhotos = { before: null, after: null };
   let deferredInstallPrompt = null;
@@ -36,13 +57,14 @@
       version: 6,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      users: USERS.map(u => ({ ...u, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '' })),
+      users: USERS.map(u => ({ ...u, role: 'admin', active: true, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '', recoveryCode: `${u.name}-Reset-2026` })),
       settings: { ...DEFAULT_SETTINGS },
-      counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1 },
+      counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
       people: [],
       leads: [],
       jobs: [],
       rewards: [],
+      finance: { manualIncome: [], expenses: [] },
       audit: []
     };
   }
@@ -66,14 +88,31 @@
     merged.version = 6;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     merged.counters = { ...base.counters, ...(s.counters || {}) };
-    merged.users = USERS.map(u => {
-      const old = (s.users || []).find(x => x.id === u.id) || {};
-      return { ...u, passwordHash: old.passwordHash || '', salt: old.salt || '', credentialId: old.credentialId || '', credentialUserHandle: old.credentialUserHandle || '' };
+    const incomingUsers = Array.isArray(s.users) ? s.users : [];
+    const defaultUsers = USERS.map(u => {
+      const old = incomingUsers.find(x => x.id === u.id) || {};
+      return { ...u, role: 'admin', active: old.active !== false, passwordHash: old.passwordHash || '', salt: old.salt || '', credentialId: old.credentialId || '', credentialUserHandle: old.credentialUserHandle || '', recoveryCode: old.recoveryCode || s.settings?.recoveryCode || `${u.name}-Reset-2026` };
     });
+    const customUsers = incomingUsers.filter(u => u && u.id && !USERS.some(base => base.id === u.id)).map(u => ({
+      id: normalizeUserId(u.id),
+      name: u.name || u.id,
+      emoji: u.emoji || String(u.name || u.id || '?').slice(0,1).toUpperCase(),
+      role: u.role === 'admin' ? 'admin' : 'staff',
+      active: u.active !== false,
+      passwordHash: u.passwordHash || '',
+      salt: u.salt || '',
+      credentialId: u.credentialId || '',
+      credentialUserHandle: u.credentialUserHandle || '',
+      recoveryCode: u.recoveryCode || `${u.name || u.id}-Reset-2026`
+    })).filter(u => u.id);
+    merged.users = [...defaultUsers, ...customUsers];
     merged.people = Array.isArray(s.people) ? s.people.map(p => ({ email: '', ...p })) : [];
     merged.leads = Array.isArray(s.leads) ? s.leads : [];
     merged.jobs = Array.isArray(s.jobs) ? s.jobs.map(j => ({ source: '', referredById: '', ...j })) : [];
     merged.rewards = Array.isArray(s.rewards) ? s.rewards : [];
+    merged.finance = { manualIncome: [], expenses: [], ...(s.finance || {}) };
+    if (!Array.isArray(merged.finance.manualIncome)) merged.finance.manualIncome = [];
+    if (!Array.isArray(merged.finance.expenses)) merged.finance.expenses = [];
     merged.audit = Array.isArray(s.audit) ? s.audit : [];
     localStorage.setItem(STORE_KEY, JSON.stringify(merged));
     return merged;
@@ -100,14 +139,40 @@
   }
 
   function getSetting(key) { return state.settings[key] ?? DEFAULT_SETTINGS[key]; }
-  function userName(id) { return USERS.find(u => u.id === id)?.name || id || '-'; }
-  function userEmoji(id) { return USERS.find(u => u.id === id)?.emoji || '?'; }
+  function userName(id) { return state?.users?.find(u => u.id === id)?.name || USERS.find(u => u.id === id)?.name || id || '-'; }
+  function userEmoji(id) { return state?.users?.find(u => u.id === id)?.emoji || USERS.find(u => u.id === id)?.emoji || '?'; }
   function personById(id) { return state.people.find(p => p.id === id); }
   function leadById(id) { return state.leads.find(l => l.id === id); }
   function jobById(id) { return state.jobs.find(j => j.id === id); }
   function allPeopleSorted() { return [...state.people].sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'de-CH')); }
   function activeCustomers() { return state.people.filter(p => p.status === 'customer').sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'de-CH')); }
   function activeLeads() { return state.leads.filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status)); }
+
+  function leadForPerson(personId) {
+    return state.leads
+      .filter(l => l.personId === personId && !['Kunde geworden','Verloren'].includes(l.status))
+      .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0] || null;
+  }
+
+  function personSearchText(p) {
+    const lead = leadForPerson(p.id);
+    return [p.id, p.name, p.phone, p.email, p.address, p.place, p.source, p.status, lead?.id, lead?.service, lead?.status].join(' ').toLowerCase();
+  }
+
+  function searchPeople(q, limit = 8) {
+    const needle = String(q || '').trim().toLowerCase();
+    if (!needle) return [];
+    return [...state.people]
+      .filter(p => personSearchText(p).includes(needle))
+      .sort((a,b) => {
+        const sa = a.status === 'customer' ? 0 : 1;
+        const sb = b.status === 'customer' ? 0 : 1;
+        return sa - sb || (a.name || '').localeCompare(b.name || '', 'de-CH') || (a.id || '').localeCompare(b.id || '', 'de-CH');
+      })
+      .slice(0, limit);
+  }
+
+  function personStatusLabel(p) { return p.status === 'customer' ? 'Kunde' : 'Lead'; }
 
   function fillTemplate(template, data) {
     return String(template || '').replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key) => data[key] ?? '');
@@ -223,13 +288,39 @@
     return true;
   }
 
+  function renderUserOptions() {
+    const opts = activeUsers().map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)}${u.role === 'admin' ? ' · Admin' : ''}</option>`).join('');
+    $$('[data-user-select]').forEach(sel => {
+      const old = sel.value;
+      sel.innerHTML = opts;
+      if (old && [...sel.options].some(o => o.value === old)) sel.value = old;
+    });
+    $$('[data-assigned-select]').forEach(sel => {
+      const old = sel.value || currentUser;
+      sel.innerHTML = activeUsers().map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)}</option>`).join('');
+      if (old && [...sel.options].some(o => o.value === old)) sel.value = old;
+    });
+  }
+
+  function renderPermissions() {
+    const admin = isAdmin();
+    $$('[data-tab]').forEach(btn => {
+      const allowed = canAccessTab(btn.dataset.tab);
+      btn.hidden = !allowed;
+    });
+    $$('[data-admin-only]').forEach(el => { el.hidden = !admin; });
+    if (currentUser && !canAccessTab(activeTab)) activeTab = 'dashboard';
+  }
+
   function renderLogin() {
+    renderUserOptions();
     $('[data-login-view]').hidden = !!currentUser;
     $('[data-portal-view]').hidden = !currentUser;
     if (!currentUser) return;
+    renderPermissions();
     const u = state.users.find(x => x.id === currentUser);
-    $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)}`;
-    renderAll();
+    $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)}${u?.role==='admin'?' · Admin':''}`;
+    setTab(activeTab);
   }
 
   $('[data-login-form]')?.addEventListener('submit', async event => {
@@ -238,7 +329,7 @@
     const userId = fd.get('user');
     const password = String(fd.get('password') || '');
     const user = state.users.find(u => u.id === userId);
-    if (!user) return;
+    if (!user || user.active === false) return toast('Benutzer ist nicht aktiv.');
     if (!user.passwordHash) {
       if (password.length < 4) return toast('Bitte mindestens 4 Zeichen verwenden.');
       await setPassword(userId, password);
@@ -252,10 +343,12 @@
   });
 
   function setTab(tab) {
+    if (!canAccessTab(tab)) tab = 'dashboard';
     activeTab = tab;
+    renderPermissions();
     $$('[data-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     $$('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tab));
-    const titles = { dashboard:'Übersicht', leads:'Leads', jobs:'Jobs', customers:'Kunden', rewards:'Bonus', settings:'Setup' };
+    const titles = { dashboard:'Übersicht', leads:'Leads', jobs:'Jobs', customers:'Kunden', finance:'Buchhaltung', rewards:'Bonus', settings:'Setup' };
     $('[data-page-title]').textContent = titles[tab] || 'Übersicht';
     renderAll();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -264,11 +357,19 @@
   document.addEventListener('click', event => {
     const go = event.target.closest('[data-tab-go]');
     if (go) setTab(go.dataset.tabGo);
+    const pageBtn = event.target.closest('[data-page-target]');
+    if (pageBtn) {
+      const key = pageBtn.dataset.pageTarget;
+      listPages[key] = Math.max(1, (listPages[key] || 1) + Number(pageBtn.dataset.pageDir || 0));
+      renderAll();
+      const panel = pageBtn.closest('.panel');
+      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 
   function renderAll() {
     if (!currentUser) return;
-    renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderRewards(); fillSettings(false);
+    renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderFinance(); renderRewards(); renderUsers(); fillSettings(false);
   }
 
   function renderStats() {
@@ -276,9 +377,9 @@
     const openJobCount = state.jobs.filter(j => !['Erledigt','Bezahlt','Abgesagt'].includes(j.status)).length;
     const customerCount = activeCustomers().length;
     const openRewards = state.rewards.filter(r => r.status === 'offen').reduce((s,r)=>s+Number(r.amount||0),0);
-    $('[data-stats]').innerHTML = [
-      ['Offene Leads', openLeadCount], ['Offene Jobs', openJobCount], ['Kunden', customerCount], ['Offener Bonus', `CHF ${openRewards}`]
-    ].map(([label, value]) => `<div class="stat"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`).join('');
+    const cards = [['Offene Leads', openLeadCount], ['Offene Jobs', openJobCount], ['Kunden', customerCount]];
+    if (isAdmin()) cards.push(['Offener Bonus', `CHF ${openRewards}`]);
+    $('[data-stats]').innerHTML = cards.map(([label, value]) => `<div class="stat"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`).join('');
   }
 
   function renderToday() {
@@ -290,15 +391,43 @@
       const overdue = new Date(j.appointmentAt).getTime() < now;
       return `<article class="item-card">
         <div class="item-top"><div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge">${esc(p.id || '')}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · ${esc(p.address || '')}</div></div><span class="badge ${overdue?'danger':'warn'}">${esc(j.status)}</span></div>
-        <div class="actions">${mapLink(p.address)}${phoneLink(p.phone)}${customerReminderLink(j)}${calendarButton(j)}</div>
+        <div class="actions">${customerReminderLink(j)}${phoneLink(p.phone)}${mapLink(p.address)}${calendarButton(j)}</div>
       </article>`;
     }).join('') : '<div class="empty">Keine offenen Termine.</div>';
+  }
+
+
+  function paginateItems(items, key) {
+    const total = items.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (!listPages[key] || listPages[key] < 1) listPages[key] = 1;
+    if (listPages[key] > pages) listPages[key] = pages;
+    const page = listPages[key];
+    const start = (page - 1) * PAGE_SIZE;
+    return { slice: items.slice(start, start + PAGE_SIZE), total, page, pages, start, end: Math.min(start + PAGE_SIZE, total) };
+  }
+
+  function renderPager(key, data) {
+    const el = $(`[data-${key.slice(0,-1)}-pager]`) || $(`[data-${key}-pager]`);
+    if (!el) return;
+    if (!data.total) { el.innerHTML = ''; return; }
+    const label = key === 'leads' ? 'Leads' : key === 'jobs' ? 'Jobs' : 'Kunden';
+    if (data.total <= PAGE_SIZE) {
+      el.innerHTML = `<div class="pager-summary">${data.total} ${label}</div>`;
+      return;
+    }
+    el.innerHTML = `<div class="pager-summary">${data.start + 1}–${data.end} von ${data.total} ${label}</div>
+      <div class="pager-actions">
+        <button class="secondary" type="button" data-page-target="${key}" data-page-dir="-1" ${data.page <= 1 ? 'disabled' : ''}>Zurück</button>
+        <span class="pager-page">Seite ${data.page} / ${data.pages}</span>
+        <button class="secondary" type="button" data-page-target="${key}" data-page-dir="1" ${data.page >= data.pages ? 'disabled' : ''}>Weiter</button>
+      </div>`;
   }
 
   function renderLeads() {
     const q = ($('[data-lead-search]')?.value || '').toLowerCase().trim();
     const filter = $('[data-lead-filter]')?.value || 'active';
-    let leads = [...state.leads].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+    let leads = [...state.leads].sort((a,b)=>(personById(a.personId)?.name||'').localeCompare(personById(b.personId)?.name||'', 'de-CH') || new Date(b.createdAt)-new Date(a.createdAt));
     if (filter === 'active') leads = leads.filter(l => !['Job erstellt','Kunde geworden','Verloren'].includes(l.status));
     if (filter === 'won') leads = leads.filter(l => ['Job erstellt','Kunde geworden'].includes(l.status));
     if (filter === 'lost') leads = leads.filter(l => l.status === 'Verloren');
@@ -306,7 +435,9 @@
       const p = personById(l.personId) || {};
       return [l.id,l.service,l.status,l.source,p.id,p.name,p.phone,p.email,p.address,p.place].join(' ').toLowerCase().includes(q);
     });
-    $('[data-lead-list]').innerHTML = leads.length ? leads.map(leadCard).join('') : '<div class="empty">Keine Leads gefunden.</div>';
+    const pageData = paginateItems(leads, 'leads');
+    renderPager('leads', pageData);
+    $('[data-lead-list]').innerHTML = pageData.slice.length ? pageData.slice.map(leadCard).join('') : '<div class="empty">Keine Leads gefunden.</div>';
   }
 
   function leadCard(l) {
@@ -314,11 +445,11 @@
     const ref = personById(l.referredById || p.referredById);
     return `<article class="item-card">
       <div class="item-top">
-        <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy))}</div></div>
+        <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy || l.assignedTo || currentUser))}</div></div>
         <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empf. ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(p.address || '')}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}</div>
-      <div class="actions">${phoneLink(p.phone)}${waLeadLink(p,l)}${mapLink(p.address)}${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
+      <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p.address)}${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
     </article>`;
   }
 
@@ -332,7 +463,9 @@
       const p = personById(j.personId) || {};
       return [j.id,j.service,j.status,j.amount,j.appointmentAt,j.source,p.id,p.name,p.phone,p.email,p.address,p.place].join(' ').toLowerCase().includes(q);
     });
-    $('[data-job-list]').innerHTML = jobs.length ? jobs.map(jobCard).join('') : '<div class="empty">Keine Jobs gefunden.</div>';
+    const pageData = paginateItems(jobs, 'jobs');
+    renderPager('jobs', pageData);
+    $('[data-job-list]').innerHTML = pageData.slice.length ? pageData.slice.map(jobCard).join('') : '<div class="empty">Keine Jobs gefunden.</div>';
   }
 
   function jobCard(j) {
@@ -342,12 +475,12 @@
     const photos = [j.beforePhoto, j.afterPhoto].filter(Boolean).map((ph,i)=>`<img class="thumb" src="${esc(ph.dataUrl || ph.url)}" alt="${i?'Nachher':'Vorher'} Foto">`).join('');
     return `<article class="item-card">
       <div class="item-top">
-        <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge ${p.status==='customer'?'ok':'warn'}">${esc(p.id || '')} · ${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo))}</div></div>
+        <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
         <div class="badges"><span class="badge ${done?'ok':j.status==='Abgesagt'?'danger':'warn'}">${esc(j.status)}</span>${j.amount?`<span class="badge">CHF ${esc(j.amount)}</span>`:''}${ref?`<span class="badge ok">Empf. ${esc(ref.id)}</span>`:''}</div>
       </div>
       <div class="item-sub">${esc(p.address || '')}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
-      <div class="actions">${mapLink(p.address)}${phoneLink(p.phone)}${customerReminderLink(j)}${calendarButton(j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!done?`<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button><button class="secondary" data-paid-job="${esc(j.id)}">Bezahlt</button>`:`<a class="primary" href="${esc(waUrlFor(p.phone, referralInviteText(p)))}" target="_blank" rel="noopener">Empfehlung senden</a>`}</div>
+      <div class="actions">${customerReminderLink(j)}${phoneLink(p.phone)}${mapLink(p.address)}${calendarButton(j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!done?`<button class="primary" data-complete-job="${esc(j.id)}">Erledigt</button><button class="secondary" data-paid-job="${esc(j.id)}">Bezahlt</button>`:whatsappLink(p.phone, referralInviteText(p), 'Empfehlung senden', true)}</div>
     </article>`;
   }
 
@@ -355,37 +488,184 @@
     const q = ($('[data-customer-search]')?.value || '').toLowerCase().trim();
     let customers = activeCustomers();
     if (q) customers = customers.filter(p => [p.id,p.name,p.phone,p.email,p.address,p.place,p.source].join(' ').toLowerCase().includes(q));
-    if (!q && customerListMode !== 'all') customers = [];
-    $('[data-customer-list]').innerHTML = customers.length ? customers.map(customerCard).join('') : '<div class="empty">Tippen zum Suchen oder „Alle anzeigen“ drücken.</div>';
+    const pageData = paginateItems(customers, 'customers');
+    renderPager('customers', pageData);
+    $('[data-customer-list]').innerHTML = pageData.slice.length ? pageData.slice.map(customerCard).join('') : '<div class="empty">Noch keine Kunden gefunden. Kunde manuell hinzufügen, importieren oder Job als erledigt markieren.</div>';
   }
 
   function customerCard(p) {
     const jobs = state.jobs.filter(j => j.personId === p.id);
     return `<article class="item-card">
-      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge ok">${esc(p.id)}</span></div><div class="item-sub">${esc(p.address || '')}</div></div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
+      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span></div><div class="item-sub">${esc(p.address || '')}</div></div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
       <div class="item-sub">Empfehlungslink: ${esc(referralLink(p.id))}</div>
-      <div class="actions">${phoneLink(p.phone)}${mapLink(p.address)}${p.phone?`<a class="primary" href="${esc(waUrlFor(p.phone, referralInviteText(p)))}" target="_blank" rel="noopener">Empfehlung senden</a>`:''}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
+      <div class="actions">${whatsappLink(p.phone, referralInviteText(p), 'WhatsApp', true)}${phoneLink(p.phone)}${mapLink(p.address)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
     </article>`;
   }
 
+
+  function money(value) {
+    return `CHF ${Number(value || 0).toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  function ymd(d) {
+    if (!d) return '';
+    const dt = d instanceof Date ? d : new Date(d);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toISOString().slice(0,10);
+  }
+  function financeJobDate(job) {
+    return job.paidAt || job.completedAt || job.appointmentAt || job.updatedAt || job.createdAt || '';
+  }
+  function dateInRange(value, from, to) {
+    const d = ymd(value);
+    if (!d) return false;
+    return (!from || d >= from) && (!to || d <= to);
+  }
+  function getFinanceRange() {
+    const period = $('[data-finance-period]')?.value || 'month';
+    const now = new Date();
+    let from = '', to = ymd(now), label = '';
+    const start = new Date(now);
+    if (period === 'week') {
+      const day = (now.getDay() + 6) % 7;
+      start.setDate(now.getDate() - day);
+      from = ymd(start); label = 'Diese Woche';
+    } else if (period === 'year') {
+      from = `${now.getFullYear()}-01-01`; label = 'Dieses Jahr';
+    } else if (period === 'custom') {
+      from = $('[data-finance-from]')?.value || '';
+      to = $('[data-finance-to]')?.value || to;
+      label = from || to ? `${from || '...'} bis ${to || '...'}` : 'Benutzerdefiniert';
+    } else {
+      from = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`; label = 'Dieser Monat';
+    }
+    return { period, from, to, label };
+  }
+  function completedJobs() {
+    return state.jobs.filter(j => ['Erledigt','Bezahlt'].includes(j.status));
+  }
+  function jobIncomeItems(range) {
+    return completedJobs().filter(j => dateInRange(financeJobDate(j), range.from, range.to)).map(j => {
+      const p = personById(j.personId) || {};
+      return { type:'Job', id:j.id, date:financeJobDate(j), title:`${p.name || j.personId} · ${j.service || 'Reinigung'}`, amount:Number(j.amount || 0), personId:j.personId, jobId:j.id, createdBy:j.createdBy || '', assignedTo:j.assignedTo || '' };
+    });
+  }
+  function manualIncomeItems(range) {
+    return (state.finance?.manualIncome || []).filter(x => {
+      const start = x.from || x.date || x.createdAt;
+      const end = x.to || start;
+      return (!range.from || end >= range.from) && (!range.to || start <= range.to);
+    }).map(x => ({ type:'Manuell', id:x.id, date:x.from || x.createdAt, from:x.from || '', to:x.to || '', title:x.title || 'Manuelle Einnahme', amount:Number(x.amount || 0), notes:x.notes || '', createdBy:x.createdBy || '' }));
+  }
+  function expenseItems(range) {
+    return (state.finance?.expenses || []).filter(x => dateInRange(x.date || x.createdAt, range.from, range.to)).map(x => ({ ...x, amount:Number(x.amount || 0) }));
+  }
+  function financeSummary(range) {
+    const jobs = jobIncomeItems(range);
+    const manual = manualIncomeItems(range);
+    const expenses = expenseItems(range);
+    const jobIncome = jobs.reduce((s,x)=>s+x.amount,0);
+    const manualIncome = manual.reduce((s,x)=>s+x.amount,0);
+    const expenseTotal = expenses.reduce((s,x)=>s+x.amount,0);
+    return { jobs, manual, expenses, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal };
+  }
+
+  function canEditFinanceEntry(x) {
+    return !!x && (x.createdBy === currentUser);
+  }
+
+  function renderFinance() {
+    if (!$('[data-finance-stats]') || !isAdmin()) return;
+    const range = getFinanceRange();
+    const s = financeSummary(range);
+    $('[data-finance-period-label]').textContent = range.label;
+    $('[data-finance-stats]').innerHTML = [
+      ['Einnahmen Jobs', money(s.jobIncome), `${s.jobs.length} fertige Jobs`],
+      ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
+      ['Ausgaben', money(s.expenseTotal), `${s.expenses.length} Kostenposition(en)`],
+      ['Gewinn grob', money(s.profit), 'Einnahmen minus Ausgaben']
+    ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
+
+    renderFinanceChart(s);
+    const incomes = [...s.jobs, ...s.manual].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    $('[data-income-count]').textContent = `${incomes.length} Eintrag(e)`;
+    $('[data-income-list]').innerHTML = incomes.length ? incomes.map(x => {
+      const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
+      const editBtns = x.type === 'Manuell' && canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-manual-income="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-manual-income="${esc(x.id)}">Löschen</button></div>` : '';
+      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.type)} · ${esc(ymd(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge ok">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
+    }).join('') : '<div class="empty">Keine Einnahmen im Zeitraum.</div>';
+
+    $('[data-expense-count]').textContent = `${s.expenses.length} Eintrag(e)`;
+    $('[data-expense-list]').innerHTML = s.expenses.length ? s.expenses.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x => {
+      const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
+      const editBtns = canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : '';
+      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(ymd(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge danger">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
+    }).join('') : '<div class="empty">Keine Ausgaben im Zeitraum.</div>';
+
+    renderCustomerActivity(range);
+  }
+  function renderFinanceChart(s) {
+    const max = Math.max(s.incomeTotal, s.expenseTotal, Math.abs(s.profit), 1);
+    const rows = [
+      ['Einnahmen', s.incomeTotal, 'income'],
+      ['Ausgaben', s.expenseTotal, 'expense'],
+      ['Gewinn', s.profit, s.profit >= 0 ? 'profit' : 'loss']
+    ];
+    $('[data-finance-chart]').innerHTML = rows.map(([label,val,cls]) => {
+      const w = Math.max(4, Math.round(Math.abs(val) / max * 100));
+      return `<div class="bar-row"><div class="bar-label">${esc(label)}</div><div class="bar-track"><span class="${esc(cls)}" style="width:${w}%"></span></div><strong>${esc(money(val))}</strong></div>`;
+    }).join('');
+  }
+  function renderCustomerActivity(range) {
+    const rows = state.people.map(p => {
+      const allJobs = completedJobs().filter(j => j.personId === p.id);
+      const inRange = allJobs.filter(j => dateInRange(financeJobDate(j), range.from, range.to));
+      const revenue = inRange.reduce((s,j)=>s+Number(j.amount||0),0);
+      const last = allJobs.map(financeJobDate).filter(Boolean).sort().pop() || '';
+      const days = last ? Math.round((new Date() - new Date(last)) / 86400000) : null;
+      return { p, allJobs, inRange, revenue, last, days };
+    }).filter(r => r.allJobs.length || r.p.status === 'customer');
+
+    const sort = $('[data-customer-activity-sort]')?.value || 'revenue';
+    rows.sort((a,b) => {
+      if (sort === 'jobs') return b.inRange.length - a.inRange.length || b.revenue - a.revenue;
+      if (sort === 'last') return String(b.last).localeCompare(String(a.last));
+      if (sort === 'name') return (a.p.name||'').localeCompare(b.p.name||'', 'de-CH');
+      return b.revenue - a.revenue || b.inRange.length - a.inRange.length;
+    });
+
+    $('[data-customer-activity-list]').innerHTML = rows.length ? rows.map(r => {
+      const inactive = r.days !== null && r.days > 90;
+      const status = r.last ? `Letzter Job: ${fmtDate(r.last)}${inactive ? ' · lange nicht kontaktiert' : ''}` : 'Noch kein erledigter Job';
+      return `<article class="item-card mini">
+        <div class="item-top"><div><div class="item-title">${esc(r.p.name || r.p.id)} <span class="badge">${esc(r.p.id)}</span></div><div class="item-sub">${esc(status)}</div></div><div class="badges"><span class="badge ok">${esc(money(r.revenue))}</span><span class="badge">${r.inRange.length} Job(s) im Zeitraum</span><span class="badge">${r.allJobs.length} total</span>${inactive ? '<span class="badge warn">Nachfassen</span>' : ''}</div></div>
+        <div class="actions">${phoneLink(r.p.phone)}${whatsappLink(r.p.phone, `Hoi ${r.p.name || ''}, wir hoffen, es geht Ihnen gut. Falls Fenster, Dachrinne, Terrasse oder Solaranlage wieder Reinigung brauchen, melden Sie sich gerne bei Lumian Services.`, 'WhatsApp Nachfassen')}<button class="secondary" data-open-person-job="${esc(r.p.id)}">Neuer Job</button></div>
+      </article>`;
+    }).join('') : '<div class="empty">Noch keine Kundenaktivität.</div>';
+  }
+
+
   function renderRewards() {
+    if (!$('[data-reward-list]') || !isAdmin()) return;
     const rewards = [...state.rewards].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
     $('[data-reward-list]').innerHTML = rewards.length ? rewards.map(r => {
       const receiver = personById(r.customerId); const from = personById(r.fromPersonId);
       return `<article class="item-card">
         <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}</div></div><span class="badge ${r.status==='offen'?'warn':'ok'}">${esc(r.status)}</span></div>
-        <div class="actions"><button class="secondary" data-toggle-reward="${esc(r.id)}">${r.status==='offen'?'Als gutgeschrieben markieren':'Wieder offen'}</button>${receiver?.phone?`<a class="secondary" href="${esc(waUrlFor(receiver.phone, `Hoi ${receiver.name}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`))}" target="_blank" rel="noopener">WhatsApp</a>`:''}</div>
+        <div class="actions"><button class="secondary" data-toggle-reward="${esc(r.id)}">${r.status==='offen'?'Als gutgeschrieben markieren':'Wieder offen'}</button>${whatsappLink(receiver?.phone, `Hoi ${receiver?.name || ''}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`, 'WhatsApp')}</div>
       </article>`;
     }).join('') : '<div class="empty">Noch keine Boni. Sie entstehen automatisch, wenn ein Empfehlungs-Job erledigt wird und der Mindestauftrag erreicht ist.</div>';
   }
 
   function mapLink(address) { return address ? `<a class="secondary" href="https://maps.google.com/?q=${encodeURIComponent(address)}" target="_blank" rel="noopener">Maps</a>` : ''; }
   function phoneLink(phone) { const p = parseSwissPhone(phone); return p.ok && !p.empty ? `<a class="secondary" href="tel:${esc(p.tel)}">Anrufen</a>` : ''; }
-  function waUrlFor(phone, text) { const p = parseSwissPhone(phone); if (!p.ok || p.empty) return '#'; return `https://wa.me/${p.wa}?text=${encodeURIComponent(text)}`; }
-  function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : '#'; }
-  function customerReminderLink(job) { const p = personById(job.personId) || {}; const parsed = parseSwissPhone(p.phone); return parsed.ok && !parsed.empty ? `<a class="secondary" href="${esc(waUrlFor(p.phone, reminderText(job)))}" target="_blank" rel="noopener">Reminder an Kunden</a>` : ''; }
+  function smsLink(phone, text='') { return ''; }
+  function isLikelySwissMobile(parsed) { return parsed?.ok && !parsed.empty && /^417[4-9]\d{7}$/.test(parsed.wa); }
+  function waUrlFor(phone, text) { const p = parseSwissPhone(phone); if (!p.ok || p.empty || !p.wa) return ''; return `https://api.whatsapp.com/send?phone=${p.wa}&text=${encodeURIComponent(text)}`; }
+  function whatsappLink(phone, text, label='WhatsApp', primary=false) { const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
+  function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://api.whatsapp.com/send?phone=${n}&text=${encodeURIComponent(text)}` : '#'; }
+  function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'WhatsApp'); }
   function calendarButton(job) { return job.appointmentAt ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
-  function waLeadLink(p,l) { const parsed = parseSwissPhone(p.phone); return parsed.ok && !parsed.empty ? `<a class="secondary" href="${esc(waUrlFor(p.phone, newCustomerText(p,l)))}" target="_blank" rel="noopener">WhatsApp Antwort</a>` : ''; }
+  function waLeadLink(p,l) { return whatsappLink(p.phone, newCustomerText(p,l), 'WhatsApp'); }
 
   function referralInviteText(p) {
     return fillTemplate(getSetting('referralTemplate'), { name:p.name||'', customerId:p.id||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder'), referralLink:referralLink(p.id) });
@@ -398,6 +678,14 @@
     return fillTemplate(getSetting('reminderTemplate'), { name:p.name||'', customerId:p.id||'', date:fmtDate(j.appointmentAt), service:j.service||'', amount:j.amount||'', address:p.address||'', bonus:getSetting('bonusAmount'), minOrder:getSetting('minOrder') });
   }
 
+  function openCustomerDialog() {
+    const form = $('[data-customer-form]');
+    if (!form) return;
+    form.reset();
+    form.elements.source.value = 'Import / Manuell';
+    $('[data-customer-dialog]').showModal();
+  }
+
   function openLeadDialog() {
     const form = $('[data-lead-form]'); form.reset();
     form.elements.source.value = 'WhatsApp';
@@ -406,19 +694,33 @@
     $('[data-lead-dialog]').showModal();
   }
 
+  function fillJobPerson(form, person, lead = null) {
+    if (!form || !person) return;
+    form.elements.personId.value = person.id || '';
+    form.elements.personSearch.value = `${person.name || 'Ohne Name'} · ${person.id || ''} · ${personStatusLabel(person)}`;
+    form.elements.name.value = person.name || '';
+    form.elements.phone.value = person.phone || '';
+    form.elements.email.value = person.email || '';
+    form.elements.address.value = person.address || '';
+    form.elements.place.value = person.place || '';
+    form.elements.source.value = person.source || 'WhatsApp';
+    if (person.referredById) setRefField('job', person.referredById);
+    const linkedLead = lead || leadForPerson(person.id);
+    if (linkedLead) {
+      form.elements.leadId.value = linkedLead.id || '';
+      form.elements.service.value = linkedLead.service || form.elements.service.value;
+      form.elements.appointmentAt.value = linkedLead.appointmentAt || form.elements.appointmentAt.value || '';
+      form.elements.amount.value = linkedLead.expectedValue || form.elements.amount.value || '';
+      form.elements.source.value = linkedLead.source || form.elements.source.value;
+      if (linkedLead.referredById) setRefField('job', linkedLead.referredById);
+    }
+  }
+
   function openJobDialog(job = null, lead = null, person = null) {
+    renderUserOptions();
     const form = $('[data-job-form]'); form.reset(); stagedPhotos = { before:null, after:null }; $('[data-photo-preview]').innerHTML = '';
     if (job) { person = personById(job.personId); lead = job.leadId ? leadById(job.leadId) : null; }
-    if (person) {
-      form.elements.personId.value = person.id || '';
-      form.elements.name.value = person.name || '';
-      form.elements.phone.value = person.phone || '';
-      form.elements.email.value = person.email || '';
-      form.elements.address.value = person.address || '';
-      form.elements.place.value = person.place || '';
-      form.elements.source.value = person.source || 'WhatsApp';
-      if (person.referredById) setRefField('job', person.referredById);
-    }
+    if (person) fillJobPerson(form, person, lead);
     if (lead) {
       form.elements.leadId.value = lead.id;
       form.elements.service.value = lead.service || form.elements.service.value;
@@ -454,8 +756,26 @@
 
   $$('[data-open-lead]').forEach(btn => btn.addEventListener('click', openLeadDialog));
   $$('[data-open-job]').forEach(btn => btn.addEventListener('click', () => openJobDialog()));
+  $$('[data-open-customer]').forEach(btn => btn.addEventListener('click', openCustomerDialog));
   $$('[data-close-modal]').forEach(btn => btn.addEventListener('click', () => btn.closest('dialog')?.close()));
   $('[data-forgot-password]')?.addEventListener('click', () => $('[data-reset-dialog]').showModal());
+
+  $('[data-customer-form]')?.addEventListener('submit', event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity() || !validateContactFields(form)) return;
+    const fd = new FormData(form);
+    const p = findOrCreatePerson({
+      name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: ''
+    });
+    p.status = 'customer';
+    p.customerSince = p.customerSince || new Date().toISOString();
+    p.notes = fd.get('notes') || p.notes || '';
+    saveState('customer manual');
+    form.closest('dialog').close();
+    setTab('customers');
+    toast(`Kunde gespeichert: ${p.id}`);
+  });
 
   $('[data-lead-form]')?.addEventListener('submit', event => {
     event.preventDefault();
@@ -532,6 +852,8 @@
     const job = jobById(jobId); if (!job) return;
     const p = personById(job.personId); if (!p) return;
     job.status = job.status === 'Bezahlt' ? 'Bezahlt' : 'Erledigt';
+    job.completedAt = job.completedAt || new Date().toISOString();
+    if (job.status === 'Bezahlt') job.paidAt = job.paidAt || new Date().toISOString();
     p.status = 'customer'; p.customerSince = p.customerSince || new Date().toISOString();
     const lead = job.leadId ? leadById(job.leadId) : null;
     if (lead) lead.status = 'Kunde geworden';
@@ -601,6 +923,25 @@
     });
   });
 
+  $('[data-person-search="job"]')?.addEventListener('input', event => {
+    const box = $('[data-person-suggestions="job"]');
+    const hits = searchPeople(event.target.value, 10);
+    if (!hits.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = hits.map(p => {
+      const lead = leadForPerson(p.id);
+      return `<button type="button" data-pick-person="${esc(p.id)}"><strong>${esc(p.name || 'Ohne Name')}</strong> · ${esc(p.id)} · ${esc(personStatusLabel(p))}${lead ? ` · offener Lead: ${esc(lead.service || lead.id)}` : ''}<br><small>${esc(p.address || p.phone || '')}</small></button>`;
+    }).join('');
+    box.hidden = false;
+  });
+
+  document.addEventListener('click', event => {
+    const pickPerson = event.target.closest('[data-pick-person]');
+    if (!pickPerson) return;
+    const person = personById(pickPerson.dataset.pickPerson);
+    if (person) fillJobPerson($('[data-job-form]'), person);
+    $('[data-person-suggestions="job"]').hidden = true;
+  });
+
   document.addEventListener('click', event => {
     const pick = event.target.closest('[data-pick-ref]');
     if (!pick) return;
@@ -609,8 +950,8 @@
   });
 
   ['lead','job','customer'].forEach(type => {
-    const search = $(`[data-${type}-search]`); if (search) search.addEventListener('input', () => { if (type === 'customer') customerListMode='search'; renderAll(); });
-    const filter = $(`[data-${type}-filter]`); if (filter) filter.addEventListener('change', renderAll);
+    const search = $(`[data-${type}-search]`); if (search) search.addEventListener('input', () => { const key = type === 'customer' ? 'customers' : `${type}s`; if (listPages[key]) listPages[key]=1; if (type === 'customer') customerListMode='search'; renderAll(); });
+    const filter = $(`[data-${type}-filter]`); if (filter) filter.addEventListener('change', () => { const key = type === 'customer' ? 'customers' : `${type}s`; if (listPages[key]) listPages[key]=1; renderAll(); });
   });
   $('[data-show-all-customers]')?.addEventListener('click', () => { customerListMode = 'all'; renderCustomers(); });
 
@@ -618,6 +959,8 @@
     const form = $('[data-settings-form]'); if (!form) return;
     if (form.dataset.filled === 'yes' && !force) return;
     Object.entries({ ...DEFAULT_SETTINGS, ...state.settings }).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value ?? ''; });
+    const u = state.users.find(x => x.id === currentUser);
+    if (form.elements.userRecoveryCode) form.elements.userRecoveryCode.value = u?.recoveryCode || defaultRecoveryCode(currentUser);
     form.dataset.filled = 'yes';
   }
   $('[data-settings-form]')?.addEventListener('submit', event => {
@@ -626,6 +969,8 @@
     Object.keys(DEFAULT_SETTINGS).forEach(key => { if (fd.has(key)) state.settings[key] = fd.get(key); });
     state.settings.bonusAmount = Number(state.settings.bonusAmount || 0);
     state.settings.minOrder = Number(state.settings.minOrder || 0);
+    const u = state.users.find(x => x.id === currentUser);
+    if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
     saveState('settings'); toast('Setup gespeichert.');
   });
   $('[data-change-password]')?.addEventListener('click', async () => {
@@ -639,11 +984,14 @@
   $('[data-reset-form]')?.addEventListener('submit', async event => {
     event.preventDefault();
     const fd = new FormData(event.currentTarget);
+    const userId = String(fd.get('user') || '');
+    const user = state.users.find(x => x.id === userId);
     const code = String(fd.get('code') || '').trim();
     const newPw = String(fd.get('newPassword') || '');
-    if (code !== String(getSetting('recoveryCode')).trim()) return toast('Reset-Code stimmt nicht.');
+    const expectedCode = String(user?.recoveryCode || state.settings.recoveryCode || defaultRecoveryCode(userId)).trim();
+    if (!user || code !== expectedCode) return toast('Reset-Code stimmt nicht.');
     if (newPw.length < 4) return toast('Neues Passwort: mindestens 4 Zeichen.');
-    await setPassword(fd.get('user'), newPw);
+    await setPassword(userId, newPw);
     event.currentTarget.closest('dialog').close();
     toast('Passwort wurde zurückgesetzt.');
   });
@@ -799,6 +1147,238 @@
     if (type === 'customers') importCustomersFromObjects(objects); else importLeadsFromObjects(objects);
   }
 
+  async function confirmSensitiveAction(label) {
+    const user = state.users.find(x => x.id === currentUser);
+    if (!user) return false;
+    if (!confirm(`${label}\n\nDiese Aktion kann wichtige Portal-Daten verändern oder löschen. Bitte bestätigen.`)) return false;
+
+    if (user.credentialId && navigator.credentials?.get) {
+      try {
+        await navigator.credentials.get({
+          publicKey: {
+            challenge: randomChallenge(),
+            allowCredentials: [{ type:'public-key', id: fromB64url(user.credentialId) }],
+            userVerification:'preferred',
+            timeout:45000
+          }
+        });
+        return true;
+      } catch {
+        // Fall back to password confirmation.
+      }
+    }
+
+    const pw = prompt(`Zur Bestätigung bitte das Passwort für ${user.name} eingeben:`);
+    if (pw === null) return false;
+    if (!(await verifyPassword(user, pw))) {
+      toast('Passwort stimmt nicht. Aktion abgebrochen.');
+      return false;
+    }
+    return true;
+  }
+
+
+  function addManualIncome(form) {
+    if (!isAdmin()) return toast('Nur Admins können Buchhaltung ändern.');
+    const fd = new FormData(form);
+    state.finance = state.finance || { manualIncome: [], expenses: [] };
+    const id = fd.get('entryId');
+    let entry = id ? state.finance.manualIncome.find(x => x.id === id) : null;
+    if (entry && !canEditFinanceEntry(entry)) return toast('Nur die Person, die den Eintrag erstellt hat, kann ihn bearbeiten.');
+    if (!entry) {
+      entry = { id: nextId('finance'), createdAt: new Date().toISOString(), createdBy: currentUser };
+      state.finance.manualIncome.push(entry);
+    } else {
+      entry.updatedAt = new Date().toISOString();
+      entry.updatedBy = currentUser;
+    }
+    Object.assign(entry, {
+      title: fd.get('title'),
+      from: fd.get('from'),
+      to: fd.get('to'),
+      amount: Number(fd.get('amount') || 0),
+      notes: fd.get('notes') || ''
+    });
+    saveState(entry.updatedAt ? 'manual income edit' : 'manual income');
+    form.reset();
+    setDefaultFinanceDates();
+    renderFinance();
+    toast(entry.updatedAt ? 'Einnahme geändert.' : 'Einnahme gespeichert.');
+  }
+  function addExpense(form) {
+    if (!isAdmin()) return toast('Nur Admins können Buchhaltung ändern.');
+    const fd = new FormData(form);
+    state.finance = state.finance || { manualIncome: [], expenses: [] };
+    const id = fd.get('entryId');
+    let entry = id ? state.finance.expenses.find(x => x.id === id) : null;
+    if (entry && !canEditFinanceEntry(entry)) return toast('Nur die Person, die den Eintrag erstellt hat, kann ihn bearbeiten.');
+    if (!entry) {
+      entry = { id: nextId('finance'), createdAt: new Date().toISOString(), createdBy: currentUser };
+      state.finance.expenses.push(entry);
+    } else {
+      entry.updatedAt = new Date().toISOString();
+      entry.updatedBy = currentUser;
+    }
+    Object.assign(entry, {
+      date: fd.get('date'),
+      category: fd.get('category'),
+      title: fd.get('title'),
+      amount: Number(fd.get('amount') || 0),
+      notes: fd.get('notes') || ''
+    });
+    saveState(entry.updatedAt ? 'expense edit' : 'expense');
+    form.reset();
+    setDefaultFinanceDates();
+    renderFinance();
+    toast(entry.updatedAt ? 'Ausgabe geändert.' : 'Ausgabe gespeichert.');
+  }
+
+  function renderUsers() {
+    const list = $('[data-user-list]');
+    if (!list) return;
+    if (!isAdmin()) { list.innerHTML = ''; return; }
+    list.innerHTML = activeUsers().map(u => {
+      const locked = ADMIN_IDS.includes(u.id);
+      return `<article class="item-card mini">
+        <div class="item-top"><div><div class="item-title">${esc(u.name)} <span class="badge">${esc(u.id)}</span></div><div class="item-sub">${u.role === 'admin' ? 'Admin: volle Rechte' : 'Mitarbeiter: Übersicht, Leads, Jobs, Kunden'} · Reset-Code separat</div></div><span class="badge ${u.role==='admin'?'ok':''}">${esc(u.emoji || '?')}</span></div>
+        <div class="actions">${locked ? '<span class="hint">Admin-Benutzer geschützt</span>' : `<button class="secondary danger" data-disable-user="${esc(u.id)}">Deaktivieren</button>`}</div>
+      </article>`;
+    }).join('');
+  }
+
+  
+  async function saveUserFromSetup() {
+    const form = $('[data-user-form]');
+    if (!form) return;
+    if (!isAdmin()) return toast('Nur Noah und Timo können Benutzer anlegen.');
+    const fd = new FormData();
+    ['userId','name','emoji','password','recoveryCode','role'].forEach(name => {
+      const el = form.querySelector(`[name="${name}"]`);
+      fd.append(name, el ? el.value : '');
+    });
+    const id = normalizeUserId(fd.get('userId'));
+    if (!id || id.length < 2) return toast('Benutzername: mindestens 2 Zeichen.');
+    if (ADMIN_IDS.includes(id)) return toast('Noah und Timo sind bereits Admins.');
+    const pw = String(fd.get('password') || '');
+    if (pw.length < 4) return toast('Start-Passwort: mindestens 4 Zeichen.');
+    let u = state.users.find(x => x.id === id);
+    if (!u) {
+      u = { id, name:'', emoji:'', role:'staff', active:true, passwordHash:'', salt:'', credentialId:'', credentialUserHandle:'', recoveryCode:'' };
+      state.users.push(u);
+    }
+    u.name = String(fd.get('name') || id).trim();
+    u.emoji = String(fd.get('emoji') || u.name.slice(0,1).toUpperCase()).trim().slice(0,2);
+    u.role = 'staff';
+    u.active = true;
+    u.recoveryCode = String(fd.get('recoveryCode') || `${u.name}-Reset-2026`).trim();
+    await setPassword(id, pw);
+    form.querySelectorAll('input,select').forEach(el => { if (el.name !== 'role') el.value=''; });
+    const roleEl = form.querySelector('[name="role"]'); if (roleEl) roleEl.value = 'staff';
+    renderUserOptions(); renderUsers(); saveState('user save');
+    toast(`Mitarbeiter ${u.name} gespeichert.`);
+  }
+  $('[data-save-user]')?.addEventListener('click', saveUserFromSetup);
+
+
+  document.addEventListener('click', event => {
+    const dis = event.target.closest('[data-disable-user]');
+    if (!dis) return;
+    if (!isAdmin()) return toast('Nur Admins können Benutzer deaktivieren.');
+    const u = state.users.find(x => x.id === dis.dataset.disableUser);
+    if (!u || ADMIN_IDS.includes(u.id)) return;
+    if (!confirm(`${u.name} wirklich deaktivieren?`)) return;
+    u.active = false;
+    saveState('user disable');
+    renderUserOptions(); renderUsers();
+    toast('Benutzer deaktiviert.');
+  });
+
+
+  function setDefaultFinanceDates() {
+    const today = ymd(new Date());
+    $$('[data-manual-income-form] input[type="date"], [data-expense-form] input[type="date"]').forEach(input => { if (!input.value) input.value = today; });
+    const range = getFinanceRange();
+    if ($('[data-finance-from]') && !$('[data-finance-from]').value) $('[data-finance-from]').value = range.from;
+    if ($('[data-finance-to]') && !$('[data-finance-to]').value) $('[data-finance-to]').value = range.to;
+  }
+  $('[data-manual-income-form]')?.addEventListener('submit', event => { event.preventDefault(); addManualIncome(event.currentTarget); });
+  $('[data-expense-form]')?.addEventListener('submit', event => { event.preventDefault(); addExpense(event.currentTarget); });
+  $$('[data-finance-period],[data-finance-from],[data-finance-to],[data-customer-activity-sort]').forEach(el => el.addEventListener('change', renderFinance));
+  $('[data-finance-apply]')?.addEventListener('click', renderFinance);
+  document.addEventListener('click', async event => {
+    const editIncome = event.target.closest('[data-edit-manual-income]');
+    if (editIncome) {
+      const entry = (state.finance.manualIncome || []).find(x => x.id === editIncome.dataset.editManualIncome);
+      if (!entry) return;
+      if (!canEditFinanceEntry(entry)) return toast('Nur der Ersteller kann diesen Eintrag bearbeiten.');
+      if (!(await confirmSensitiveAction('Manuelle Einnahme bearbeiten?'))) return;
+      const form = $('[data-manual-income-form]');
+      form.elements.entryId.value = entry.id;
+      form.elements.title.value = entry.title || '';
+      form.elements.from.value = entry.from || ymd(entry.createdAt);
+      form.elements.to.value = entry.to || entry.from || ymd(entry.createdAt);
+      form.elements.amount.value = entry.amount || '';
+      form.elements.notes.value = entry.notes || '';
+      form.scrollIntoView({ behavior:'smooth', block:'center' });
+      toast('Eintrag geladen. Jetzt ändern und speichern.');
+    }
+
+    const delIncome = event.target.closest('[data-delete-manual-income]');
+    if (delIncome) {
+      const entry = (state.finance.manualIncome || []).find(x => x.id === delIncome.dataset.deleteManualIncome);
+      if (!entry) return;
+      if (!canEditFinanceEntry(entry)) return toast('Nur der Ersteller kann diesen Eintrag löschen.');
+      if (!(await confirmSensitiveAction('Manuelle Einnahme löschen?'))) return;
+      state.finance.manualIncome = (state.finance.manualIncome || []).filter(x => x.id !== entry.id);
+      saveState('manual income delete'); renderFinance(); toast('Einnahme gelöscht.');
+    }
+
+    const editExpense = event.target.closest('[data-edit-expense]');
+    if (editExpense) {
+      const entry = (state.finance.expenses || []).find(x => x.id === editExpense.dataset.editExpense);
+      if (!entry) return;
+      if (!canEditFinanceEntry(entry)) return toast('Nur der Ersteller kann diese Ausgabe bearbeiten.');
+      if (!(await confirmSensitiveAction('Ausgabe bearbeiten?'))) return;
+      const form = $('[data-expense-form]');
+      form.elements.entryId.value = entry.id;
+      form.elements.date.value = entry.date || ymd(entry.createdAt);
+      form.elements.category.value = entry.category || 'Sonstiges';
+      form.elements.title.value = entry.title || '';
+      form.elements.amount.value = entry.amount || '';
+      form.elements.notes.value = entry.notes || '';
+      form.scrollIntoView({ behavior:'smooth', block:'center' });
+      toast('Ausgabe geladen. Jetzt ändern und speichern.');
+    }
+
+    const del = event.target.closest('[data-delete-expense]');
+    if (del) {
+      const entry = (state.finance.expenses || []).find(x => x.id === del.dataset.deleteExpense);
+      if (!entry) return;
+      if (!canEditFinanceEntry(entry)) return toast('Nur der Ersteller kann diese Ausgabe löschen.');
+      if (!(await confirmSensitiveAction('Ausgabe löschen?'))) return;
+      state.finance.expenses = (state.finance.expenses || []).filter(x => x.id !== entry.id);
+      saveState('expense delete'); renderFinance(); toast('Ausgabe gelöscht.');
+    }
+  });
+  function exportFinanceCsv() {
+    const range = getFinanceRange();
+    const s = financeSummary(range);
+    const rows = [
+      ['Typ','Datum/Von','Bis','Titel/Kunde','Kategorie','Betrag CHF','Eingetragen von','Notiz','JobID/ID'],
+      ...s.jobs.map(x => ['Einnahme Job', ymd(x.date), '', x.title, 'Job', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId]),
+      ...s.manual.map(x => ['Einnahme manuell', ymd(x.date), x.to || '', x.title, 'Manuell', x.amount, userName(x.createdBy), x.notes || '', x.id]),
+      ...s.expenses.map(x => ['Ausgabe', ymd(x.date), '', x.title, x.category || 'Ausgabe', -Number(x.amount || 0), userName(x.createdBy), x.notes || '', x.id]),
+      [],
+      ['Zusammenfassung','','','Einnahmen Jobs','',s.jobIncome,'',''],
+      ['Zusammenfassung','','','Manuell ergänzt','',s.manualIncome,'',''],
+      ['Zusammenfassung','','','Ausgaben','',-s.expenseTotal,'',''],
+      ['Zusammenfassung','','','Gewinn grob','',s.profit,'','']
+    ];
+    downloadText(`lumian-buchhaltung-${range.from || 'start'}-${range.to || 'heute'}.csv`, rows.map(csvLine).join('\n'), 'text/csv;charset=utf-8');
+  }
+  $('[data-finance-export]')?.addEventListener('click', exportFinanceCsv);
+
+
   function exportCsv() {
     const rows = [['LumianNr','Status','Name','Telefon','Email','Adresse','Ort','Quelle','EmpfohlenVon','KundeSeit']]
       .concat(state.people.map(p => [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.customerSince || '']));
@@ -814,10 +1394,18 @@
   $('[data-export-json]')?.addEventListener('click', exportJson);
   $('[data-import-json]')?.addEventListener('change', async event => {
     const file = event.target.files?.[0]; if (!file) return;
+    if (!(await confirmSensitiveAction('Backup importieren? Bestehende lokale Portal-Daten werden überschrieben.'))) { event.target.value=''; return; }
     try { const imported = migrateState(JSON.parse(await file.text())); localStorage.setItem(STORE_KEY, JSON.stringify(imported)); location.reload(); }
     catch { toast('Backup konnte nicht gelesen werden.'); }
   });
-  $('[data-reset-demo]')?.addEventListener('click', () => { if (confirm('Wirklich alle lokalen Portal-Daten auf diesem Gerät löschen?')) { localStorage.removeItem(STORE_KEY); location.reload(); } });
+  $('[data-reset-demo]')?.addEventListener('click', async () => {
+    if (!(await confirmSensitiveAction('Lokale Daten wirklich löschen?'))) return;
+    if (confirm('Letzte Bestätigung: Alle lokalen Portal-Daten auf diesem Gerät werden gelöscht.')) {
+      localStorage.removeItem(STORE_KEY);
+      OLD_KEYS.forEach(k => localStorage.removeItem(k));
+      location.reload();
+    }
+  });
 
   function makeCloudPayload() { saveState('before sync'); return { action:'syncFull', sentAt:new Date().toISOString(), by:currentUser, state }; }
   async function syncCloud() {
@@ -901,5 +1489,6 @@
   $('[data-disable-biometric]')?.addEventListener('click', () => { const u = state.users.find(x => x.id === currentUser); if (u) { u.credentialId=''; u.credentialUserHandle=''; saveState('biometric off'); toast('Biometrie auf diesem Gerät entfernt.'); } });
   $('[data-biometric-login]')?.addEventListener('click', biometricLogin);
 
+  setDefaultFinanceDates();
   renderLogin();
 })();

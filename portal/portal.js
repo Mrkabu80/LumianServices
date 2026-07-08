@@ -2823,28 +2823,32 @@
     return String(getSetting('scriptUrl') || '').trim();
   }
 
+  function cloudRequestUrls(preferredUrl = '') {
+    const urls = [preferredUrl, currentScriptUrl(), DEFAULT_SETTINGS.scriptUrl]
+      .map(u => String(u || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(urls));
+  }
+
+  function rememberWorkingScriptUrl(url) {
+    const working = String(url || '').trim();
+    if (!working || working === currentScriptUrl()) return;
+    state.settings = { ...DEFAULT_SETTINGS, ...(state.settings || {}), scriptUrl: working };
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    const input = document.querySelector('[name="scriptUrl"]');
+    if (input) input.value = working;
+  }
+
   function autoLoadCloudThenCheckWebsiteLeads() {
     const url = currentScriptUrl();
-    if (!url) return;
+    if (!url && !DEFAULT_SETTINGS.scriptUrl) return;
     if (autoLoadCloudThenCheckWebsiteLeads._busy) return;
     autoLoadCloudThenCheckWebsiteLeads._busy = true;
 
-    const callbackName = `lumianAutoCloud_${Date.now()}`;
-    const script = document.createElement('script');
-    let finished = false;
-    let timer = null;
-    const done = () => {
-      if (finished) return;
-      finished = true;
-      autoLoadCloudThenCheckWebsiteLeads._busy = false;
-      clearTimeout(timer);
-      try { delete window[callbackName]; } catch {}
-      script.remove();
-    };
-
-    window[callbackName] = data => {
-      try {
+    jsonpRequest(url || DEFAULT_SETTINGS.scriptUrl, 'load')
+      .then(data => {
         const cloudState = data?.state;
+        if (data?._usedUrl) rememberWorkingScriptUrl(data._usedUrl);
         if (cloudState) {
           suppressAutoCloudSync = true;
           const merged = mergeCloudStatePreserveLocalMedia(state, cloudState);
@@ -2855,22 +2859,19 @@
           // Push any local/offline records that were newer than cloud after merging.
           setTimeout(() => syncCloud(true), 900);
         }
-      } catch {}
-      done();
-      checkWebsiteLeads(true);
-    };
-
-    timer = setTimeout(() => { done(); checkWebsiteLeads(true); }, 8000);
-    script.onerror = () => { done(); checkWebsiteLeads(true); };
-    script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}&t=${Date.now()}`;
-    document.body.appendChild(script);
+      })
+      .catch(() => {})
+      .finally(() => {
+        autoLoadCloudThenCheckWebsiteLeads._busy = false;
+        checkWebsiteLeads(true);
+      });
   }
 
   function checkWebsiteLeads(silent = false) {
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
     suppressAutoCloudSync = false;
-    const url = currentScriptUrl();
+    const url = currentScriptUrl() || DEFAULT_SETTINGS.scriptUrl;
     if (!url) {
       const msg = 'Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.';
       if (!silent) { toast(msg); setWebLeadsStatus(msg, 'error'); }
@@ -2882,38 +2883,22 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Prüfe...'; }
     if (!silent) setWebLeadsStatus('Web-Leads werden geprüft...', 'loading');
 
-    const callbackName = `lumianWebsiteLeads_${Date.now()}`;
-    const script = document.createElement('script');
-    let done = false;
-
     const finish = (message, tone = '') => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
       if (btn) { btn.disabled = false; btn.textContent = oldText || 'Web-Leads prüfen'; }
-      try { delete window[callbackName]; } catch {}
-      script.remove();
       if (!silent && message) { toast(message); setWebLeadsStatus(message, tone); }
     };
 
-    window[callbackName] = data => {
-      try {
+    jsonpRequest(url, 'websiteLeads')
+      .then(data => {
+        if (data?._usedUrl) rememberWorkingScriptUrl(data._usedUrl);
         const rows = data?.leads || [];
         const count = importWebsiteLeads(rows);
         if (count) finish(`${count} neue Website-/Danke-Code-Anfrage(n) importiert.`, 'ok');
         else finish(`Keine neuen Web-Leads gefunden. Gesamt in Cloud: ${rows.length}.`, rows.length ? 'ok' : '');
-      } catch (err) {
-        finish('Web-Leads konnten nicht importiert werden: ' + String(err).slice(0,120), 'error');
-      }
-    };
-
-    const timer = setTimeout(() => {
-      finish('Keine Antwort vom Google Script. Deployment/Access prüfen: Web App, Execute as Me, Anyone with link.', 'error');
-    }, 12000);
-
-    script.onerror = () => finish('Google Script konnte nicht geladen werden. URL oder Zugriff prüfen.', 'error');
-    script.src = `${url}${url.includes('?')?'&':'?'}action=websiteLeads&callback=${callbackName}&t=${Date.now()}`;
-    document.body.appendChild(script);
+      })
+      .catch(err => {
+        finish('Web-Leads konnten nicht geladen werden: ' + String(err?.message || err).slice(0,120), 'error');
+      });
   }
 
   function hasLocalPhotoData(s = state) {
@@ -2998,43 +2983,66 @@
     catch { if (!silent) toast('Sync konnte nicht gesendet werden.'); }
     finally { cloudSyncInProgress = false; }
   }
-  function loadCloud() {
+  async function loadCloud() {
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
     suppressAutoCloudSync = false;
-    const url = currentScriptUrl(); if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
-    const callbackName = `lumianCloud_${Date.now()}`;
-    const script = document.createElement('script');
-    window[callbackName] = data => {
-      try {
-        if (!data || !data.state) throw new Error('empty');
-        suppressAutoCloudSync = true;
-        const imported = mergeCloudStatePreserveLocalMedia(state, data.state);
-        state = migrateState(imported);
-        localStorage.setItem(STORE_KEY, JSON.stringify(state));
-        suppressAutoCloudSync = false;
-        renderAll();
-        queueActivity('Refresh / Cloud geladen', 'Sync', '', 'Aktuelle Cloud-Daten wurden auf dieses Gerät geladen.', { flush: true });
-        toast('Cloud geladen und mit diesem Gerät abgeglichen.');
-      } catch { toast('Cloud-Daten konnten nicht geladen werden.'); }
-      delete window[callbackName]; script.remove();
-    };
-    script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}&t=${Date.now()}`;
-    script.onerror = () => { toast('Cloud laden fehlgeschlagen.'); delete window[callbackName]; script.remove(); };
-    document.body.appendChild(script);
+    const url = currentScriptUrl() || DEFAULT_SETTINGS.scriptUrl;
+    if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
+    try {
+      const data = await jsonpRequest(url, 'load');
+      if (!data || !data.state) throw new Error('empty');
+      if (data._usedUrl) rememberWorkingScriptUrl(data._usedUrl);
+      suppressAutoCloudSync = true;
+      const imported = mergeCloudStatePreserveLocalMedia(state, data.state);
+      state = migrateState(imported);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      suppressAutoCloudSync = false;
+      renderAll();
+      queueActivity('Refresh / Cloud geladen', 'Sync', '', 'Aktuelle Cloud-Daten wurden auf dieses Gerät geladen.', { flush: true });
+      toast('Cloud geladen und mit diesem Gerät abgeglichen.');
+    } catch (err) {
+      toast('Cloud laden fehlgeschlagen. Bitte Web-App Cache erneuern oder Apps Script URL prüfen.');
+    }
   }
 
-  function jsonpRequest(url, action, params = {}) {
+  function jsonpRequestOnce(url, action, params = {}, timeoutMs = 14000) {
     return new Promise((resolve, reject) => {
       const callbackName = `lumianJsonp_${action}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
       const script = document.createElement('script');
-      const cleanup = () => { try { delete window[callbackName]; } catch {} script.remove(); };
+      let done = false;
+      let timer = null;
+      const cleanup = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { delete window[callbackName]; } catch {}
+        script.remove();
+      };
       const qs = new URLSearchParams(Object.assign({}, params, { action, callback: callbackName, t: Date.now() }));
-      window[callbackName] = data => { cleanup(); resolve(data); };
+      window[callbackName] = data => {
+        cleanup();
+        if (data && typeof data === 'object') data._usedUrl = url;
+        resolve(data);
+      };
+      timer = setTimeout(() => { cleanup(); reject(new Error('Keine Antwort vom Google Script.')); }, timeoutMs);
       script.onerror = () => { cleanup(); reject(new Error('Apps Script konnte nicht geladen werden. URL/Deployment prüfen.')); };
       script.src = `${url}${url.includes('?')?'&':'?'}${qs.toString()}`;
       document.body.appendChild(script);
     });
+  }
+
+  async function jsonpRequest(url, action, params = {}) {
+    const urls = cloudRequestUrls(url);
+    let lastError = null;
+    for (const candidate of urls) {
+      try {
+        return await jsonpRequestOnce(candidate, action, params);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('Apps Script konnte nicht geladen werden.');
   }
 
   async function testGoogleSync() {

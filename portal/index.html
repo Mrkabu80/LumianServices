@@ -53,8 +53,9 @@
           </div>
         </div>
         <div class="top-actions">
-          <button class="icon-button" type="button" data-install-portal title="Als App speichern">▣</button>
           <div class="user-pill" data-user-pill></div>
+          <button class="secondary top-sync" type="button" data-sync-now title="Lokale Änderungen zur Cloud senden">Sync</button>
+          <button class="secondary top-refresh" type="button" data-load-cloud title="Neueste Cloud-Daten auf dieses Gerät laden">Refresh</button>
           <button class="secondary top-logout" type="button" data-logout>Logout</button>
         </div>
       </header>
@@ -346,38 +347,6 @@
             </label>
           </fieldset>
 
-              <fieldset data-admin-only data-lock-section="cloud" class="locked-fieldset">
-            <legend>Google Sheet / Drive</legend>
-            <div class="lock-toolbar">
-              <span class="setup-lock-status" data-lock-status="cloud">Gesperrt</span>
-              <button class="secondary small" type="button" data-unlock-section="cloud">Entsperren</button>
-              <button class="secondary small" type="button" data-lock-now="cloud" hidden>Sperren</button>
-            </div>
-            <div class="setup-lock-body" data-lock-body>
-              <label>Google Apps Script Web App URL
-                <input name="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
-              </label>
-              <label>Google Drive Folder ID für Fotos
-                <input name="driveFolderId" placeholder="optional, für Vorher/Nachher Fotos">
-              </label>
-              <label>Google Drive Folder ID für Portal-Backups
-                <input name="backupFolderId" placeholder="optional, für automatische JSON-Backups">
-              </label>
-              <p class="hint">Fotos werden beim Sync komprimiert und so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Im Portal werden danach Drive-Vorschauen angezeigt. Termine werden im Lumian Google Calendar erstellt oder beim Ändern des Termins aktualisiert, nicht doppelt angelegt. Wichtig: Der iCal-Link ist nur zum Lesen. Für automatisches Erstellen braucht Apps Script Schreibzugriff auf den Kalender lumianservices@gmail.com. Trage deshalb als Calendar ID am besten direkt lumianservices@gmail.com ein.</p>
-              <label>Google Calendar ID
-                <input name="calendarId" placeholder="lumianservices@gmail.com">
-              </label>
-              <div class="button-row">
-                <button class="primary" type="button" data-save-cloud-settings>Google/Drive Einstellungen speichern</button>
-                <button class="secondary" type="button" data-sync-now>Sync senden</button>
-                <button class="secondary" type="button" data-test-sync>Drive/Kalender testen</button>
-                <button class="secondary" type="button" data-load-cloud>Cloud laden</button>
-                <button class="secondary" type="button" data-backup-now>Backup auf Drive speichern</button>
-              </div>
-              <p class="hint">Sync senden überträgt lokale Änderungen dieses Geräts zur Cloud. Cloud laden holt den letzten Cloud-Stand auf dieses Gerät. Google/Drive IDs werden erst mit dem separaten Speichern-Button übernommen.</p>
-            </div>
-          </fieldset>
-
               <fieldset class="wide" data-admin-only>
             <legend>WhatsApp Texte</legend>
             <label>Empfehlung an bestehenden Kunden
@@ -445,39 +414,73 @@
             <div data-user-list class="list compact"></div>
           </fieldset>
 
-              <fieldset data-admin-only data-lock-section="backup" class="locked-fieldset danger-zone">
-            <legend>Daten, Import & Backup</legend>
+
+            </div>
+          </div>
+
+          <div class="setup-sensitive-bottom" data-admin-only>
+            <fieldset data-admin-only data-lock-section="cloud" class="locked-fieldset">
+            <legend>Google Sheet / Drive</legend>
             <div class="lock-toolbar">
-              <span class="setup-lock-status" data-lock-status="backup">Gesperrt</span>
-              <button class="secondary small" type="button" data-unlock-section="backup">Entsperren</button>
-              <button class="secondary small" type="button" data-lock-now="backup" hidden>Sperren</button>
+            <span class="setup-lock-status" data-lock-status="cloud">Gesperrt</span>
+            <button class="secondary small" type="button" data-unlock-section="cloud">Entsperren</button>
+            <button class="secondary small" type="button" data-lock-now="cloud" hidden>Sperren</button>
             </div>
             <div class="setup-lock-body" data-lock-body>
-              <div class="button-row vertical">
-                <a class="secondary" href="templates/lumian-kunden-import-vorlage.xlsx" download>Kunden-Vorlage herunterladen</a>
-                <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-customers hidden></label>
-                <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Lead-Vorlage herunterladen</a>
-                <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
-                <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
-                <label class="file-button">Backup JSON importieren<input type="file" accept="application/json" data-import-json hidden></label>
-                <button class="secondary" type="button" data-backup-now>Backup auf Drive speichern</button>
-                <button class="secondary" type="button" data-list-drive-backups>Drive-Backups anzeigen</button>
-              </div>
-              <div class="backup-picker" data-backup-picker hidden>
-                <label>Backup aus Drive auswählen
-                  <select data-drive-backup-select></select>
-                </label>
-                <button class="secondary danger" type="button" data-restore-drive-backup>Ausgewähltes Backup wiederherstellen</button>
-                <p class="hint" data-backup-list-status>Vor der Wiederherstellung erstellt das System zuerst ein neues Sicherheitsbackup.</p>
-              </div>
-              <div class="danger-actions">
-                <button class="secondary danger" type="button" data-reset-demo>Lokalen Cache löschen & Cloud neu laden</button>
-                <button class="secondary danger" type="button" data-reset-cloud>Testdaten löschen & produktiv starten</button>
-              </div>
-              <p class="hint">Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter und Einstellungen.</p>
+            <label>Google Apps Script Web App URL
+              <input name="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+            </label>
+            <label>Google Drive Folder ID für Fotos
+              <input name="driveFolderId" placeholder="optional, für Vorher/Nachher Fotos">
+            </label>
+            <label>Google Drive Folder ID für Portal-Backups
+              <input name="backupFolderId" placeholder="optional, für automatische JSON-Backups">
+            </label>
+            <p class="hint">Fotos werden beim Sync komprimiert und so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Im Portal werden danach Drive-Vorschauen angezeigt. Termine werden im Lumian Google Calendar erstellt oder beim Ändern des Termins aktualisiert, nicht doppelt angelegt. Wichtig: Der iCal-Link ist nur zum Lesen. Für automatisches Erstellen braucht Apps Script Schreibzugriff auf den Kalender lumianservices@gmail.com. Trage deshalb als Calendar ID am besten direkt lumianservices@gmail.com ein.</p>
+            <label>Google Calendar ID
+              <input name="calendarId" placeholder="lumianservices@gmail.com">
+            </label>
+            <div class="button-row">
+              <button class="primary" type="button" data-save-cloud-settings>Google/Drive Einstellungen speichern</button>
+              <button class="secondary" type="button" data-test-sync>Drive/Kalender testen</button>
+              <button class="secondary" type="button" data-backup-now>Backup auf Drive speichern</button>
+            </div>
+            <p class="hint">Google/Drive IDs werden erst mit dem separaten Speichern-Button übernommen. Sync und Refresh sind oben neben Logout immer verfügbar.</p>
             </div>
           </fieldset>
+
+            <fieldset data-admin-only data-lock-section="backup" class="locked-fieldset danger-zone">
+            <legend>Daten, Import & Backup</legend>
+            <div class="lock-toolbar">
+            <span class="setup-lock-status" data-lock-status="backup">Gesperrt</span>
+            <button class="secondary small" type="button" data-unlock-section="backup">Entsperren</button>
+            <button class="secondary small" type="button" data-lock-now="backup" hidden>Sperren</button>
             </div>
+            <div class="setup-lock-body" data-lock-body>
+            <div class="button-row vertical">
+              <a class="secondary" href="templates/lumian-kunden-import-vorlage.xlsx" download>Kunden-Vorlage herunterladen</a>
+              <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-customers hidden></label>
+              <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Lead-Vorlage herunterladen</a>
+              <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
+              <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
+              <label class="file-button">Backup JSON importieren<input type="file" accept="application/json" data-import-json hidden></label>
+              <button class="secondary" type="button" data-backup-now>Backup auf Drive speichern</button>
+              <button class="secondary" type="button" data-list-drive-backups>Drive-Backups anzeigen</button>
+            </div>
+            <div class="backup-picker" data-backup-picker hidden>
+              <label>Backup aus Drive auswählen
+                <select data-drive-backup-select></select>
+              </label>
+              <button class="secondary danger" type="button" data-restore-drive-backup>Ausgewähltes Backup wiederherstellen</button>
+              <p class="hint" data-backup-list-status>Vor der Wiederherstellung erstellt das System zuerst ein neues Sicherheitsbackup.</p>
+            </div>
+            <div class="danger-actions">
+              <button class="secondary danger" type="button" data-reset-demo>Lokalen Cache löschen & Cloud neu laden</button>
+              <button class="secondary danger" type="button" data-reset-cloud>Testdaten löschen & produktiv starten</button>
+            </div>
+            <p class="hint">Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter und Einstellungen.</p>
+            </div>
+          </fieldset>
           </div>
 </form>
       </section>

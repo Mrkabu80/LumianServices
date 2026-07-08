@@ -2776,7 +2776,7 @@
 
   $$('[data-sync-now]').forEach(btn => btn.addEventListener('click', syncCloud));
   $$('[data-test-sync]').forEach(btn => btn.addEventListener('click', testGoogleSync));
-  $('[data-load-cloud]')?.addEventListener('click', loadCloud);
+  $$('[data-load-cloud]').forEach(btn => btn.addEventListener('click', loadCloud));
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
   window.addEventListener('online', () => { if (currentUser && currentScriptUrl()) { toast('Gerät ist online. Sync läuft...'); syncCloud(true); } });
   document.addEventListener('visibilitychange', () => {

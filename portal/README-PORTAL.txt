@@ -215,3 +215,10 @@ Wichtig nach Upload:
 2) Deployment aktualisieren: Deploy -> Manage deployments -> Edit -> New version -> Deploy.
 3) Portal öffnen, als Admin einloggen, Google/Drive Bereich entsperren, Einstellungen prüfen und speichern.
 4) Drive/Kalender testen, dann Backup auf Drive speichern.
+
+Update v32:
+- Im eingeloggten Portal gibt es oben neben dem Benutzer/Logout jetzt zwei permanente Sicherheitsaktionen:
+  - Sync = lokale Änderungen dieses Geräts zur Cloud/Google Sheet/Drive senden.
+  - Refresh = neuesten Cloud-Stand auf dieses Gerät laden.
+- Der Install-App-Knopf bleibt nur auf dem Login-Screen sichtbar; im eingeloggten Portal ist er entfernt.
+- Unter Einstellungen stehen Bonus/WhatsApp/Login/Benutzer oben. Google/Drive sowie Import/Backup/Reset bleiben als gesperrte Bereiche am Ende.

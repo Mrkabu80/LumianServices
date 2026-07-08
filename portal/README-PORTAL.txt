@@ -240,3 +240,16 @@ Update v33 – lokales Notfall-Komplettbackup
 
 - Locked Backup area now includes “Web-App Cache erneuern”. It clears only technical browser/PWA cache files on the current device and reloads the portal; it does not remove customers, leads, jobs, accounting, users, passwords, or offline local data.
 - “Lokales Komplettbackup herunterladen” now uses the normal secondary button style instead of the blue primary style.
+
+Update v34 – separates Aktivitätsprotokoll
+------------------------------------------
+- Es gibt jetzt ein separates append-only Aktivitätsprotokoll in einem eigenen Google Sheet:
+  1ILtC4pdsIpS4RcGTeoo_bi_inG44J1uvpQXgUSH6aI4
+- Dieses Log ist getrennt vom normalen Portal-Datenblatt und mischt sich nicht mit Kunden, Leads, Jobs, Buchhaltung, Fotos oder Backups.
+- Apps Script erstellt im separaten Sheet automatisch den Tab "Activity_Log" mit Kopfzeile.
+- Geloggt werden sinnvolle Aktionen wie Login, Logout, Sync, Refresh/Cloud laden, Lead/Kunde/Job erstellen oder ändern, Zahlung/Abschluss, Buchhaltung, Backup, Restore, Cache-Aktionen, Benutzer- und Einstellungen-Änderungen.
+- Passwörter werden nicht geloggt.
+- Offline-Aktivitäten werden lokal vorgemerkt und beim nächsten Sync/Online-Status an das separate Activity Log Sheet gesendet.
+- Wichtig: Das Google-Konto, das das Apps Script ausführt, braucht Bearbeitungszugriff auf dieses separate Activity-Log-Sheet.
+- Nach diesem Update muss /portal/GOOGLE-APPS-SCRIPT.gs im Apps Script komplett ersetzt und das Web-App Deployment als neue Version veröffentlicht werden.
+- Zusätzlich ist PRODUKTIVBETRIEB im Merge jetzt sticky: Ein altes Gerät mit Test-Cache kann den Cloud-Status nicht zurück auf Testbetrieb setzen.

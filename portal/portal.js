@@ -4,6 +4,8 @@
   const STORE_KEY = 'lumian.portal.v5';
   const OLD_KEYS = ['lumian.portal.v4','lumian.portal.v3','lumian.portal.v2'];
   const SESSION_KEY = 'lumian.portal.user';
+  const ACTIVITY_LOG_QUEUE_KEY = 'lumian.portal.activityLogQueue.v1';
+  const DEVICE_ID_KEY = 'lumian.portal.deviceId.v1';
   const USERS = [
     { id: 'noah', name: 'Noah', emoji: 'N' },
     { id: 'timo', name: 'Timo', emoji: 'T' }
@@ -134,9 +136,134 @@
     return merged;
   }
 
+  function getDeviceId() {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  }
+
+  function deviceLabel() {
+    const ua = String(navigator.userAgent || 'Browser');
+    if (/iphone/i.test(ua)) return 'iPhone';
+    if (/ipad/i.test(ua)) return 'iPad';
+    if (/android/i.test(ua)) return 'Android';
+    if (/macintosh|mac os/i.test(ua)) return 'Mac / Browser';
+    if (/windows/i.test(ua)) return 'Windows / Browser';
+    return 'Browser';
+  }
+
+  function pendingActivityLog() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(ACTIVITY_LOG_QUEUE_KEY) || '[]');
+      return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+  }
+
+  function setPendingActivityLog(arr) {
+    localStorage.setItem(ACTIVITY_LOG_QUEUE_KEY, JSON.stringify((arr || []).slice(-500)));
+  }
+
+  function compactDescription(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  }
+
+  function activityMetaFromReason(reason) {
+    const r = compactDescription(reason);
+    if (!r || r === 'save' || r.startsWith('before sync')) return null;
+    const lower = r.toLowerCase();
+    const meta = { action: 'Portal geändert', area: 'Portal', objectId: '', description: r };
+    const rules = [
+      [/^kunde gespeichert|customer/i, 'Kunde gespeichert', 'Kunden'],
+      [/^lead erstellt|^lead gespeichert|^lead$/i, 'Lead erstellt', 'Leads'],
+      [/^lead geändert|lead edit/i, 'Lead geändert', 'Leads'],
+      [/lead verloren|lead lost/i, 'Lead verloren', 'Leads'],
+      [/lead in job/i, 'Lead in Job umgewandelt', 'Jobs'],
+      [/^job erstellt|^job gespeichert|^job$/i, 'Job gespeichert', 'Jobs'],
+      [/^job geändert/i, 'Job geändert', 'Jobs'],
+      [/job bezahlt|complete paid/i, 'Job bezahlt/abgeschlossen', 'Jobs'],
+      [/job payment|payment still open|complete blocked/i, 'Job Zahlung offen gelassen', 'Jobs'],
+      [/manual income delete|einnahme gelöscht/i, 'Einnahme gelöscht', 'Buchhaltung'],
+      [/manual income edit|einnahme geändert/i, 'Einnahme geändert', 'Buchhaltung'],
+      [/manual income|einnahme gespeichert/i, 'Einnahme gespeichert', 'Buchhaltung'],
+      [/expense delete|ausgabe gelöscht/i, 'Ausgabe gelöscht', 'Buchhaltung'],
+      [/expense edit|ausgabe geändert/i, 'Ausgabe geändert', 'Buchhaltung'],
+      [/expense|ausgabe gespeichert/i, 'Ausgabe gespeichert', 'Buchhaltung'],
+      [/reward|bonus/i, 'Bonus geändert', 'Bonus'],
+      [/settings cloud|google\/drive/i, 'Google/Drive Einstellungen geändert', 'Einstellungen'],
+      [/settings|einstellungen/i, 'Einstellungen geändert', 'Einstellungen'],
+      [/password|passwort/i, 'Passwort geändert', 'Benutzer'],
+      [/biometric off/i, 'Biometrie entfernt', 'Benutzer'],
+      [/biometric/i, 'Biometrie aktiviert', 'Benutzer'],
+      [/user disable|benutzer deaktiviert/i, 'Benutzer deaktiviert', 'Benutzer'],
+      [/user save|benutzer gespeichert/i, 'Benutzer gespeichert', 'Benutzer'],
+      [/customers import|kunden importiert/i, 'Kunden importiert', 'Import'],
+      [/leads import|leads importiert/i, 'Leads importiert', 'Import'],
+      [/website leads imported|website/i, 'Website-Leads importiert', 'Leads'],
+      [/calendar sync/i, 'Kalender-Sync angefordert', 'Jobs']
+    ];
+    for (const [pattern, action, area] of rules) {
+      if (pattern.test(r)) { meta.action = action; meta.area = area; break; }
+    }
+    const idMatch = r.match(/\b(L\d{3,}|J\d{3,}|LM\d{3,}|F\d{3,}|R\d{3,}|[a-z0-9_-]{2,})\b/i);
+    if (idMatch && !['lead','job','save','edit'].includes(idMatch[1].toLowerCase())) meta.objectId = idMatch[1];
+    return meta;
+  }
+
+  function queueActivity(action, area = 'Portal', objectId = '', description = '', options = {}) {
+    if (!currentUser && !options.allowAnonymous) return;
+    const entry = {
+      eventId: 'act-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+      timestamp: new Date().toISOString(),
+      userId: currentUser || options.userId || 'system',
+      userName: userName(currentUser || options.userId || 'system'),
+      action: compactDescription(action),
+      area: compactDescription(area || 'Portal'),
+      objectId: compactDescription(objectId || ''),
+      description: compactDescription(description || action),
+      deviceId: getDeviceId(),
+      deviceLabel: deviceLabel(),
+      portalMode: state?.portalMode || 'test',
+      source: options.source || (navigator.onLine === false ? 'offline' : 'portal')
+    };
+    const arr = pendingActivityLog();
+    arr.push(entry);
+    setPendingActivityLog(arr);
+    if (options.flush) setTimeout(() => flushActivityLog(true), 250);
+    return entry;
+  }
+
+  function queueActivityFromSaveReason(reason) {
+    const meta = activityMetaFromReason(reason);
+    if (meta) queueActivity(meta.action, meta.area, meta.objectId, meta.description);
+  }
+
+  async function flushActivityLog(silent = true) {
+    const entries = pendingActivityLog();
+    if (!entries.length) return true;
+    const url = currentScriptUrl();
+    if (!url || navigator.onLine === false) return false;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'appendActivityLog', by: currentUser || 'system', entries })
+      });
+      setPendingActivityLog([]);
+      return true;
+    } catch (err) {
+      if (!silent) toast('Aktivitätslog konnte nicht gesendet werden. Es bleibt lokal vorgemerkt.');
+      return false;
+    }
+  }
+
   function saveState(reason = 'save', options = {}) {
     state.updatedAt = new Date().toISOString();
     if (currentUser) state.audit.push({ at: state.updatedAt, by: currentUser, reason });
+    if (!options.activityLogged) queueActivityFromSaveReason(reason);
     state.audit = state.audit.slice(-400);
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
     if (options.cloud !== false) queueCloudSync(reason);
@@ -188,7 +315,7 @@
       ...local,
       createdAt: cloud.createdAt || local.createdAt,
       updatedAt: new Date().toISOString(),
-      portalMode: cloud.portalMode || local.portalMode || 'test',
+      portalMode: (cloud.portalMode === 'production' || local.portalMode === 'production') ? 'production' : (cloud.portalMode || local.portalMode || 'test'),
       goLiveAt: cloud.goLiveAt || local.goLiveAt || '',
       settings: { ...DEFAULT_SETTINGS, ...(local.settings || {}), ...(cloud.settings || {}) },
       users: mergeUsers(local.users, cloud.users),
@@ -563,7 +690,7 @@
     if (!u) return false;
     u.salt = makeSalt();
     u.passwordHash = await sha256(`${u.salt}:${password}`);
-    saveState('password');
+    saveState(`Passwort geändert: ${userId}`);
     return true;
   }
 
@@ -714,6 +841,7 @@
     }
     currentUser = userId;
     sessionStorage.setItem(SESSION_KEY, currentUser);
+    queueActivity('Login', 'Login', '', 'Benutzer hat sich angemeldet.', { flush: true });
     renderLogin();
   });
 
@@ -1373,7 +1501,7 @@
     p.contactReason = fd.get('contactReason') || '';
     p.contactNote = fd.get('contactNote') || '';
     p.notes = fd.get('notes') || p.notes || '';
-    saveState('customer manual/edit');
+    saveState(`Kunde gespeichert: ${p.id} / ${p.name || ''}`);
     form.closest('dialog').close();
     setTab('customers');
     toast(`Kunde gespeichert: ${p.id}`);
@@ -1408,7 +1536,7 @@
       notes: fd.get('notes'),
       websiteLeadKey: lead.websiteLeadKey || p.websiteLeadKey || ''
     });
-    saveState(existingId ? 'lead edit' : 'lead'); form.closest('dialog').close(); setTab('leads'); toast(existingId ? `Lead geändert: ${p.id}` : `Lead gespeichert: ${p.id}`);
+    saveState(`${existingId ? 'Lead geändert' : 'Lead erstellt'}: ${lead.id} / ${p.name || p.id}`); form.closest('dialog').close(); setTab('leads'); toast(existingId ? `Lead geändert: ${p.id}` : `Lead gespeichert: ${p.id}`);
   });
 
   $('[data-job-form]')?.addEventListener('submit', event => {
@@ -1421,7 +1549,8 @@
     const p = findOrCreatePerson({
       personId: fd.get('personId'), name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById') || lead?.referredById || ''
     });
-    let job = fd.get('jobId') ? jobById(fd.get('jobId')) : null;
+    const existingJobId = String(fd.get('jobId') || '').trim();
+    let job = existingJobId ? jobById(existingJobId) : null;
     if (!job) {
       job = { id: nextId('job'), personId: p.id, createdAt: new Date().toISOString(), createdBy: currentUser };
       state.jobs.push(job);
@@ -1447,7 +1576,7 @@
     else { delete job.paidAt; delete job.completedAt; }
     if (lead) lead.status = 'Job erstellt';
     if (isCompletedJob(job)) completeJob(job.id, false);
-    saveState('job'); form.closest('dialog').close(); setTab('jobs');
+    saveState(`${existingJobId ? 'Job geändert' : (lead ? 'Lead in Job umgewandelt' : 'Job erstellt')}: ${job.id} / ${p.name || p.id}`); form.closest('dialog').close(); setTab('jobs');
     const needsMediaSync = !!(job.beforePhoto?.dataUrl || job.afterPhoto?.dataUrl || job.appointmentAt);
     const calMsg = job.appointmentAt && calendarSyncTarget() ? ' Termin wird automatisch mit Google Calendar synchronisiert.' : '';
     toast(job.status === 'Bezahlt' ? `Job bezahlt und abgeschlossen: ${p.id}.${calMsg}` : `Job gespeichert: ${p.id}.${calMsg}`);
@@ -1460,7 +1589,7 @@
     const convert = event.target.closest('[data-convert-lead]');
     if (convert) { const lead = leadById(convert.dataset.convertLead); if (lead) openJobDialog(null, lead, personById(lead.personId)); }
     const lost = event.target.closest('[data-mark-lead-lost]');
-    if (lost) { const lead = leadById(lost.dataset.markLeadLost); if (lead) { lead.status='Verloren'; saveState('lead lost'); renderAll(); } }
+    if (lost) { const lead = leadById(lost.dataset.markLeadLost); if (lead) { lead.status='Verloren'; saveState(`Lead verloren: ${lead.id}`); renderAll(); } }
     const editLead = event.target.closest('[data-edit-lead]');
     if (editLead) { const lead = leadById(editLead.dataset.editLead); if (lead) openLeadDialog(lead); }
     const edit = event.target.closest('[data-edit-job]');
@@ -1476,7 +1605,7 @@
     const personJob = event.target.closest('[data-open-person-job]');
     if (personJob) openJobDialog(null, null, personById(personJob.dataset.openPersonJob));
     const rew = event.target.closest('[data-toggle-reward]');
-    if (rew) { const r = state.rewards.find(x => x.id === rew.dataset.toggleReward); if (r) { r.status = r.status === 'offen' ? 'gutgeschrieben' : 'offen'; saveState('reward'); renderAll(); } }
+    if (rew) { const r = state.rewards.find(x => x.id === rew.dataset.toggleReward); if (r) { r.status = r.status === 'offen' ? 'gutgeschrieben' : 'offen'; saveState(`Bonus geändert: ${r.id}`); renderAll(); } }
   });
 
   function confirmCompleteJobPaid(jobId) {
@@ -1487,7 +1616,7 @@
     if (!ok) {
       const clean = normalizeJobForNoUnpaidDone(job);
       Object.assign(job, clean);
-      saveState('job payment still open');
+      saveState(`Job Zahlung offen gelassen: ${job.id}`);
       renderAll();
       toast('Job bleibt offen, solange die Zahlung nicht bezahlt/bestätigt ist.');
       return;
@@ -1505,7 +1634,7 @@
     // Work is only closed when payment is confirmed.
     if (!isPaidJob(job)) {
       Object.assign(job, normalizeJobForNoUnpaidDone(job));
-      saveState('complete blocked payment open');
+      saveState(`Job Abschluss blockiert/Zahlung offen: ${job.id}`);
       renderAll();
       if (showMessage) toast('Nicht abgeschlossen: zuerst Zahlung bezahlt/bestätigt wählen.');
       return;
@@ -1526,7 +1655,7 @@
       const exists = state.rewards.some(r => r.jobId === job.id && r.customerId === refId);
       if (!exists) state.rewards.push({ id: nextId('reward'), customerId: refId, fromPersonId: p.id, jobId: job.id, amount: Number(getSetting('bonusAmount')), status: 'offen', createdAt: new Date().toISOString(), createdBy: currentUser });
     }
-    saveState('complete paid'); renderAll();
+    saveState(`Job bezahlt/abgeschlossen: ${job.id}`); renderAll();
     if (showMessage) toast('Job bezahlt und abgeschlossen. Person ist jetzt Kunde und zählt als echte Einnahme.');
   }
 
@@ -1702,7 +1831,7 @@
     state.settings.minOrder = Number(state.settings.minOrder || 0);
     const u = state.users.find(x => x.id === currentUser);
     if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
-    saveState(includeCloud ? 'settings cloud' : 'settings');
+    saveState(includeCloud ? 'Google/Drive Einstellungen geändert' : 'Einstellungen geändert');
     if (showToast) toast(includeCloud ? 'Google/Drive Einstellungen gespeichert.' : 'Einstellungen gespeichert. Google/Drive bleibt separat geschützt.');
     fillSettings(true);
     applySetupLocks();
@@ -1738,7 +1867,7 @@
     event.currentTarget.closest('dialog').close();
     toast('Passwort wurde zurückgesetzt.');
   });
-  $('[data-logout]')?.addEventListener('click', () => { currentUser = ''; sessionStorage.removeItem(SESSION_KEY); renderLogin(); });
+  $('[data-logout]')?.addEventListener('click', () => { queueActivity('Logout', 'Login', '', 'Benutzer hat sich abgemeldet.', { flush: true }); flushActivityLog(true); currentUser = ''; sessionStorage.removeItem(SESSION_KEY); renderLogin(); });
 
 
   function csvEscape(value) {
@@ -2044,7 +2173,7 @@
       amount: amountValue(fd.get('amount')),
       notes: fd.get('notes') || ''
     });
-    saveState(entry.updatedAt ? 'manual income edit' : 'manual income');
+    saveState(`${entry.updatedBy ? 'Einnahme geändert' : 'Einnahme gespeichert'}: ${entry.id} / ${entry.title || ''}`);
     form.reset();
     setDefaultFinanceDates();
     renderFinance();
@@ -2072,7 +2201,7 @@
       amount: amountValue(fd.get('amount')),
       notes: fd.get('notes') || ''
     });
-    saveState(entry.updatedAt ? 'expense edit' : 'expense');
+    saveState(`${entry.updatedBy ? 'Ausgabe geändert' : 'Ausgabe gespeichert'}: ${entry.id} / ${entry.title || ''}`);
     form.reset();
     setDefaultFinanceDates();
     renderFinance();
@@ -2120,7 +2249,7 @@
     await setPassword(id, pw);
     form.querySelectorAll('input,select').forEach(el => { if (el.name !== 'role') el.value=''; });
     const roleEl = form.querySelector('[name="role"]'); if (roleEl) roleEl.value = 'staff';
-    renderUserOptions(); renderUsers(); saveState('user save');
+    renderUserOptions(); renderUsers(); saveState(`Benutzer gespeichert: ${u.id}`);
     toast(`Mitarbeiter ${u.name} gespeichert.`);
   }
   $('[data-save-user]')?.addEventListener('click', saveUserFromSetup);
@@ -2134,7 +2263,7 @@
     if (!u || ADMIN_IDS.includes(u.id)) return;
     if (!confirm(`${u.name} wirklich deaktivieren?`)) return;
     u.active = false;
-    saveState('user disable');
+    saveState(`Benutzer deaktiviert: ${u.id}`);
     renderUserOptions(); renderUsers();
     toast('Benutzer deaktiviert.');
   });
@@ -2187,7 +2316,7 @@
       if (!(await confirmSensitiveAction('Manuelle Einnahme löschen?'))) return;
       entry.deletedAt = new Date().toISOString();
       entry.deletedBy = currentUser;
-      saveState('manual income delete'); renderFinance(); toast('Einnahme gelöscht.');
+      saveState(`Einnahme gelöscht: ${entry.id}`); renderFinance(); toast('Einnahme gelöscht.');
     }
 
     const editExpense = event.target.closest('[data-edit-expense]');
@@ -2215,7 +2344,7 @@
       if (!(await confirmSensitiveAction('Ausgabe löschen?'))) return;
       entry.deletedAt = new Date().toISOString();
       entry.deletedBy = currentUser;
-      saveState('expense delete'); renderFinance(); toast('Ausgabe gelöscht.');
+      saveState(`Ausgabe gelöscht: ${entry.id}`); renderFinance(); toast('Ausgabe gelöscht.');
     }
   });
   function exportFinanceExcel() {
@@ -2279,7 +2408,7 @@
       ['Kunden', rows, [90,90,170,120,180,180,130,120,110,110,240]]
     ]);
   }
-  function exportJson() { downloadText(`lumian-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,2), 'application/json'); }
+  function exportJson() { downloadText(`lumian-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,2), 'application/json'); queueActivity('JSON Backup heruntergeladen', 'Backup', '', 'Einzelnes JSON-Backup wurde lokal heruntergeladen.', { flush: true }); }
   function downloadText(name, text, type) { downloadBlob(name, new Blob([text], { type })); }
   function downloadBlob(name, blob) {
     const a = document.createElement('a');
@@ -2444,6 +2573,7 @@
     };
     const blob = makeStoreZip(files);
     downloadBlob(`lumian-komplettbackup-${stamp}.zip`, blob);
+    queueActivity('Lokales Komplettbackup heruntergeladen', 'Backup', '', 'Vollbackup ZIP wurde lokal auf dieses Gerät heruntergeladen.', { flush: true });
     toast('Lokales Komplettbackup wurde heruntergeladen.');
   }
   async function readLocalBackupStateFromFile(file) {
@@ -2490,6 +2620,7 @@
     try {
       const imported = migrateState(await readLocalBackupStateFromFile(file));
       localStorage.setItem(STORE_KEY, JSON.stringify(imported));
+      queueActivity('Lokales Komplettbackup importiert', 'Backup', '', file?.name || 'Lokales Backup importiert', { flush: true });
       toast('Lokales Komplettbackup importiert. Portal wird neu geladen.');
       setTimeout(() => location.reload(), 600);
     } catch (err) {
@@ -2604,7 +2735,7 @@
     let count = 0;
     rows.forEach(row => { if (importWebsiteLead(row)) count++; });
     if (count) {
-      saveState(`website leads imported ${count}`);
+      saveState(`Website-Leads importiert: ${count}`);
       listPages.leads = 1;
       renderAll();
       if (activeTab !== 'leads') {
@@ -2779,7 +2910,7 @@
     return !!calendarSyncTarget(s) && (s.jobs || []).some(j => j && j.appointmentAt && !isCancelledJob(j));
   }
 
-  function makeCloudPayload() { const syncRunId = `sync-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; saveState('before sync', { cloud: false }); return { action:'syncFull', syncRunId, sentAt:new Date().toISOString(), by:currentUser, state }; }
+  function makeCloudPayload() { const syncRunId = `sync-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; saveState('before sync', { cloud: false }); return { action:'syncFull', syncRunId, sentAt:new Date().toISOString(), by:currentUser, state, activityLog: pendingActivityLog() }; }
   async function syncCloud(silent = false) {
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
@@ -2788,12 +2919,14 @@
     if (navigator.onLine === false) { if (!silent) toast('Offline gespeichert. Sync startet automatisch, sobald das Gerät online ist.'); return; }
     if (cloudSyncInProgress) return;
     cloudSyncInProgress = true;
+    queueActivity(silent ? 'Auto-Sync gesendet' : 'Sync gesendet', 'Sync', '', silent ? 'Automatischer Cloud-Sync wurde gestartet.' : 'Manueller Cloud-Sync wurde gestartet.');
     const payload = makeCloudPayload();
     const refreshPhotos = hasLocalPhotoData(payload.state);
     const refreshCalendar = calendarSyncNeeded(payload.state);
     const refreshAfterSync = refreshPhotos || refreshCalendar;
     try {
       await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(payload) });
+      setPendingActivityLog([]);
       if (!silent) toast(refreshPhotos ? 'Sync gesendet. Fotos/Termine werden gespeichert...' : (refreshCalendar ? 'Sync gesendet. Google Calendar wird aktualisiert...' : 'Sync gesendet. Google Sheet/Drive prüfen.'));
       setTimeout(() => refreshCloudAfterSync(payload.syncRunId, silent), refreshAfterSync ? 6500 : 2200);
     }
@@ -2816,6 +2949,7 @@
         localStorage.setItem(STORE_KEY, JSON.stringify(state));
         suppressAutoCloudSync = false;
         renderAll();
+        queueActivity('Refresh / Cloud geladen', 'Sync', '', 'Aktuelle Cloud-Daten wurden auf dieses Gerät geladen.', { flush: true });
         toast('Cloud geladen und mit diesem Gerät abgeglichen.');
       } catch { toast('Cloud-Daten konnten nicht geladen werden.'); }
       delete window[callbackName]; script.remove();
@@ -2855,8 +2989,9 @@
       const driveMsg = test.drive?.message || 'Drive: keine Antwort';
       const calMsg = test.calendar?.message || 'Kalender: keine Antwort';
       const backupMsg = test.backup?.message || 'Backup: keine Antwort';
-      alert(`Lumian Sync Test\n\nFoto Drive Folder ID:\n${test.driveFolderId || ''}\n\nBackup Folder ID:\n${test.backupFolderId || ''}\n\nKalender ID:\n${test.calendarId || ''}\n\nFotos Drive:\n${driveMsg}\n\nBackup Drive:\n${backupMsg}\n\nKalender:\n${calMsg}`);
-      toast(test.drive?.ok && test.backup?.ok && test.calendar?.ok ? 'Drive/Kalender/Backup Test OK.' : 'Test zeigt Fehler. Siehe Meldung.');
+      const activityMsg = test.activityLog?.message || 'Activity Log: keine Antwort';
+      alert(`Lumian Sync Test\n\nFoto Drive Folder ID:\n${test.driveFolderId || ''}\n\nBackup Folder ID:\n${test.backupFolderId || ''}\n\nActivity Log Sheet ID:\n${test.activityLogSheetId || ''}\n\nKalender ID:\n${test.calendarId || ''}\n\nFotos Drive:\n${driveMsg}\n\nBackup Drive:\n${backupMsg}\n\nActivity Log:\n${activityMsg}\n\nKalender:\n${calMsg}`);
+      toast(test.drive?.ok && test.backup?.ok && test.activityLog?.ok && test.calendar?.ok ? 'Drive/Kalender/Backup/Log Test OK.' : 'Test zeigt Fehler. Siehe Meldung.');
     } catch (err) {
       alert('Sync-Test fehlgeschlagen:\n' + (err?.message || err));
       toast('Sync-Test fehlgeschlagen.');
@@ -2871,6 +3006,7 @@
     try {
       const data = await jsonpRequest(url, 'backupnow', { backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId });
       if (!data?.ok) throw new Error(data?.error || 'Backup nicht bestätigt.');
+      queueActivity('Drive-Backup erstellt', 'Backup', '', 'Manuelles Backup wurde auf Google Drive gespeichert.', { flush: true });
       toast('Backup wurde auf Google Drive gespeichert.');
     } catch (err) {
       toast('Backup konnte nicht gespeichert werden.');
@@ -2935,6 +3071,7 @@
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
       suppressAutoCloudSync = false;
       renderAll();
+      queueActivity('Drive-Backup wiederhergestellt', 'Backup', fileId, chosen, { flush: true });
       toast('Backup wiederhergestellt. Alle Geräte sollten Cloud laden.');
     } catch (err) {
       toast('Backup konnte nicht wiederhergestellt werden.');
@@ -2943,6 +3080,7 @@
 
   async function clearWebAppCacheAndReload() {
     if (!(await confirmSensitiveAction('Web-App Cache auf diesem Gerät erneuern? Geschäftsdaten und lokale Offline-Daten bleiben erhalten.'))) return;
+    queueActivity('Web-App Cache erneuert', 'Cache', '', 'Technischer App-Cache auf diesem Gerät wurde erneuert.', { flush: true });
     let cleared = 0;
     try {
       if ('caches' in window) {
@@ -2971,6 +3109,7 @@
     localStorage.setItem(STORE_KEY, JSON.stringify(fresh));
     OLD_KEYS.forEach(k => localStorage.removeItem(k));
     state = fresh;
+    queueActivity('Lokaler Cache gelöscht und Cloud neu geladen', 'Cache', '', 'Lokaler Geräte-Cache wurde zurückgesetzt.', { flush: true });
     toast('Lokaler Cache gelöscht. Cloud wird geladen...');
     loadCloud();
   }
@@ -2988,6 +3127,7 @@
       if (!data?.ok) throw new Error(data?.error || 'Produktiv-Start nicht bestätigt.');
       localStorage.removeItem(STORE_KEY);
       OLD_KEYS.forEach(k => localStorage.removeItem(k));
+      queueActivity('Testdaten gelöscht & Produktivbetrieb gestartet', 'Setup', '', 'Produktivmodus wurde gestartet.', { flush: true });
       toast('Testdaten gelöscht, Backup erstellt, Produktivmodus gestartet. Portal lädt neu...');
       setTimeout(() => location.reload(), 900);
     } catch {
@@ -3019,7 +3159,7 @@
   $$('[data-test-sync]').forEach(btn => btn.addEventListener('click', testGoogleSync));
   $$('[data-load-cloud]').forEach(btn => btn.addEventListener('click', loadCloud));
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
-  window.addEventListener('online', () => { if (currentUser && currentScriptUrl()) { toast('Gerät ist online. Sync läuft...'); syncCloud(true); } });
+  window.addEventListener('online', () => { if (currentUser && currentScriptUrl()) { toast('Gerät ist online. Sync läuft...'); syncCloud(true); flushActivityLog(true); } });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && currentUser && currentScriptUrl()) {
       const now = Date.now();
@@ -3098,7 +3238,7 @@
         timeout: 60000, attestation: 'none'
       }});
       user.credentialId = b64url(cred.rawId); user.credentialUserHandle = b64url(userHandle);
-      saveState('biometric'); toast('Face ID / Touch ID ist auf diesem Gerät aktiviert.');
+      saveState('Biometrie aktiviert'); toast('Face ID / Touch ID ist auf diesem Gerät aktiviert.');
     } catch { toast('Biometrie wurde nicht aktiviert.'); }
   }
   async function biometricLogin() {
@@ -3112,7 +3252,7 @@
     } catch { toast('Biometrie abgebrochen oder fehlgeschlagen.'); }
   }
   $('[data-enable-biometric]')?.addEventListener('click', enableBiometric);
-  $('[data-disable-biometric]')?.addEventListener('click', () => { const u = state.users.find(x => x.id === currentUser); if (u) { u.credentialId=''; u.credentialUserHandle=''; saveState('biometric off'); toast('Biometrie auf diesem Gerät entfernt.'); } });
+  $('[data-disable-biometric]')?.addEventListener('click', () => { const u = state.users.find(x => x.id === currentUser); if (u) { u.credentialId=''; u.credentialUserHandle=''; saveState('Biometrie entfernt'); toast('Biometrie auf diesem Gerät entfernt.'); } });
   $('[data-biometric-login]')?.addEventListener('click', biometricLogin);
 
   setDefaultFinanceDates();

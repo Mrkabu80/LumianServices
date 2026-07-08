@@ -15,6 +15,7 @@
 var DEFAULT_DRIVE_FOLDER_ID = '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr';
 var DEFAULT_BACKUP_FOLDER_ID = '1gCHjA3CKET8fPjYkc80_6rC4zIL7isy4';
 var DEFAULT_CALENDAR_ID = 'lumianservices@gmail.com';
+var DEFAULT_ACTIVITY_LOG_SHEET_ID = '1ILtC4pdsIpS4RcGTeoo_bi_inG44J1uvpQXgUSH6aI4';
 
 function doPost(e) {
   var lock = LockService.getScriptLock();
@@ -28,6 +29,7 @@ function doPost(e) {
     var payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (payload.action === 'websiteLead') return saveWebsiteLead_(payload.lead || {});
     if (payload.action === 'resetAll') return resetAll_(payload.confirm || '');
+    if (payload.action === 'appendActivityLog') return appendActivityLog_(payload.entries || [], payload.by || '');
     if (payload.action === 'goLiveReset') return goLiveReset_(payload.confirm || '', payload.backupFolderId || '');
     if (payload.action !== 'syncFull') return json_({ ok: false, error: 'Unknown action' });
     return syncFull_(payload);
@@ -48,12 +50,14 @@ function syncFull_(payload) {
   settings.calendarId = settings.calendarId || DEFAULT_CALENDAR_ID;
   state.settings = settings;
   state.lastSyncRunId = payload.syncRunId || ('sync-' + new Date().getTime());
+  var activityResult = appendActivityLogEntries_(payload.activityLog || [], payload.by || '', state.lastSyncRunId);
 
   var folderId = settings.driveFolderId;
   var photoFolder = null;
   state.photoSyncLog = [];
   state.syncDiagnostics = [];
   state.syncDiagnostics.push(['Sync ID', state.lastSyncRunId || '', '', '']);
+  state.syncDiagnostics.push(['Activity Log Sheet ID', DEFAULT_ACTIVITY_LOG_SHEET_ID || '', activityResult.ok ? ('OK: ' + activityResult.count + ' Eintrag(e) geschrieben') : 'FEHLER', activityResult.error || '']);
   state.syncDiagnostics.push(['Sync gestartet', new Date().toISOString(), '', '']);
   state.syncDiagnostics.push(['Merge-Modus', 'aktiv', 'Cloud + Gerät werden pro ID zusammengeführt', '']);
   state.syncDiagnostics.push(['Drive Folder ID', folderId || '', '', '']);
@@ -129,6 +133,7 @@ function resetAll_(confirmText) {
   }
   var current = normalizeStateForMerge_(loadState_() || emptyState_());
   createBackupSnapshot_(current, 'before-full-reset');
+  appendActivityLogEntries_([{ timestamp: new Date().toISOString(), userId: 'system', userName: 'System', action: 'Kompletter Cloud-Reset', area: 'Setup', objectId: '', description: 'Cloud State wurde komplett zurückgesetzt.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: current.portalMode || '', source: 'server' }], 'system', 'reset-all');
   var state = emptyState_();
   state.settings = { backupFolderId: DEFAULT_BACKUP_FOLDER_ID, driveFolderId: DEFAULT_DRIVE_FOLDER_ID, calendarId: DEFAULT_CALENDAR_ID };
   writeSheets_(state);
@@ -172,6 +177,7 @@ function goLiveReset_(confirmText, backupFolderId) {
   clearWebsiteLeadSheet_();
   saveState_(clean, null);
   createBackupSnapshot_(clean, 'after-go-live-reset');
+  appendActivityLogEntries_([{ timestamp: now, userId: 'system', userName: 'System', action: 'Testdaten gelöscht & Produktivbetrieb gestartet', area: 'Setup', objectId: '', description: 'Go-Live Reset: Testdaten gelöscht, Einstellungen/Benutzer behalten.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: 'production', source: 'server' }], 'system', 'go-live-reset');
   return json_({ ok: true, resetAt: now, mode: 'production' });
 }
 
@@ -190,6 +196,7 @@ function backupNow_(backupFolderId) {
   var file = createBackupSnapshot_(state, 'manual');
   saveLatestBackup_(stateForStorage_(state));
   if (!file) return json_({ ok: false, error: 'Backup-Ordner nicht erreichbar oder nicht beschreibbar.' });
+  appendActivityLogEntries_([{ timestamp: new Date().toISOString(), userId: 'system', userName: 'System', action: 'Drive-Backup erstellt', area: 'Backup', objectId: file.getId(), description: file.getName(), deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: state.portalMode || '', source: 'server' }], 'system', 'backup-now');
   return json_({ ok: true, backupAt: new Date().toISOString(), fileName: file.getName() });
 }
 
@@ -265,6 +272,7 @@ function restoreBackup_(fileId, confirmText, backupFolderId) {
     writeSheets_(restored);
     saveState_(restored, null);
     createBackupSnapshot_(restored, 'after-restore-backup');
+    appendActivityLogEntries_([{ timestamp: restored.updatedAt, userId: 'system', userName: 'System', action: 'Drive-Backup wiederhergestellt', area: 'Backup', objectId: file.getId(), description: file.getName(), deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: restored.portalMode || '', source: 'server' }], 'system', 'restore-backup');
     return json_({ ok: true, restoredAt: restored.updatedAt, fileName: file.getName(), state: restored });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
@@ -383,8 +391,8 @@ function mergeStates_(current, incoming, userId) {
   merged.version = Math.max(Number(current.version || 8), Number(incoming.version || 8));
   merged.createdAt = current.createdAt || incoming.createdAt || now;
   merged.updatedAt = now;
-  merged.portalMode = incoming.portalMode || current.portalMode || 'test';
-  merged.goLiveAt = incoming.goLiveAt || current.goLiveAt || '';
+  merged.portalMode = (current.portalMode === 'production' || incoming.portalMode === 'production') ? 'production' : (incoming.portalMode || current.portalMode || 'test');
+  merged.goLiveAt = current.goLiveAt || incoming.goLiveAt || '';
   merged.settings = mergeSettings_(current.settings, incoming.settings);
   merged.users = mergeUsers_(current.users, incoming.users);
   merged.counters = maxCounters_(current.counters, incoming.counters);
@@ -554,6 +562,7 @@ function saveWebsiteLead_(lead) {
   state.people.push(person);
   state.leads.push(leadObj);
   state.audit.push({ at: now, by: 'website', reason: 'website lead created ' + leadId });
+  appendActivityLogEntries_([{ timestamp: now, userId: 'website', userName: 'Website', action: 'Website-Lead erstellt', area: 'Leads', objectId: leadId, description: (lead.name || '') + ' / ' + (lead.phone || '') + ' / ' + (lead.service || ''), deviceId: 'website-form', deviceLabel: 'Website Formular', portalMode: state.portalMode || '', source: 'website' }], 'website', 'website-lead');
   state.updatedAt = new Date().toISOString();
 
   writeSheets_(state);
@@ -1111,6 +1120,71 @@ function getOrCreateSheet_(ss, name, headers) {
 
 
 
+function activityLogHeaders_() {
+  return ['Timestamp','ReceivedAt','UserId','UserName','Action','Area','ObjectId','Description','DeviceId','DeviceLabel','PortalMode','Source','SyncRunId','ClientEventId'];
+}
+
+function getOrCreateActivityLogSheet_(ss) {
+  var headers = activityLogHeaders_();
+  var sh = ss.getSheetByName('Activity_Log') || ss.insertSheet('Activity_Log');
+  if (sh.getLastRow() < 1) {
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    try { sh.setFrozenRows(1); } catch (e) {}
+  } else {
+    var existing = sh.getRange(1, 1, 1, Math.max(headers.length, sh.getLastColumn())).getValues()[0].map(function(x) { return String(x || ''); });
+    var missing = headers.some(function(h, i) { return existing[i] !== h; });
+    if (missing) sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  }
+  return sh;
+}
+
+function safeLogText_(value, max) {
+  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max || 500);
+}
+
+function appendActivityLog_(entries, fallbackUser) {
+  var result = appendActivityLogEntries_(entries || [], fallbackUser || '', 'direct');
+  return json_(result);
+}
+
+function appendActivityLogEntries_(entries, fallbackUser, syncRunId) {
+  try {
+    if (!DEFAULT_ACTIVITY_LOG_SHEET_ID) return { ok: true, count: 0, skipped: true, error: 'No Activity Log Sheet ID configured' };
+    if (!Array.isArray(entries) || !entries.length) return { ok: true, count: 0 };
+    var ss = SpreadsheetApp.openById(DEFAULT_ACTIVITY_LOG_SHEET_ID);
+    var sh = getOrCreateActivityLogSheet_(ss);
+    var receivedAt = new Date().toISOString();
+    var rows = [];
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i] || {};
+      var action = safeLogText_(e.action || e.reason || '', 160);
+      if (!action) continue;
+      rows.push([
+        safeLogText_(e.timestamp || e.at || receivedAt, 60),
+        receivedAt,
+        safeLogText_(e.userId || e.by || fallbackUser || 'unknown', 80),
+        safeLogText_(e.userName || e.user || e.displayName || '', 120),
+        action,
+        safeLogText_(e.area || 'Portal', 120),
+        safeLogText_(e.objectId || e.id || '', 120),
+        safeLogText_(e.description || e.details || '', 500),
+        safeLogText_(e.deviceId || '', 120),
+        safeLogText_(e.deviceLabel || '', 160),
+        safeLogText_(e.portalMode || '', 40),
+        safeLogText_(e.source || '', 80),
+        safeLogText_(syncRunId || e.syncRunId || '', 120),
+        safeLogText_(e.eventId || '', 120)
+      ]);
+    }
+    if (!rows.length) return { ok: true, count: 0 };
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, activityLogHeaders_().length).setValues(rows);
+    try { sh.autoResizeColumns(1, activityLogHeaders_().length); } catch (resizeErr) {}
+    return { ok: true, count: rows.length, sheetId: DEFAULT_ACTIVITY_LOG_SHEET_ID };
+  } catch (err) {
+    return { ok: false, count: 0, error: String(err) };
+  }
+}
+
 function getSyncDiagnostics_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var out = { syncDiagnostics: [], photoSync: [], calendarSync: [] };
@@ -1141,7 +1215,9 @@ function runSyncTest_(params) {
     calendarId: calendarId,
     drive: { ok: false, message: '' },
     backup: { ok: false, message: '' },
-    calendar: { ok: false, message: '' }
+    calendar: { ok: false, message: '' },
+    activityLogSheetId: DEFAULT_ACTIVITY_LOG_SHEET_ID,
+    activityLog: { ok: false, message: '' }
   };
 
   try {
@@ -1164,6 +1240,15 @@ function runSyncTest_(params) {
     result.backup = { ok: true, message: 'OK: Backup-Ordner erreichbar und beschreibbar: ' + backupFolder.getName() + ' / ' + backupFileName };
   } catch (backupErr) {
     result.backup = { ok: false, message: 'FEHLER: Backup-Ordner nicht beschreibbar. Folder ID/Berechtigung prüfen. Details: ' + String(backupErr) };
+  }
+
+  try {
+    if (!DEFAULT_ACTIVITY_LOG_SHEET_ID) throw new Error('Keine Activity Log Sheet ID vorhanden.');
+    var logSS = SpreadsheetApp.openById(DEFAULT_ACTIVITY_LOG_SHEET_ID);
+    getOrCreateActivityLogSheet_(logSS);
+    result.activityLog = { ok: true, message: 'OK: Separates Activity Log Sheet erreichbar: ' + logSS.getName() };
+  } catch (logErr) {
+    result.activityLog = { ok: false, message: 'FEHLER: Activity Log Sheet nicht erreichbar/beschreibbar. Sheet ID/Berechtigung prüfen. Details: ' + String(logErr) };
   }
 
   try {

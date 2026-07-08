@@ -3177,13 +3177,11 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator{
   display:inline-grid;
   place-items:center;
 }
-.info-popover{
-  display:none;
-  position:absolute;
-  z-index:110;
-  top:calc(100% + 8px);
-  left:0;
-  width:min(430px, calc(100vw - 44px));
+.info-popover{display:none !important;}
+.floating-info-popover{
+  position:fixed;
+  z-index:9999;
+  width:min(430px, calc(100vw - 24px));
   max-width:430px;
   border-radius:16px;
   padding:11px 12px;
@@ -3195,16 +3193,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator{
   font-size:.88rem;
   font-weight:650;
   white-space:normal;
+  display:none;
 }
-.info-compact:hover .info-popover,
-.info-compact.open .info-popover,
-.info-trigger:focus + .info-popover{display:block;}
+.floating-info-popover.open{display:block;}
 .panel-head .info-compact{margin-top:6px;}
 .mode-strip .info-compact{margin-left:auto;}
 @media(max-width:700px){
   .locked-fieldset.is-locked::after{top:68px;left:14px;right:14px;}
-  .info-popover{left:auto;right:0;width:min(360px, calc(100vw - 34px));}
   .mode-strip .info-compact{margin-left:0;}
+  .floating-info-popover{width:min(360px, calc(100vw - 24px));}
 }
 
 /* v32: top sync/refresh controls + safer setup order */

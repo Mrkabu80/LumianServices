@@ -790,17 +790,82 @@
     });
   }
 
+  let floatingInfoPopover = null;
+
+  function ensureFloatingInfoPopover() {
+    if (floatingInfoPopover) return floatingInfoPopover;
+    floatingInfoPopover = document.createElement('div');
+    floatingInfoPopover.className = 'floating-info-popover';
+    floatingInfoPopover.setAttribute('role', 'tooltip');
+    document.body.appendChild(floatingInfoPopover);
+    return floatingInfoPopover;
+  }
+
+  function closeFloatingInfoPopover() {
+    if (floatingInfoPopover) floatingInfoPopover.classList.remove('open');
+    $$('.info-compact.open').forEach(el => el.classList.remove('open'));
+  }
+
+  function openFloatingInfoPopover(trigger) {
+    const parent = trigger.closest('.info-compact');
+    const text = parent?.querySelector('.info-popover')?.textContent?.trim();
+    if (!parent || !text) return;
+    const pop = ensureFloatingInfoPopover();
+    pop.textContent = text;
+    pop.classList.add('open');
+    $$('.info-compact.open').forEach(el => { if (el !== parent) el.classList.remove('open'); });
+    parent.classList.add('open');
+
+    const rect = trigger.getBoundingClientRect();
+    const gap = 10;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    pop.style.left = '12px';
+    pop.style.top = '12px';
+    const popRect = pop.getBoundingClientRect();
+    let left = rect.left;
+    const maxLeft = vw - popRect.width - 12;
+    if (left > maxLeft) left = maxLeft;
+    if (left < 12) left = 12;
+
+    let top = rect.bottom + gap;
+    const fitsBelow = (rect.bottom + gap + popRect.height) <= (vh - 12);
+    if (!fitsBelow) top = Math.max(12, rect.top - popRect.height - gap);
+
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
   document.addEventListener('click', event => {
     const info = event.target.closest('.info-trigger');
     if (info) {
       event.preventDefault();
       const parent = info.closest('.info-compact');
-      $$('.info-compact.open').forEach(el => { if (el !== parent) el.classList.remove('open'); });
-      parent?.classList.toggle('open');
+      if (parent?.classList.contains('open')) closeFloatingInfoPopover();
+      else openFloatingInfoPopover(info);
       return;
     }
-    if (!event.target.closest('.info-compact')) $$('.info-compact.open').forEach(el => el.classList.remove('open'));
+    if (!event.target.closest('.floating-info-popover') && !event.target.closest('.info-compact')) closeFloatingInfoPopover();
   });
+
+  document.addEventListener('mouseover', event => {
+    const info = event.target.closest('.info-trigger');
+    if (!info || window.matchMedia('(hover: none)').matches) return;
+    openFloatingInfoPopover(info);
+  });
+
+  document.addEventListener('mouseout', event => {
+    if (window.matchMedia('(hover: none)').matches) return;
+    const from = event.target.closest('.info-compact');
+    if (!from) return;
+    const to = event.relatedTarget;
+    if (to && (to.closest('.info-compact') === from || to.closest('.floating-info-popover'))) return;
+    closeFloatingInfoPopover();
+  });
+
+  window.addEventListener('scroll', () => { if (floatingInfoPopover?.classList.contains('open')) closeFloatingInfoPopover(); }, true);
+  window.addEventListener('resize', closeFloatingInfoPopover);
 
   document.addEventListener('click', event => {
     const unlock = event.target.closest('[data-unlock-section]');

@@ -1,18 +1,31 @@
 # Lumian Services
 
-Lumian Services is a Swiss cleaning service for private and small commercial customers. The company offers window cleaning, glass cleaning, blind and shutter cleaning, gutter cleaning, terrace cleaning, balcony cleaning, facade-adjacent exterior cleaning, solar panel / PV cleaning on request, roof cleaning on request, move-out cleaning support and general exterior cleaning.
+Lumian Services ist ein Schweizer Reinigungsservice für Fensterreinigung, Glasflächen, Storen, Rollläden, Dachrinnen, Terrassen, Balkone, Fassadennahe Aussenreinigung und weitere Reinigungsarbeiten.
 
-Primary language: German / Swiss German. English is also supported.
+## Wichtige Seiten
 
-Service area: Switzerland, especially Aargau, Zürich, Zug, Luzern, Lenzburg, Aarau, Baden, Brugg, Wohlen, Othmarsingen and surrounding regions.
+- [Startseite](https://www.lumianservices.ch/)
+- [Buchung und Anfrage](https://www.lumianservices.ch/buchung.html)
+- [Empfehlungsseite](https://www.lumianservices.ch/empfehlung.html)
+- [Datenschutz](https://www.lumianservices.ch/datenschutz.html)
+- [Impressum](https://www.lumianservices.ch/impressum.html)
 
-Best contact: WhatsApp or phone +41 77 279 47 07, email info@lumianservices.ch.
+## Leistungen
 
-Important pages:
-- https://www.lumianservices.ch/
-- https://www.lumianservices.ch/#services
-- https://www.lumianservices.ch/#gallery
-- https://www.lumianservices.ch/#booking
-- https://www.lumianservices.ch/#faq
+Lumian Services bietet private und gewerbliche Reinigungsdienstleistungen an. Der Schwerpunkt liegt auf sichtbarer Sauberkeit bei Fenstern, Glasflächen, Storen, Rollläden, Dachrinnen, Terrassen, Balkonen und Aussenbereichen.
 
-Relevant search terms: Fensterreinigung, Glasreinigung, Fenster putzen, Fensterputzer, Storenreinigung, Rollladenreinigung, Dachrinnenreinigung, Dachreinigung, Solaranlagen Reinigung, Solarpanel Reinigung, PV Reinigung, Fassadenreinigung, Hochdruckreinigung, Terrassenreinigung, Balkonreinigung, Wintergarten Reinigung, Gebäudereinigung, Hausreinigung, Wohnungsreinigung, Umzugsreinigung, Endreinigung, Putzfirma, Reinigungsfirma, Reinigung Aargau, Reinigung Zürich, Reinigung Zug, Reinigung Luzern, cleaning services Switzerland, window cleaning, roof cleaning, house cleaning, building cleaning.
+## Anfragen und Kontakt
+
+Kunden können über die Website eine unverbindliche Anfrage senden oder direkt per WhatsApp Kontakt aufnehmen.
+
+- [Online Anfrage](https://www.lumianservices.ch/#kontakt)
+- [Buchungsseite](https://www.lumianservices.ch/buchung.html)
+
+## Unternehmen
+
+Lumian Services ist in der Schweiz tätig und richtet sich an Privatkunden, Verwaltungen, kleinere Unternehmen und Immobilienverantwortliche, die eine zuverlässige und sichtbare Reinigungsleistung benötigen.
+
+## Kontakt
+
+Website: https://www.lumianservices.ch/
+E-Mail: info@lumianservices.ch

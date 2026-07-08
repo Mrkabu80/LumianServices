@@ -2280,18 +2280,237 @@
     ]);
   }
   function exportJson() { downloadText(`lumian-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(state,null,2), 'application/json'); }
-  function downloadText(name, text, type) { const blob = new Blob([text], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+  function downloadText(name, text, type) { downloadBlob(name, new Blob([text], { type })); }
+  function downloadBlob(name, blob) {
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function backupStamp() {
+    return new Date().toISOString().replace(/[:.]/g,'-').replace('T','_').slice(0,19);
+  }
+  function cleanBackupState() {
+    return migrateState(JSON.parse(JSON.stringify(state)));
+  }
+  function photoBackupInfo(photo) {
+    if (!photo) return '';
+    if (typeof photo === 'string') return photo;
+    return [photo.name, photo.driveUrl || photo.url || photo.thumbnailUrl || '', photo.fileId ? `fileId:${photo.fileId}` : '', photo.localOnly ? 'wartet lokal auf Drive' : '', photo.error ? `Fehler:${photo.error}` : ''].filter(Boolean).join(' | ');
+  }
+  function emergencyCustomersRows() {
+    const paid = paidJobs();
+    return [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','Kontaktstatus','Kontaktgrund','Kontaktnotiz','KundeSeit','Jobs bezahlt','Umsatz CHF','Notizen','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+      ...allPeopleSorted().map(p => {
+        const pj = paid.filter(j => j.personId === p.id);
+        const revenue = pj.reduce((sum,j)=>sum + amountValue(j.amount), 0);
+        return [p.id, personStatusLabel(p), p.name || '', p.phone || '', p.email || '', p.address || '', p.place || '', p.source || '', p.referredById || '', contactStatus(p), p.contactReason || '', p.contactNote || '', p.customerSince ? fmtDateOnly(p.customerSince) : '', pj.length, revenue, p.notes || '', p.createdAt ? fmtDate(p.createdAt) : '', userName(p.createdBy), p.updatedAt ? fmtDate(p.updatedAt) : '', userName(p.updatedBy), p.deletedAt ? fmtDate(p.deletedAt) : ''];
+      })
+    ];
+  }
+  function emergencyLeadsRows() {
+    const sorted = [...(state.leads || [])].sort((a,b)=>String(a.id||'').localeCompare(String(b.id||''), 'de-CH'));
+    return [['LeadID','LumianNr','Name','Telefon','Email','Service','Status','Termin','Schätzung CHF','Quelle','EmpfohlenVon','Notizen','WebsiteLeadKey','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+      ...sorted.map(l => {
+        const p = personById(l.personId) || {};
+        return [l.id || '', l.personId || '', p.name || '', p.phone || '', p.email || '', l.service || '', l.status || '', l.appointmentAt ? fmtDate(l.appointmentAt) : '', amountValue(l.expectedValue || 0), l.source || '', l.referredById || p.referredById || '', l.notes || '', l.websiteLeadKey || '', l.createdAt ? fmtDate(l.createdAt) : '', userName(l.createdBy), l.updatedAt ? fmtDate(l.updatedAt) : '', userName(l.updatedBy), l.deletedAt ? fmtDate(l.deletedAt) : ''];
+      })
+    ];
+  }
+  function emergencyJobsRows() {
+    const sorted = [...(state.jobs || [])].sort((a,b)=>String(a.appointmentAt || a.createdAt || '').localeCompare(String(b.appointmentAt || b.createdAt || '')) || String(a.id||'').localeCompare(String(b.id||'')));
+    return [['JobID','LumianNr','Name','Telefon','LeadID','Service','Termin','Betrag CHF','Status','Zuständig','Quelle','EmpfohlenVon','Notizen','Bezahlt am','Abgeschlossen am','Vorher Foto','Nachher Foto','Calendar Event ID','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+      ...sorted.map(j => {
+        const p = personById(j.personId) || {};
+        return [j.id || '', j.personId || '', p.name || '', p.phone || '', j.leadId || '', j.service || '', j.appointmentAt ? fmtDate(j.appointmentAt) : '', amountValue(j.amount || 0), j.status || '', userName(j.assignedTo), j.source || '', j.referredById || p.referredById || '', j.notes || '', j.paidAt ? fmtDate(j.paidAt) : '', j.completedAt ? fmtDate(j.completedAt) : '', photoBackupInfo(j.beforePhoto), photoBackupInfo(j.afterPhoto), j.calendarEventId || '', j.createdAt ? fmtDate(j.createdAt) : '', userName(j.createdBy), j.updatedAt ? fmtDate(j.updatedAt) : '', userName(j.updatedBy), j.deletedAt ? fmtDate(j.deletedAt) : ''];
+      })
+    ];
+  }
+  function emergencyRewardsRows() {
+    const sorted = [...(state.rewards || [])].sort((a,b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+    return [['BonusID','Empfänger LumianNr','Empfänger Name','Von LumianNr','Von Name','JobID','Betrag CHF','Status','Notiz','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+      ...sorted.map(r => {
+        const receiver = personById(r.customerId) || {};
+        const source = personById(r.fromPersonId) || {};
+        return [r.id || '', r.customerId || '', receiver.name || '', r.fromPersonId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), r.status || '', r.notes || '', r.createdAt ? fmtDate(r.createdAt) : '', userName(r.createdBy), r.updatedAt ? fmtDate(r.updatedAt) : '', userName(r.updatedBy), r.deletedAt ? fmtDate(r.deletedAt) : ''];
+      })
+    ];
+  }
+  function emergencyFinanceSheets() {
+    const range = { period:'all', label:'Bisher / kompletter Portalstand', from:'', to:'' };
+    const s = financeSummary(range);
+    const summary = [
+      ['Lumian Services Emergency Backup'],
+      ['Exportiert am', fmtDate(new Date())],
+      ['Portal-Modus', state.portalMode || ''],
+      ['Cloud-Stand zuletzt geändert', state.updatedAt ? fmtDate(state.updatedAt) : ''],
+      [],
+      ['Kennzahl','CHF','Info'],
+      ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
+      ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
+      ['Pipeline offen / noch nicht kassiert', s.forecastTotal, `${s.forecastAll.length} offene/geplante Einträge`],
+      ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
+      ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
+    ];
+    const incomeRows = [
+      ['Typ','Datum','Bis','Kunde/Titel','Service/Kategorie','Betrag CHF','Eingetragen von','Notiz','ID','Gelöscht am'],
+      ...s.jobs.map(x => ['Einnahme Job bezahlt', fmtDateOnly(x.date), '', x.title, 'Job bezahlt', x.amount, userName(x.assignedTo || x.createdBy), '', x.jobId, '']),
+      ...(state.finance?.manualIncome || []).map(x => ['Einnahme manuell', x.from ? fmtDateOnly(x.from) : fmtDateOnly(x.createdAt), x.to ? fmtDateOnly(x.to) : '', x.title || 'Manuell', 'Manuell', amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id || '', x.deletedAt ? fmtDate(x.deletedAt) : ''])
+    ];
+    const forecastRows = [
+      ['Typ','Datum','Kunde/Titel','Status','Betrag CHF','Zuständig','JobID/LeadID'],
+      ...s.forecastAll.map(x => ['Pipeline offen', fmtDateOnly(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
+    ];
+    const expenseRows = [
+      ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID','Gelöscht am'],
+      ...(state.finance?.expenses || []).map(x => [x.date ? fmtDateOnly(x.date) : fmtDateOnly(x.createdAt), x.category || 'Ausgabe', x.title || '', amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id || '', x.deletedAt ? fmtDate(x.deletedAt) : ''])
+    ];
+    return [
+      ['Zusammenfassung', summary, [220,160,300]],
+      ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100,120]],
+      ['Pipeline offen', forecastRows, [130,90,240,130,90,130,120]],
+      ['Ausgaben', expenseRows, [90,140,220,90,130,240,100,120]],
+      ['Bonus', emergencyRewardsRows(), [90,90,170,90,170,90,90,90,220,120,120,120,120,120]]
+    ];
+  }
+  function emergencyWorkbookFiles() {
+    return {
+      'excel/lumian-kunden.xls': excelXmlWorkbook([['Kunden', emergencyCustomersRows(), [90,80,180,130,190,190,130,130,110,120,170,220,100,90,90,260,130,120,130,120,120]]]),
+      'excel/lumian-leads.xls': excelXmlWorkbook([['Leads', emergencyLeadsRows(), [90,90,180,130,190,150,100,130,100,120,110,260,180,130,120,130,120,120]]]),
+      'excel/lumian-jobs.xls': excelXmlWorkbook([['Jobs', emergencyJobsRows(), [90,90,180,130,90,150,130,90,100,120,120,110,260,130,130,260,260,180,130,120,130,120,120]]]),
+      'excel/lumian-buchhaltung-und-bonus.xls': excelXmlWorkbook(emergencyFinanceSheets())
+    };
+  }
+
+  function makeCrc32Table() {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      table[i] = c >>> 0;
+    }
+    return table;
+  }
+  const CRC32_TABLE = makeCrc32Table();
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function le16(n) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n & 0xffff, true); return b; }
+  function le32(n) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, true); return b; }
+  function concatBytes(parts) {
+    const total = parts.reduce((sum,p)=>sum+p.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    parts.forEach(p => { out.set(p, offset); offset += p.length; });
+    return out;
+  }
+  function dosDateTime(date = new Date()) {
+    const year = Math.max(1980, date.getFullYear());
+    return {
+      time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+      date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
+    };
+  }
+  function makeStoreZip(fileMap) {
+    const encoder = new TextEncoder();
+    const locals = [], centrals = [];
+    let offset = 0;
+    const dt = dosDateTime(new Date());
+    Object.entries(fileMap).forEach(([name, content]) => {
+      const nameBytes = encoder.encode(name);
+      const dataBytes = content instanceof Uint8Array ? content : encoder.encode(String(content ?? ''));
+      const crc = crc32(dataBytes);
+      const local = concatBytes([le32(0x04034b50), le16(20), le16(0x0800), le16(0), le16(dt.time), le16(dt.date), le32(crc), le32(dataBytes.length), le32(dataBytes.length), le16(nameBytes.length), le16(0), nameBytes, dataBytes]);
+      const central = concatBytes([le32(0x02014b50), le16(20), le16(20), le16(0x0800), le16(0), le16(dt.time), le16(dt.date), le32(crc), le32(dataBytes.length), le32(dataBytes.length), le16(nameBytes.length), le16(0), le16(0), le16(0), le16(0), le32(0), le32(offset), nameBytes]);
+      locals.push(local);
+      centrals.push(central);
+      offset += local.length;
+    });
+    const centralSize = centrals.reduce((sum,p)=>sum+p.length, 0);
+    const end = concatBytes([le32(0x06054b50), le16(0), le16(0), le16(centrals.length), le16(centrals.length), le32(centralSize), le32(offset), le16(0)]);
+    return new Blob([...locals, ...centrals, end], { type:'application/zip' });
+  }
+  function downloadLocalFullBackup() {
+    const stamp = backupStamp();
+    const full = cleanBackupState();
+    const files = {
+      'README-WIEDERHERSTELLUNG.txt': `Lumian Services lokales Komplettbackup\nErstellt: ${new Date().toLocaleString('de-CH')}\n\nZum Wiederherstellen im Portal unter Einstellungen > Daten, Import & Backup den gesperrten Bereich entsperren und diese ZIP-Datei bei "Lokales Komplettbackup importieren" auswählen. Die Excel-Dateien sind zur Kontrolle/Lesbarkeit. Für eine komplette Wiederherstellung wird die JSON-Datei im Backup verwendet.`,
+      'lumian-portal-full-backup.json': JSON.stringify(full, null, 2),
+      'lumian-portal-meta.json': JSON.stringify({ createdAt:new Date().toISOString(), createdBy:currentUser, portalMode:state.portalMode || '', people:(state.people||[]).length, leads:(state.leads||[]).length, jobs:(state.jobs||[]).length, manualIncome:(state.finance?.manualIncome||[]).length, expenses:(state.finance?.expenses||[]).length }, null, 2),
+      ...emergencyWorkbookFiles()
+    };
+    const blob = makeStoreZip(files);
+    downloadBlob(`lumian-komplettbackup-${stamp}.zip`, blob);
+    toast('Lokales Komplettbackup wurde heruntergeladen.');
+  }
+  async function readLocalBackupStateFromFile(file) {
+    if (!file) throw new Error('Keine Datei ausgewählt.');
+    if (/\.json$/i.test(file.name || '') || String(file.type || '').includes('json')) {
+      const parsed = JSON.parse(await file.text());
+      return parsed?.state || parsed;
+    }
+    if (!/\.zip$/i.test(file.name || '') && !String(file.type || '').includes('zip')) throw new Error('Bitte ZIP- oder JSON-Backup auswählen.');
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const view = new DataView(buffer);
+    const decoder = new TextDecoder('utf-8');
+    let offset = 0;
+    let fallbackJson = null;
+    while (offset + 30 <= bytes.length) {
+      const sig = view.getUint32(offset, true);
+      if (sig === 0x02014b50 || sig === 0x06054b50) break;
+      if (sig !== 0x04034b50) { offset++; continue; }
+      const flags = view.getUint16(offset + 6, true);
+      const method = view.getUint16(offset + 8, true);
+      const compSize = view.getUint32(offset + 18, true);
+      const nameLen = view.getUint16(offset + 26, true);
+      const extraLen = view.getUint16(offset + 28, true);
+      const nameStart = offset + 30;
+      const dataStart = nameStart + nameLen + extraLen;
+      const dataEnd = dataStart + compSize;
+      if (dataEnd > bytes.length) break;
+      const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLen));
+      if ((flags & 0x0008) || method !== 0) throw new Error('Dieses ZIP-Backup kann im Browser nicht direkt gelesen werden. Bitte die JSON-Datei aus der ZIP importieren.');
+      if (/\.json$/i.test(name)) {
+        const obj = JSON.parse(decoder.decode(bytes.slice(dataStart, dataEnd)));
+        if (/full-backup|portal/i.test(name) && (obj.people || obj.state?.people)) return obj.state || obj;
+        fallbackJson = fallbackJson || (obj.state || obj);
+      }
+      offset = dataEnd;
+    }
+    if (fallbackJson) return fallbackJson;
+    throw new Error('In der ZIP-Datei wurde kein Portal-JSON gefunden.');
+  }
+  async function importLocalFullBackup(file) {
+    if (!file) return;
+    if (!(await confirmSensitiveAction('Lokales Komplettbackup importieren? Bestehende lokale Portal-Daten werden überschrieben.'))) return;
+    try {
+      const imported = migrateState(await readLocalBackupStateFromFile(file));
+      localStorage.setItem(STORE_KEY, JSON.stringify(imported));
+      toast('Lokales Komplettbackup importiert. Portal wird neu geladen.');
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      toast('Backup konnte nicht gelesen werden: ' + String(err.message || err).slice(0, 140));
+    }
+  }
   $$('[data-download-customers-template]').forEach(btn => btn.addEventListener('click', downloadCustomersTemplate));
   $$('[data-download-leads-template]').forEach(btn => btn.addEventListener('click', downloadLeadsTemplate));
   $$('[data-import-customers]').forEach(input => input.addEventListener('change', async event => { await importCsvFile(event.target.files?.[0], 'customers'); event.target.value=''; }));
   $$('[data-import-leads]').forEach(input => input.addEventListener('change', async event => { await importCsvFile(event.target.files?.[0], 'leads'); event.target.value=''; }));
   $('[data-export-csv]')?.addEventListener('click', exportCsv);
   $('[data-export-json]')?.addEventListener('click', exportJson);
+  $('[data-local-full-backup]')?.addEventListener('click', downloadLocalFullBackup);
+  $('[data-import-local-full-backup]')?.addEventListener('change', async event => {
+    await importLocalFullBackup(event.target.files?.[0]);
+    event.target.value='';
+  });
   $('[data-import-json]')?.addEventListener('change', async event => {
     const file = event.target.files?.[0]; if (!file) return;
-    if (!(await confirmSensitiveAction('Backup importieren? Bestehende lokale Portal-Daten werden überschrieben.'))) { event.target.value=''; return; }
-    try { const imported = migrateState(JSON.parse(await file.text())); localStorage.setItem(STORE_KEY, JSON.stringify(imported)); location.reload(); }
-    catch { toast('Backup konnte nicht gelesen werden.'); }
+    await importLocalFullBackup(file);
+    event.target.value='';
   });
   $('[data-reset-cloud]')?.addEventListener('click', goLiveResetCloud);
   $('[data-reset-demo]')?.addEventListener('click', clearLocalCacheAndReloadCloud);

@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=76">
+  <link rel="stylesheet" href="portal.css?v=77">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -462,6 +462,8 @@
               <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-customers hidden></label>
               <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Lead-Vorlage herunterladen</a>
               <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
+              <button class="primary" type="button" data-local-full-backup>Lokales Komplettbackup herunterladen</button>
+              <label class="file-button">Lokales Komplettbackup importieren<input type="file" accept=".zip,.json,application/zip,application/json" data-import-local-full-backup hidden></label>
               <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
               <label class="file-button">Backup JSON importieren<input type="file" accept="application/json" data-import-json hidden></label>
               <button class="secondary" type="button" data-backup-now>Backup auf Drive speichern</button>
@@ -478,7 +480,7 @@
               <button class="secondary danger" type="button" data-reset-demo>Lokalen Cache löschen & Cloud neu laden</button>
               <button class="secondary danger" type="button" data-reset-cloud>Testdaten löschen & produktiv starten</button>
             </div>
-            <p class="hint">Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter und Einstellungen.</p>
+            <p class="hint">Lokales Komplettbackup speichert eine ZIP-Datei direkt auf diesem Gerät. Darin sind Kunden, Leads, Jobs, Buchhaltung und Bonus als Excel-Dateien sowie der komplette Portal-Stand als JSON für eine spätere Wiederherstellung enthalten. Importiert wird für die Wiederherstellung am sichersten die ZIP oder die JSON-Datei. Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter und Einstellungen.</p>
             </div>
           </fieldset>
           </div>
@@ -610,6 +612,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=76"></script>
+  <script src="portal.js?v=77"></script>
 </body>
 </html>

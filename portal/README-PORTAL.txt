@@ -222,3 +222,18 @@ Update v32:
   - Refresh = neuesten Cloud-Stand auf dieses Gerät laden.
 - Der Install-App-Knopf bleibt nur auf dem Login-Screen sichtbar; im eingeloggten Portal ist er entfernt.
 - Unter Einstellungen stehen Bonus/WhatsApp/Login/Benutzer oben. Google/Drive sowie Import/Backup/Reset bleiben als gesperrte Bereiche am Ende.
+
+Update v33 – lokales Notfall-Komplettbackup
+-------------------------------------------
+- Im gesperrten Bereich "Daten, Import & Backup" gibt es jetzt "Lokales Komplettbackup herunterladen".
+- Dieses Backup funktioniert ohne Google Drive/Cloud und speichert direkt auf dem aktuellen Gerät eine ZIP-Datei.
+- Die ZIP enthält:
+  - lumian-portal-full-backup.json = kompletter Portalstand für echte Wiederherstellung
+  - excel/lumian-kunden.xls = Kunden/Personen lesbar in Excel
+  - excel/lumian-leads.xls = Leads lesbar in Excel
+  - excel/lumian-jobs.xls = Jobs lesbar in Excel
+  - excel/lumian-buchhaltung-und-bonus.xls = Buchhaltung, Pipeline, Ausgaben, Bonus lesbar in Excel
+  - README-WIEDERHERSTELLUNG.txt = kurze Anleitung
+- Wiederherstellung: gesperrten Backup-Bereich entsperren und die ZIP oder JSON-Datei über "Lokales Komplettbackup importieren" auswählen.
+- Wichtig: Für die komplette Wiederherstellung wird die JSON-Datei verwendet. Die Excel-Dateien sind zur Kontrolle, Buchhaltung und manuellen Lesbarkeit.
+- Nach lokalem Import wird zuerst nur dieses Gerät wiederhergestellt. Wenn Cloud/Drive wieder funktioniert, kann der Stand über den oberen Button "Sync" wieder zur Cloud gesendet werden.

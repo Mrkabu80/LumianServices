@@ -253,3 +253,14 @@ Update v34 – separates Aktivitätsprotokoll
 - Wichtig: Das Google-Konto, das das Apps Script ausführt, braucht Bearbeitungszugriff auf dieses separate Activity-Log-Sheet.
 - Nach diesem Update muss /portal/GOOGLE-APPS-SCRIPT.gs im Apps Script komplett ersetzt und das Web-App Deployment als neue Version veröffentlicht werden.
 - Zusätzlich ist PRODUKTIVBETRIEB im Merge jetzt sticky: Ein altes Gerät mit Test-Cache kann den Cloud-Status nicht zurück auf Testbetrieb setzen.
+
+
+Samsung/Chrome Notfall
+----------------------
+Wenn Sync/Refresh nur in Inkognito funktioniert, aber nicht im normalen Chrome-Profil:
+1. Öffne auf dem betroffenen Samsung:
+   https://www.lumianservices.ch/portal/reset.html
+2. Tippe zuerst "Sicheren App-Cache löschen".
+3. Danach im Portal einloggen und oben "Refresh" drücken.
+4. Nur falls es weiterhin nicht geht und keine unsynchronisierten Offline-Daten auf diesem Gerät liegen:
+   reset.html erneut öffnen und den roten Button "Lokale Portal-Daten zusätzlich löschen" nutzen.

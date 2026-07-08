@@ -1,5 +1,16 @@
 (() => {
   'use strict';
+  // Emergency cache/service-worker rescue for mobile browsers that keep an old PWA controller.
+  (function emergencySwResetOnQuery(){
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      if (params.get('swreset') !== '1') return;
+      if ('caches' in window) caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(() => {});
+      if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => r.unregister()))).catch(() => {});
+    } catch (_) {}
+  })();
+
+
 
   const STORE_KEY = 'lumian.portal.v5';
   const OLD_KEYS = ['lumian.portal.v4','lumian.portal.v3','lumian.portal.v2'];
@@ -3153,8 +3164,9 @@
 
   async function clearWebAppCacheAndReload() {
     if (!(await confirmSensitiveAction('Web-App Cache auf diesem Gerät erneuern? Geschäftsdaten und lokale Offline-Daten bleiben erhalten.'))) return;
-    queueActivity('Web-App Cache erneuert', 'Cache', '', 'Technischer App-Cache auf diesem Gerät wurde erneuert.', { flush: true });
+    queueActivity('Web-App Cache erneuert', 'Cache', '', 'Technischer App-Cache und alter Service Worker auf diesem Gerät wurden erneuert.', { flush: true });
     let cleared = 0;
+    let unregistered = 0;
     try {
       if ('caches' in window) {
         const keys = await caches.keys();
@@ -3162,15 +3174,16 @@
       }
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(reg => reg.update().catch(() => {})));
+        await Promise.all(regs.map(reg => reg.unregister().then(ok => { if (ok) unregistered += 1; }).catch(() => {})));
       }
-      toast(cleared ? 'Web-App Cache erneuert. Portal lädt neu...' : 'Portal lädt neu...');
+      toast(`Web-App Cache erneuert (${cleared} Cache, ${unregistered} Service Worker). Portal lädt neu...`);
     } catch (err) {
       toast('Portal lädt neu...');
     }
     const url = new URL(window.location.href);
     url.searchParams.set('v', String(Date.now()));
-    setTimeout(() => window.location.replace(url.toString()), 700);
+    url.searchParams.set('swreset', '1');
+    setTimeout(() => window.location.replace(url.toString()), 900);
   }
 
   async function clearLocalCacheAndReloadCloud() {

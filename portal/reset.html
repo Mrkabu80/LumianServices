@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Lumian Portal Cache Reset</title>
+  <style>
+    :root{color-scheme:dark;--bg:#061018;--card:#0d1d29;--line:rgba(255,255,255,.14);--text:#eef8fb;--muted:#a9bcc3;--brand:#23c8ff;--brand2:#39d7c4;--danger:#ff7066}
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at top,#0e2a3a,var(--bg));color:var(--text);min-height:100vh;display:grid;place-items:center;padding:18px}
+    main{width:min(560px,100%);background:rgba(13,29,41,.92);border:1px solid var(--line);border-radius:28px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.35)}
+    h1{margin:0 0 8px;font-size:1.6rem;letter-spacing:-.03em}p{color:var(--muted);line-height:1.5}button,a{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;border-radius:16px;border:1px solid var(--line);padding:12px 14px;margin-top:10px;font-weight:900;text-decoration:none}
+    button{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#041624}a{background:rgba(255,255,255,.08);color:var(--text)}
+    .danger{background:rgba(255,112,102,.1);border-color:rgba(255,112,102,.35);color:#ffd7d3}.log{margin-top:14px;padding:12px;border-radius:16px;background:rgba(255,255,255,.06);color:#d8eef3;white-space:pre-wrap;font-size:.9rem}
+    small{display:block;color:#90a8af;margin-top:12px;line-height:1.45}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Lumian Portal Cache Reset</h1>
+  <p>Für Samsung/Chrome, wenn das normale Portal alte Dateien hält und Sync/Refresh nicht reagiert. Diese sichere Bereinigung löscht nur technische App-Dateien und alte Service Worker, nicht die Cloud-Daten.</p>
+  <button id="safeReset">Sicheren App-Cache löschen</button>
+  <a href="./index.html?v=81&swreset=1">Zurück zum Portal</a>
+  <button id="deepReset" class="danger">Lokale Portal-Daten zusätzlich löschen</button>
+  <small>Den roten Button nur nutzen, wenn auf diesem Gerät keine unsynchronisierten Offline-Leads/Jobs liegen. Cloud-Daten bleiben trotzdem erhalten.</small>
+  <div id="log" class="log">Bereit.</div>
+</main>
+<script>
+const log = document.getElementById('log');
+function write(msg){ log.textContent = msg; }
+async function clearTechnical(){
+  let cacheCount = 0, swCount = 0;
+  try{
+    if('caches' in window){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k).then(ok => { if(ok) cacheCount++; })));
+    }
+    if('serviceWorker' in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister().then(ok => { if(ok) swCount++; }).catch(()=>{})));
+    }
+    write(`OK: ${cacheCount} Cache(s) gelöscht, ${swCount} Service Worker entfernt. Portal wird neu geöffnet...`);
+  }catch(e){
+    write('Bereinigung abgeschlossen oder teilweise blockiert. Portal wird neu geöffnet...');
+  }
+  setTimeout(() => location.replace('./index.html?v=' + Date.now() + '&swreset=1'), 900);
+}
+document.getElementById('safeReset').addEventListener('click', clearTechnical);
+document.getElementById('deepReset').addEventListener('click', async () => {
+  if(!confirm('Nur bestätigen, wenn auf diesem Samsung keine unsynchronisierten Offline-Daten liegen. Lokale Portal-Daten auf diesem Gerät werden gelöscht. Cloud bleibt erhalten.')) return;
+  try{
+    localStorage.clear();
+    sessionStorage.clear();
+  }catch(e){}
+  await clearTechnical();
+});
+</script>
+</body>
+</html>

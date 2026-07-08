@@ -237,3 +237,6 @@ Update v33 – lokales Notfall-Komplettbackup
 - Wiederherstellung: gesperrten Backup-Bereich entsperren und die ZIP oder JSON-Datei über "Lokales Komplettbackup importieren" auswählen.
 - Wichtig: Für die komplette Wiederherstellung wird die JSON-Datei verwendet. Die Excel-Dateien sind zur Kontrolle, Buchhaltung und manuellen Lesbarkeit.
 - Nach lokalem Import wird zuerst nur dieses Gerät wiederhergestellt. Wenn Cloud/Drive wieder funktioniert, kann der Stand über den oberen Button "Sync" wieder zur Cloud gesendet werden.
+
+- Locked Backup area now includes “Web-App Cache erneuern”. It clears only technical browser/PWA cache files on the current device and reloads the portal; it does not remove customers, leads, jobs, accounting, users, passwords, or offline local data.
+- “Lokales Komplettbackup herunterladen” now uses the normal secondary button style instead of the blue primary style.

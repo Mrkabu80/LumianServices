@@ -2503,6 +2503,7 @@
   $('[data-export-csv]')?.addEventListener('click', exportCsv);
   $('[data-export-json]')?.addEventListener('click', exportJson);
   $('[data-local-full-backup]')?.addEventListener('click', downloadLocalFullBackup);
+  $('[data-clear-web-cache]')?.addEventListener('click', clearWebAppCacheAndReload);
   $('[data-import-local-full-backup]')?.addEventListener('change', async event => {
     await importLocalFullBackup(event.target.files?.[0]);
     event.target.value='';
@@ -2938,6 +2939,27 @@
     } catch (err) {
       toast('Backup konnte nicht wiederhergestellt werden.');
     }
+  }
+
+  async function clearWebAppCacheAndReload() {
+    if (!(await confirmSensitiveAction('Web-App Cache auf diesem Gerät erneuern? Geschäftsdaten und lokale Offline-Daten bleiben erhalten.'))) return;
+    let cleared = 0;
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(key => caches.delete(key).then(ok => { if (ok) cleared += 1; })));
+      }
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(reg => reg.update().catch(() => {})));
+      }
+      toast(cleared ? 'Web-App Cache erneuert. Portal lädt neu...' : 'Portal lädt neu...');
+    } catch (err) {
+      toast('Portal lädt neu...');
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('v', String(Date.now()));
+    setTimeout(() => window.location.replace(url.toString()), 700);
   }
 
   async function clearLocalCacheAndReloadCloud() {

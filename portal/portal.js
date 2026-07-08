@@ -56,6 +56,9 @@
   let cloudSyncTimer = null;
   let cloudSyncInProgress = false;
   let suppressAutoCloudSync = false;
+  const CLOUD_SETTING_KEYS = ['scriptUrl','driveFolderId','backupFolderId','calendarId'];
+  const SETUP_UNLOCK_MS = 5 * 60 * 1000;
+  const setupUnlockedUntil = { cloud: 0, backup: 0 };
   let state = loadState();
 
   function newState() {
@@ -588,6 +591,97 @@
     if (currentUser && !canAccessTab(activeTab)) activeTab = 'dashboard';
   }
 
+  function formatShortDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  }
+
+  function updatePortalModeUi() {
+    const production = String(state.portalMode || 'test') === 'production';
+    const label = production ? `PRODUKTIVBETRIEB${state.goLiveAt ? ' seit ' + formatShortDate(state.goLiveAt) : ''}` : 'TESTBETRIEB';
+    $$('[data-portal-mode-label]').forEach(el => {
+      el.textContent = label;
+      el.classList.toggle('production', production);
+      el.classList.toggle('test', !production);
+    });
+  }
+
+  function isSetupUnlocked(section) {
+    return isAdmin() && Date.now() < Number(setupUnlockedUntil[section] || 0);
+  }
+
+  function applySetupLocks() {
+    $$('[data-lock-section]').forEach(box => {
+      const section = box.dataset.lockSection;
+      const unlocked = isSetupUnlocked(section);
+      box.classList.toggle('is-locked', !unlocked);
+      box.classList.toggle('is-unlocked', unlocked);
+      const status = $(`[data-lock-status="${section}"]`, box);
+      if (status) status.textContent = unlocked ? 'Entsperrt für kurze Zeit' : 'Gesperrt';
+      $$('[data-unlock-section]', box).forEach(btn => { btn.hidden = unlocked; btn.disabled = false; });
+      $$('[data-lock-now]', box).forEach(btn => { btn.hidden = !unlocked; btn.disabled = false; });
+      $$('input,select,textarea,button,a', $('[data-lock-body]', box) || box).forEach(el => {
+        if (el.closest('.lock-toolbar')) return;
+        if (el.matches('a')) {
+          el.setAttribute('aria-disabled', String(!unlocked));
+          return;
+        }
+        el.disabled = !unlocked;
+      });
+    });
+  }
+
+  async function unlockSetupSection(section) {
+    if (!isAdmin()) { toast('Nur Admins können diesen Bereich entsperren.'); return false; }
+    const label = section === 'cloud' ? 'Google Sheet / Drive entsperren?' : 'Daten, Import & Backup entsperren?';
+    if (!(await confirmSensitiveAction(label))) return false;
+    setupUnlockedUntil[section] = Date.now() + SETUP_UNLOCK_MS;
+    applySetupLocks();
+    setTimeout(applySetupLocks, SETUP_UNLOCK_MS + 500);
+    toast('Bereich entsperrt. Danach bitte wieder sperren oder kurz warten.');
+    return true;
+  }
+
+  function lockSetupSection(section) {
+    setupUnlockedUntil[section] = 0;
+    applySetupLocks();
+    toast('Bereich wieder gesperrt.');
+  }
+
+  function compactPortalInfoTexts(root = document) {
+    const selectors = 'p.hint, p.muted, div.import-hint, div.portal-note';
+    $$(selectors, root).forEach(el => {
+      if (el.dataset.infoProcessed === 'yes') return;
+      if (el.closest('.login-card')) return;
+      const text = el.textContent.trim().replace(/\s+/g, ' ');
+      if (text.length < 18) return;
+      el.dataset.infoProcessed = 'yes';
+      el.classList.add('info-compact');
+      el.innerHTML = `<button class="info-trigger" type="button" aria-label="Info anzeigen">i</button><span class="info-popover" role="tooltip">${esc(text)}</span>`;
+    });
+  }
+
+  document.addEventListener('click', event => {
+    const info = event.target.closest('.info-trigger');
+    if (info) {
+      event.preventDefault();
+      const parent = info.closest('.info-compact');
+      $$('.info-compact.open').forEach(el => { if (el !== parent) el.classList.remove('open'); });
+      parent?.classList.toggle('open');
+      return;
+    }
+    if (!event.target.closest('.info-compact')) $$('.info-compact.open').forEach(el => el.classList.remove('open'));
+  });
+
+  document.addEventListener('click', event => {
+    const unlock = event.target.closest('[data-unlock-section]');
+    if (unlock) { event.preventDefault(); unlockSetupSection(unlock.dataset.unlockSection); return; }
+    const lock = event.target.closest('[data-lock-now]');
+    if (lock) { event.preventDefault(); lockSetupSection(lock.dataset.lockNow); }
+  });
+
   function renderLogin() {
     renderUserOptions();
     $('[data-login-view]').hidden = !!currentUser;
@@ -649,7 +743,7 @@
 
   function renderAll() {
     if (!currentUser) return;
-    renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderFinance(); renderRewards(); renderUsers(); fillSettings(false);
+    renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderFinance(); renderRewards(); renderUsers(); fillSettings(false); updatePortalModeUi(); applySetupLocks(); compactPortalInfoTexts();
   }
 
   function renderStats() {
@@ -1591,25 +1685,36 @@
     if (form.elements.userRecoveryCode) form.elements.userRecoveryCode.value = u?.recoveryCode || defaultRecoveryCode(currentUser);
     form.dataset.filled = 'yes';
   }
-  function saveSettingsFromForm(showToast = true) {
+  function saveSettingsFromForm(showToast = true, options = {}) {
     const form = $('[data-settings-form]');
     if (!form) return false;
     // The settings form exists in the DOM even before the tab was opened.
     // Fill it first, otherwise background sync can accidentally read empty inputs.
     if (form.dataset.filled !== 'yes') fillSettings(true);
     const fd = new FormData(form);
-    Object.keys(DEFAULT_SETTINGS).forEach(key => { if (fd.has(key)) state.settings[key] = String(fd.get(key) || '').trim(); });
+    const includeCloud = options.includeCloud === true;
+    Object.keys(DEFAULT_SETTINGS).forEach(key => {
+      if (!fd.has(key)) return;
+      if (CLOUD_SETTING_KEYS.includes(key) && !includeCloud) return;
+      state.settings[key] = String(fd.get(key) || '').trim();
+    });
     state.settings.bonusAmount = Number(state.settings.bonusAmount || 0);
     state.settings.minOrder = Number(state.settings.minOrder || 0);
     const u = state.users.find(x => x.id === currentUser);
     if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
-    saveState('settings');
-    if (showToast) toast('Einstellungen gespeichert.');
+    saveState(includeCloud ? 'settings cloud' : 'settings');
+    if (showToast) toast(includeCloud ? 'Google/Drive Einstellungen gespeichert.' : 'Einstellungen gespeichert. Google/Drive bleibt separat geschützt.');
+    fillSettings(true);
+    applySetupLocks();
     return true;
   }
   $('[data-settings-form]')?.addEventListener('submit', event => {
     event.preventDefault();
     saveSettingsFromForm(true);
+  });
+  $('[data-save-cloud-settings]')?.addEventListener('click', async () => {
+    if (!isSetupUnlocked('cloud') && !(await unlockSetupSection('cloud'))) return;
+    saveSettingsFromForm(true, { includeCloud: true });
   });
   $('[data-change-password]')?.addEventListener('click', async () => {
     const form = $('[data-settings-form]'); const u = state.users.find(x => x.id === currentUser);
@@ -2190,7 +2295,9 @@
   });
   $('[data-reset-cloud]')?.addEventListener('click', goLiveResetCloud);
   $('[data-reset-demo]')?.addEventListener('click', clearLocalCacheAndReloadCloud);
-  $('[data-backup-now]')?.addEventListener('click', backupNow);
+  $$('[data-backup-now]').forEach(btn => btn.addEventListener('click', backupNow));
+  $('[data-list-drive-backups]')?.addEventListener('click', listDriveBackups);
+  $('[data-restore-drive-backup]')?.addEventListener('click', restoreSelectedDriveBackup);
 
 
   function websiteLeadKey(row = {}) {
@@ -2297,9 +2404,7 @@
   }
 
   function currentScriptUrl() {
-    const form = $('[data-settings-form]');
-    const formUrl = form?.dataset?.filled === 'yes' ? form.elements?.scriptUrl?.value : '';
-    return String(formUrl || getSetting('scriptUrl') || '').trim();
+    return String(getSetting('scriptUrl') || '').trim();
   }
 
   function autoLoadCloudThenCheckWebsiteLeads() {
@@ -2448,9 +2553,7 @@
   }
 
   function calendarSyncTarget(s = state) {
-    const form = $('[data-settings-form]');
-    const formValue = form?.dataset?.filled === 'yes' ? form.elements?.calendarId?.value : '';
-    return String(formValue || s?.settings?.calendarId || DEFAULT_SETTINGS.calendarId || '').trim();
+    return String(s?.settings?.calendarId || DEFAULT_SETTINGS.calendarId || '').trim();
   }
   function calendarSyncNeeded(s = state) {
     return !!calendarSyncTarget(s) && (s.jobs || []).some(j => j && j.appointmentAt && !isCancelledJob(j));
@@ -2551,6 +2654,70 @@
       toast('Backup wurde auf Google Drive gespeichert.');
     } catch (err) {
       toast('Backup konnte nicht gespeichert werden.');
+    }
+  }
+
+  async function listDriveBackups() {
+    if (!isAdmin()) return toast('Nur Admins können Drive-Backups anzeigen.');
+    const url = currentScriptUrl();
+    if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
+    const picker = $('[data-backup-picker]');
+    const select = $('[data-drive-backup-select]');
+    const status = $('[data-backup-list-status]');
+    try {
+      toast('Drive-Backups werden geladen...');
+      const data = await jsonpRequest(url, 'listbackups', { backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId });
+      if (!data?.ok) throw new Error(data?.error || 'Keine Backupliste erhalten.');
+      const backups = data.backups || [];
+      if (!backups.length) {
+        if (picker) picker.hidden = false;
+        if (select) select.innerHTML = '<option value="">Keine Backups gefunden</option>';
+        if (status) status.textContent = 'Keine Drive-Backups im Backup-Ordner gefunden.';
+        compactPortalInfoTexts(picker || document);
+        return toast('Keine Drive-Backups gefunden.');
+      }
+      if (select) {
+        select.innerHTML = backups.map(b => `<option value="${esc(b.id)}">${esc(b.name)} · ${esc(b.createdAt || '')} · ${esc(b.sizeLabel || '')}</option>`).join('');
+      }
+      if (picker) picker.hidden = false;
+      if (status) {
+        status.dataset.infoProcessed = '';
+        status.textContent = `${backups.length} Backup(s) gefunden. Vor Wiederherstellung wird automatisch ein Sicherheitsbackup vom aktuellen Stand erstellt.`;
+      }
+      compactPortalInfoTexts(picker || document);
+      toast('Drive-Backups geladen.');
+    } catch (err) {
+      toast('Drive-Backups konnten nicht geladen werden.');
+    }
+  }
+
+  async function restoreSelectedDriveBackup() {
+    if (!isAdmin()) return toast('Nur Admins können Backups wiederherstellen.');
+    const url = currentScriptUrl();
+    const select = $('[data-drive-backup-select]');
+    const fileId = String(select?.value || '').trim();
+    if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
+    if (!fileId) return toast('Bitte zuerst ein Drive-Backup auswählen.');
+    const chosen = select?.selectedOptions?.[0]?.textContent || 'ausgewähltes Backup';
+    if (!(await confirmSensitiveAction(`Backup wiederherstellen?\n\n${chosen}`))) return;
+    const typed = prompt('Letzte Bestätigung: Schreibe RESTORE, um dieses Backup wiederherzustellen. Aktueller Stand wird vorher automatisch gesichert.');
+    if (typed !== 'RESTORE') return toast('Wiederherstellung abgebrochen.');
+    try {
+      toast('Backup wird wiederhergestellt...');
+      const data = await jsonpRequest(url, 'restorebackup', {
+        fileId,
+        confirm:'RESTORE-LUMIAN-BACKUP',
+        backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId
+      });
+      if (!data?.ok || !data.state) throw new Error(data?.error || 'Restore nicht bestätigt.');
+      suppressAutoCloudSync = true;
+      state = migrateState(data.state);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      suppressAutoCloudSync = false;
+      renderAll();
+      toast('Backup wiederhergestellt. Alle Geräte sollten Cloud laden.');
+    } catch (err) {
+      toast('Backup konnte nicht wiederhergestellt werden.');
     }
   }
 

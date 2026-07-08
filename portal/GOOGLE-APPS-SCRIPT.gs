@@ -193,6 +193,86 @@ function backupNow_(backupFolderId) {
   return json_({ ok: true, backupAt: new Date().toISOString(), fileName: file.getName() });
 }
 
+function listBackups_(backupFolderId) {
+  try {
+    var state = normalizeStateForMerge_(loadState_() || emptyState_());
+    var settings = state.settings || {};
+    var folderId = String(backupFolderId || settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID || '').trim();
+    if (!folderId) return json_({ ok: false, error: 'Keine Backup Folder ID vorhanden.' });
+    var folder = DriveApp.getFolderById(folderId);
+    var files = folder.getFiles();
+    var out = [];
+    while (files.hasNext()) {
+      var f = files.next();
+      var name = f.getName();
+      if (name !== 'lumian-portal-latest.json' && !/^lumian-portal-.*\.json$/.test(name)) continue;
+      var created = f.getDateCreated();
+      out.push({
+        id: f.getId(),
+        name: name,
+        createdAt: created ? created.toISOString() : '',
+        createdTs: created ? created.getTime() : 0,
+        size: f.getSize(),
+        sizeLabel: Math.max(1, Math.round((f.getSize() || 0) / 1024)) + ' KB'
+      });
+    }
+    out.sort(function(a, b) { return (b.createdTs || 0) - (a.createdTs || 0); });
+    out = out.slice(0, 80).map(function(x) { delete x.createdTs; return x; });
+    return json_({ ok: true, backupFolderId: folderId, backups: out });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
+}
+
+function restoreBackup_(fileId, confirmText, backupFolderId) {
+  if (confirmText !== 'RESTORE-LUMIAN-BACKUP') {
+    return json_({ ok: false, error: 'Restore confirmation missing' });
+  }
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return json_({ ok: false, error: 'Restore ist gerade belegt. Bitte in einigen Sekunden erneut versuchen.' });
+  }
+  try {
+    var current = normalizeStateForMerge_(loadState_() || emptyState_());
+    current.settings = current.settings || {};
+    var folderId = String(backupFolderId || current.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID || '').trim();
+    if (!folderId) throw new Error('Keine Backup Folder ID vorhanden.');
+    if (!fileId) throw new Error('Keine Backup Datei ausgewählt.');
+    var folder = DriveApp.getFolderById(folderId);
+    var file = DriveApp.getFileById(fileId);
+    var parentOk = false;
+    var parents = file.getParents();
+    while (parents.hasNext()) {
+      if (parents.next().getId() === folder.getId()) parentOk = true;
+    }
+    if (!parentOk) throw new Error('Die Datei liegt nicht im eingestellten Backup-Ordner.');
+
+    current.settings.backupFolderId = folderId;
+    createBackupSnapshot_(current, 'before-restore-backup');
+
+    var content = file.getBlob().getDataAsString('UTF-8');
+    var restored = normalizeStateForMerge_(JSON.parse(content || '{}'));
+    restored.settings = restored.settings || {};
+    restored.settings.driveFolderId = restored.settings.driveFolderId || current.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+    restored.settings.backupFolderId = restored.settings.backupFolderId || folderId || DEFAULT_BACKUP_FOLDER_ID;
+    restored.settings.calendarId = restored.settings.calendarId || current.settings.calendarId || DEFAULT_CALENDAR_ID;
+    restored.updatedAt = new Date().toISOString();
+    restored.audit = restored.audit || [];
+    restored.audit.push({ at: restored.updatedAt, by: 'system', reason: 'Backup wiederhergestellt: ' + file.getName() });
+
+    writeSheets_(restored);
+    saveState_(restored, null);
+    createBackupSnapshot_(restored, 'after-restore-backup');
+    return json_({ ok: true, restoredAt: restored.updatedAt, fileName: file.getName(), state: restored });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  } finally {
+    try { lock.releaseLock(); } catch (releaseErr) {}
+  }
+}
+
 function normalizeStateForMerge_(s) {
   var base = emptyState_();
   s = s || {};
@@ -517,6 +597,18 @@ function doGet(e) {
     var backupFolderId = String((e.parameter && e.parameter.backupFolderId) || '');
     var backupResult = JSON.parse(backupNow_(backupFolderId).getContent());
     return jsonp_(callback, backupResult);
+  }
+  if (action === 'listbackups') {
+    var listBackupFolderId = String((e.parameter && e.parameter.backupFolderId) || '');
+    var listResult = JSON.parse(listBackups_(listBackupFolderId).getContent());
+    return jsonp_(callback, listResult);
+  }
+  if (action === 'restorebackup') {
+    var restoreFileId = String((e.parameter && e.parameter.fileId) || '');
+    var restoreConfirm = String((e.parameter && e.parameter.confirm) || '');
+    var restoreBackupFolderId = String((e.parameter && e.parameter.backupFolderId) || '');
+    var restoreResult = JSON.parse(restoreBackup_(restoreFileId, restoreConfirm, restoreBackupFolderId).getContent());
+    return jsonp_(callback, restoreResult);
   }
   if (action === 'golivereset') {
     var goLiveConfirm = String((e.parameter && e.parameter.confirm) || '');

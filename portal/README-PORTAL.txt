@@ -197,3 +197,21 @@ V75 Cloud-first Daten-Sync, Testbetrieb und Drive-Backups
 - Neue Admin-Aktion: „Backup auf Drive speichern“ erstellt sofort ein JSON-Backup im Portal-Backup-Ordner.
 - Neue Admin-Aktion: „Testdaten löschen & produktiv starten“ erstellt vorher ein Backup, löscht Test-Leads/Jobs/Kunden/Buchhaltung/Bonus, behält aber Benutzer, Passwörter und Einstellungen.
 - „Lokalen Cache löschen & Cloud neu laden“ betrifft nur das aktuelle Gerät und ist für iPhone/Laptop-Anzeigefehler gedacht.
+
+
+Update v31 – geschützte Setup-Bereiche / Drive-Backup Restore
+---------------------------------------------------------------
+- In Einstellungen sind die Bereiche "Google Sheet / Drive" und "Daten, Import & Backup" gesperrt und unscharf.
+- Entsperren erfolgt über Face ID / Touch ID, falls aktiviert, sonst über das Benutzer-Passwort.
+- Google Apps Script URL, Foto-Drive-ID, Backup-Drive-ID und Kalender-ID werden nur über den separaten Button "Google/Drive Einstellungen speichern" gespeichert.
+- Der normale Button "Einstellungen speichern" speichert Bonus, Texte, Review-Link, Login/Reset-Code usw., aber nicht die Google/Drive-IDs.
+- Der Portal-Modus ist sichtbar: TESTBETRIEB oder PRODUKTIVBETRIEB.
+- "Testdaten löschen & produktiv starten" erstellt zuerst ein Drive-Backup, löscht Test-Leads/Jobs/Kunden/Bonus/Buchhaltung und behält Benutzer, Passwörter und Einstellungen.
+- "Drive-Backups anzeigen" listet JSON-Backups aus dem eingetragenen Backup-Ordner. Vor dem Wiederherstellen erstellt Apps Script automatisch ein Sicherheitsbackup vom aktuellen Stand.
+- Erklärungstexte im Portal werden als kleines i-Symbol angezeigt. Hover oder Klick zeigt die Erklärung.
+
+Wichtig nach Upload:
+1) portal/GOOGLE-APPS-SCRIPT.gs komplett im Google Sheet Apps Script ersetzen.
+2) Deployment aktualisieren: Deploy -> Manage deployments -> Edit -> New version -> Deploy.
+3) Portal öffnen, als Admin einloggen, Google/Drive Bereich entsperren, Einstellungen prüfen und speichern.
+4) Drive/Kalender testen, dann Backup auf Drive speichern.

@@ -349,6 +349,9 @@
             <label>Google Drive Folder ID für Fotos
               <input name="driveFolderId" placeholder="optional, für Vorher/Nachher Fotos">
             </label>
+            <label>Google Drive Folder ID für Portal-Backups
+              <input name="backupFolderId" placeholder="optional, für automatische JSON-Backups">
+            </label>
             <p class="hint">Fotos werden beim Sync komprimiert und so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Im Portal werden danach Drive-Vorschauen angezeigt. Termine werden im Lumian Google Calendar erstellt oder beim Ändern des Termins aktualisiert, nicht doppelt angelegt. Wichtig: Der iCal-Link ist nur zum Lesen. Für automatisches Erstellen braucht Apps Script Schreibzugriff auf den Kalender lumianservices@gmail.com. Trage deshalb als Calendar ID am besten direkt lumianservices@gmail.com ein.</p>
             <label>Google Calendar ID
               <input name="calendarId" placeholder="lumianservices@gmail.com">
@@ -357,6 +360,7 @@
               <button class="secondary" type="button" data-sync-now>Sync senden</button>
               <button class="secondary" type="button" data-test-sync>Drive/Kalender testen</button>
               <button class="secondary" type="button" data-load-cloud>Cloud laden</button>
+              <button class="secondary" type="button" data-backup-now>Backup auf Drive speichern</button>
             </div>
             <p class="hint">URL eintragen und Einstellungen speichern. Sync/Web-Anfragen, Foto-Upload und Kalender-Sync nutzen diese URL danach. Für zwei Handys: gleiche Web-App-URL eintragen.</p>
           </fieldset>
@@ -437,10 +441,10 @@
               <label class="file-button">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
               <button class="secondary" type="button" data-export-json>Backup JSON herunterladen</button>
               <label class="file-button">Backup importieren<input type="file" accept="application/json" data-import-json hidden></label>
-              <button class="secondary danger" type="button" data-reset-demo>Lokale Testdaten löschen</button>
-              <button class="secondary danger" type="button" data-reset-cloud>Cloud + Website-Anfragen löschen</button>
+              <button class="secondary danger" type="button" data-reset-demo>Lokalen Cache löschen & Cloud neu laden</button>
+              <button class="secondary danger" type="button" data-reset-cloud>Testdaten löschen & produktiv starten</button>
             </div>
-            <p class="hint">Lokale Testdaten löschen leert nur dieses Gerät. Cloud + Website-Anfragen löschen leert zusätzlich Google Sheet / Apps Script inkl. Website- und Danke-Code-Anfragen. Beide Aktionen müssen mit Face ID/Touch ID oder Passwort bestätigt werden.</p>
+            <p class="hint">Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter und Einstellungen.</p>
           </fieldset>
             </div>
           </div>

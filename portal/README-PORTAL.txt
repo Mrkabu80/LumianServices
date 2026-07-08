@@ -188,3 +188,12 @@ V71 Pipeline + Drive/Calendar Diagnose
 - Google Calendar Default ist jetzt direkt lumianservices@gmail.com. Der iCal-Link ist nur lesbar und kann nicht zum Schreiben genutzt werden.
 - Apps Script schreibt zusätzlich "Sync Diagnostics" und speichert Cloud State in einem eigenen Sheet, damit grössere Zustände und Foto-Metadaten nicht mehr an Script-Properties scheitern.
 - Drive-Fotos nutzen weiterhin den Ordner 1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr und werden in Kundenordnern LMxxxx als Jxxxx_before.jpg / Jxxxx_after.jpg gespeichert.
+
+V75 Cloud-first Daten-Sync, Testbetrieb und Drive-Backups
+- Neue Backup-Folder-ID für Portal-Backups: 1gCHjA3CKET8fPjYkc80_6rC4zIL7isy4.
+- Google Apps Script nutzt jetzt LockService und führt Cloud-/Gerätedaten pro Datensatz-ID zusammen, damit ein Handy nicht mehr den alten Stand eines anderen Geräts überschreibt.
+- Google Sheet bleibt die zentrale Cloud-Datenquelle; Google Drive speichert Fotos und automatische JSON-Backups. GitHub bleibt nur für Code/Website-Dateien.
+- Beim Öffnen/Login lädt das Portal die Cloud und gleicht lokale/offline Änderungen ab. Wenn ein Gerät offline war, versucht es beim Online-Gehen automatisch zu synchronisieren.
+- Neue Admin-Aktion: „Backup auf Drive speichern“ erstellt sofort ein JSON-Backup im Portal-Backup-Ordner.
+- Neue Admin-Aktion: „Testdaten löschen & produktiv starten“ erstellt vorher ein Backup, löscht Test-Leads/Jobs/Kunden/Buchhaltung/Bonus, behält aber Benutzer, Passwörter und Einstellungen.
+- „Lokalen Cache löschen & Cloud neu laden“ betrifft nur das aktuelle Gerät und ist für iPhone/Laptop-Anzeigefehler gedacht.

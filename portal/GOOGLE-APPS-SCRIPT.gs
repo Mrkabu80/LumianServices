@@ -13,74 +13,95 @@
  */
 
 var DEFAULT_DRIVE_FOLDER_ID = '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr';
+var DEFAULT_BACKUP_FOLDER_ID = '1gCHjA3CKET8fPjYkc80_6rC4zIL7isy4';
 var DEFAULT_CALENDAR_ID = 'lumianservices@gmail.com';
 
 function doPost(e) {
+  var lock = LockService.getScriptLock();
   try {
-    var payload = JSON.parse(e.postData.contents || '{}');
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return json_({ ok: false, error: 'Sync ist gerade belegt. Bitte in einigen Sekunden erneut versuchen.' });
+  }
+
+  try {
+    var payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     if (payload.action === 'websiteLead') return saveWebsiteLead_(payload.lead || {});
     if (payload.action === 'resetAll') return resetAll_(payload.confirm || '');
+    if (payload.action === 'goLiveReset') return goLiveReset_(payload.confirm || '', payload.backupFolderId || '');
     if (payload.action !== 'syncFull') return json_({ ok: false, error: 'Unknown action' });
-
-    var state = payload.state || {};
-    var settings = state.settings || {};
-    settings.driveFolderId = settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
-    settings.calendarId = settings.calendarId || DEFAULT_CALENDAR_ID;
-    state.settings = settings;
-    state.lastSyncRunId = payload.syncRunId || ('sync-' + new Date().getTime());
-    var folderId = settings.driveFolderId;
-    var photoFolder = null;
-    state.photoSyncLog = [];
-    state.syncDiagnostics = [];
-    state.syncDiagnostics.push(['Sync ID', state.lastSyncRunId || '', '', '']);
-    state.syncDiagnostics.push(['Sync gestartet', new Date().toISOString(), '', '']);
-    state.syncDiagnostics.push(['Drive Folder ID', folderId || '', '', '']);
-    state.syncDiagnostics.push(['Calendar ID input', settings.calendarId || '', 'parsed: ' + parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID), '']);
-    state.syncDiagnostics.push(['Jobs mit lokalen Fotos', countLocalPhotoJobs_(state), '', '']);
-    state.syncDiagnostics.push(['Jobs mit Termin', countAppointmentJobs_(state), '', '']);
-
-    if (folderId) {
-      try {
-        photoFolder = DriveApp.getFolderById(folderId);
-        state.photoSyncLog.push(['', '', '', '', 'Drive Hauptordner OK: ' + photoFolder.getName(), new Date().toISOString()]);
-        state.syncDiagnostics.push(['Drive Zugriff', 'OK', photoFolder.getName(), photoFolder.getUrl()]);
-      } catch (driveErr) {
-        state.photoSyncLog.push(['', '', '', '', 'Drive Fehler: Ordner nicht gefunden oder keine Berechtigung für ID ' + folderId + ' · ' + String(driveErr), new Date().toISOString()]);
-        state.syncDiagnostics.push(['Drive Zugriff', 'FEHLER', folderId, String(driveErr)]);
-      }
-    } else {
-      state.photoSyncLog.push(['', '', '', '', 'Kein Drive Folder ID in Einstellungen gesetzt.', new Date().toISOString()]);
-      state.syncDiagnostics.push(['Drive Zugriff', 'FEHLT', '', 'Keine Folder ID gesetzt']);
-    }
-
-    if (photoFolder && state.jobs) {
-      state.jobs = state.jobs.map(function(job) {
-        try {
-          job.beforePhoto = savePhoto_(photoFolder, state, job, job.beforePhoto, 'before');
-        } catch (beforeErr) {
-          job.beforePhoto = markPhotoError_(job.beforePhoto, beforeErr);
-          state.photoSyncLog.push([job.id || '', job.personId || '', 'before', '', 'Fehler: ' + String(beforeErr), new Date().toISOString()]);
-        }
-        try {
-          job.afterPhoto = savePhoto_(photoFolder, state, job, job.afterPhoto, 'after');
-        } catch (afterErr) {
-          job.afterPhoto = markPhotoError_(job.afterPhoto, afterErr);
-          state.photoSyncLog.push([job.id || '', job.personId || '', 'after', '', 'Fehler: ' + String(afterErr), new Date().toISOString()]);
-        }
-        return job;
-      });
-    }
-
-    // Calendar sync must still run even when Drive fails.
-    syncCalendar_(state, settings);
-
-    writeSheets_(state);
-    saveState_(state, photoFolder);
-    return json_({ ok: true, savedAt: new Date().toISOString(), syncRunId: state.lastSyncRunId || '', photoSyncLog: state.photoSyncLog || [], calendarSyncLog: state.calendarSyncLog || [] });
+    return syncFull_(payload);
   } catch (err) {
     return json_({ ok: false, error: String(err) });
+  } finally {
+    try { lock.releaseLock(); } catch (releaseErr) {}
   }
 }
+
+function syncFull_(payload) {
+  var incoming = normalizeStateForMerge_(payload.state || emptyState_());
+  var current = normalizeStateForMerge_(loadState_() || emptyState_());
+  var state = mergeStates_(current, incoming, payload.by || '');
+  var settings = state.settings || {};
+  settings.driveFolderId = settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+  settings.backupFolderId = settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
+  settings.calendarId = settings.calendarId || DEFAULT_CALENDAR_ID;
+  state.settings = settings;
+  state.lastSyncRunId = payload.syncRunId || ('sync-' + new Date().getTime());
+
+  var folderId = settings.driveFolderId;
+  var photoFolder = null;
+  state.photoSyncLog = [];
+  state.syncDiagnostics = [];
+  state.syncDiagnostics.push(['Sync ID', state.lastSyncRunId || '', '', '']);
+  state.syncDiagnostics.push(['Sync gestartet', new Date().toISOString(), '', '']);
+  state.syncDiagnostics.push(['Merge-Modus', 'aktiv', 'Cloud + Gerät werden pro ID zusammengeführt', '']);
+  state.syncDiagnostics.push(['Drive Folder ID', folderId || '', '', '']);
+  state.syncDiagnostics.push(['Backup Folder ID', settings.backupFolderId || '', '', '']);
+  state.syncDiagnostics.push(['Calendar ID input', settings.calendarId || '', 'parsed: ' + parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID), '']);
+  state.syncDiagnostics.push(['Jobs mit lokalen Fotos', countLocalPhotoJobs_(state), '', '']);
+  state.syncDiagnostics.push(['Jobs mit Termin', countAppointmentJobs_(state), '', '']);
+
+  if (folderId) {
+    try {
+      photoFolder = DriveApp.getFolderById(folderId);
+      state.photoSyncLog.push(['', '', '', '', 'Drive Hauptordner OK: ' + photoFolder.getName(), new Date().toISOString()]);
+      state.syncDiagnostics.push(['Drive Zugriff', 'OK', photoFolder.getName(), photoFolder.getUrl()]);
+    } catch (driveErr) {
+      state.photoSyncLog.push(['', '', '', '', 'Drive Fehler: Ordner nicht gefunden oder keine Berechtigung für ID ' + folderId + ' · ' + String(driveErr), new Date().toISOString()]);
+      state.syncDiagnostics.push(['Drive Zugriff', 'FEHLER', folderId, String(driveErr)]);
+    }
+  } else {
+    state.photoSyncLog.push(['', '', '', '', 'Kein Drive Folder ID in Einstellungen gesetzt.', new Date().toISOString()]);
+    state.syncDiagnostics.push(['Drive Zugriff', 'FEHLT', '', 'Keine Folder ID gesetzt']);
+  }
+
+  if (photoFolder && state.jobs) {
+    state.jobs = state.jobs.map(function(job) {
+      try {
+        job.beforePhoto = savePhoto_(photoFolder, state, job, job.beforePhoto, 'before');
+      } catch (beforeErr) {
+        job.beforePhoto = markPhotoError_(job.beforePhoto, beforeErr);
+        state.photoSyncLog.push([job.id || '', job.personId || '', 'before', '', 'Fehler: ' + String(beforeErr), new Date().toISOString()]);
+      }
+      try {
+        job.afterPhoto = savePhoto_(photoFolder, state, job, job.afterPhoto, 'after');
+      } catch (afterErr) {
+        job.afterPhoto = markPhotoError_(job.afterPhoto, afterErr);
+        state.photoSyncLog.push([job.id || '', job.personId || '', 'after', '', 'Fehler: ' + String(afterErr), new Date().toISOString()]);
+      }
+      return job;
+    });
+  }
+
+  // Calendar sync must still run even when Drive fails.
+  syncCalendar_(state, settings);
+
+  writeSheets_(state);
+  saveState_(state, photoFolder);
+  return json_({ ok: true, savedAt: new Date().toISOString(), syncRunId: state.lastSyncRunId || '', photoSyncLog: state.photoSyncLog || [], calendarSyncLog: state.calendarSyncLog || [] });
+}
+
 
 
 
@@ -106,19 +127,267 @@ function resetAll_(confirmText) {
   if (confirmText !== 'RESET-LUMIAN-PORTAL') {
     return json_({ ok: false, error: 'Reset confirmation missing' });
   }
+  var current = normalizeStateForMerge_(loadState_() || emptyState_());
+  createBackupSnapshot_(current, 'before-full-reset');
   var state = emptyState_();
+  state.settings = { backupFolderId: DEFAULT_BACKUP_FOLDER_ID, driveFolderId: DEFAULT_DRIVE_FOLDER_ID, calendarId: DEFAULT_CALENDAR_ID };
   writeSheets_(state);
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var website = getOrCreateSheet_(ss, 'Website Leads', [
-    'websiteLeadKey','createdAt','leadId','lumianNr','name','phone','Strasse/Nr','PLZ/Ort','service','desiredDate','referral','message','source','status'
-  ]);
-  website.clearContents();
-  website.appendRow(['websiteLeadKey','createdAt','leadId','lumianNr','name','phone','Strasse/Nr','PLZ/Ort','service','desiredDate','referral','message','source','status']);
-
+  clearWebsiteLeadSheet_();
   saveState_(state, null);
+  createBackupSnapshot_(state, 'after-full-reset');
   return json_({ ok: true, resetAt: new Date().toISOString() });
 }
+
+function goLiveReset_(confirmText, backupFolderId) {
+  if (confirmText !== 'START-PRODUCTION') {
+    return json_({ ok: false, error: 'Produktiv confirmation missing' });
+  }
+  var current = normalizeStateForMerge_(loadState_() || emptyState_());
+  current.settings = current.settings || {};
+  current.settings.backupFolderId = String(backupFolderId || current.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID).trim() || DEFAULT_BACKUP_FOLDER_ID;
+  createBackupSnapshot_(current, 'before-go-live-reset');
+
+  var now = new Date().toISOString();
+  var clean = emptyState_();
+  clean.version = current.version || 8;
+  clean.createdAt = current.createdAt || now;
+  clean.updatedAt = now;
+  clean.portalMode = 'production';
+  clean.goLiveAt = now;
+  clean.users = current.users || [];
+  clean.settings = current.settings || {};
+  clean.settings.driveFolderId = clean.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+  clean.settings.backupFolderId = clean.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
+  clean.settings.calendarId = clean.settings.calendarId || DEFAULT_CALENDAR_ID;
+  clean.counters = { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 };
+  clean.people = [];
+  clean.leads = [];
+  clean.jobs = [];
+  clean.rewards = [];
+  clean.finance = { manualIncome: [], expenses: [] };
+  clean.audit = (current.audit || []).slice(-300);
+  clean.audit.push({ at: now, by: 'system', reason: 'Testdaten gelöscht und Produktivmodus gestartet' });
+
+  writeSheets_(clean);
+  clearWebsiteLeadSheet_();
+  saveState_(clean, null);
+  createBackupSnapshot_(clean, 'after-go-live-reset');
+  return json_({ ok: true, resetAt: now, mode: 'production' });
+}
+
+function clearWebsiteLeadSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var headers = ['websiteLeadKey','createdAt','leadId','lumianNr','name','phone','Strasse/Nr','PLZ/Ort','service','desiredDate','referral','message','source','status'];
+  var website = getOrCreateSheet_(ss, 'Website Leads', headers);
+  website.clearContents();
+  website.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+}
+
+function backupNow_(backupFolderId) {
+  var state = normalizeStateForMerge_(loadState_() || emptyState_());
+  state.settings = state.settings || {};
+  if (backupFolderId) state.settings.backupFolderId = backupFolderId;
+  var file = createBackupSnapshot_(state, 'manual');
+  saveLatestBackup_(stateForStorage_(state));
+  if (!file) return json_({ ok: false, error: 'Backup-Ordner nicht erreichbar oder nicht beschreibbar.' });
+  return json_({ ok: true, backupAt: new Date().toISOString(), fileName: file.getName() });
+}
+
+function normalizeStateForMerge_(s) {
+  var base = emptyState_();
+  s = s || {};
+  var out = JSON.parse(JSON.stringify(s));
+  out.version = out.version || base.version;
+  out.createdAt = out.createdAt || base.createdAt;
+  out.updatedAt = out.updatedAt || '';
+  out.portalMode = out.portalMode || 'test';
+  out.goLiveAt = out.goLiveAt || '';
+  out.settings = out.settings || {};
+  out.settings.driveFolderId = out.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+  out.settings.backupFolderId = out.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
+  out.settings.calendarId = out.settings.calendarId || DEFAULT_CALENDAR_ID;
+  out.users = Array.isArray(out.users) ? out.users : [];
+  out.counters = out.counters || {};
+  out.counters.nextPerson = Number(out.counters.nextPerson || 1001);
+  out.counters.nextLead = Number(out.counters.nextLead || 1);
+  out.counters.nextJob = Number(out.counters.nextJob || 1);
+  out.counters.nextReward = Number(out.counters.nextReward || 1);
+  out.counters.nextFinance = Number(out.counters.nextFinance || 1);
+  out.people = Array.isArray(out.people) ? out.people : [];
+  out.leads = Array.isArray(out.leads) ? out.leads : [];
+  out.jobs = Array.isArray(out.jobs) ? out.jobs : [];
+  out.rewards = Array.isArray(out.rewards) ? out.rewards : [];
+  out.finance = out.finance || { manualIncome: [], expenses: [] };
+  out.finance.manualIncome = Array.isArray(out.finance.manualIncome) ? out.finance.manualIncome : [];
+  out.finance.expenses = Array.isArray(out.finance.expenses) ? out.finance.expenses : [];
+  out.audit = Array.isArray(out.audit) ? out.audit : [];
+  return out;
+}
+
+function recordStamp_(item) {
+  if (!item) return 0;
+  var raw = item.deletedAt || item.updatedAt || item.createdAt || '';
+  var t = raw ? new Date(raw).getTime() : 0;
+  return isFinite(t) ? t : 0;
+}
+
+function mergeRecordArrays_(currentArr, incomingArr) {
+  var map = {};
+  function put(item) {
+    if (!item || !item.id) return;
+    var id = String(item.id);
+    var old = map[id];
+    if (!old || recordStamp_(item) >= recordStamp_(old)) {
+      var merged = {};
+      if (old) {
+        for (var k in old) if (Object.prototype.hasOwnProperty.call(old, k)) merged[k] = old[k];
+      }
+      for (var j in item) if (Object.prototype.hasOwnProperty.call(item, j)) merged[j] = item[j];
+      map[id] = merged;
+    }
+  }
+  (currentArr || []).forEach(put);
+  (incomingArr || []).forEach(put);
+  var out = [];
+  for (var key in map) if (Object.prototype.hasOwnProperty.call(map, key)) out.push(map[key]);
+  return out;
+}
+
+function mergeUsers_(currentUsers, incomingUsers) {
+  var map = {};
+  (currentUsers || []).forEach(function(u) { if (u && u.id) map[String(u.id)] = u; });
+  (incomingUsers || []).forEach(function(u) {
+    if (!u || !u.id) return;
+    var id = String(u.id);
+    var old = map[id] || {};
+    var merged = {};
+    for (var k in old) if (Object.prototype.hasOwnProperty.call(old, k)) merged[k] = old[k];
+    for (var j in u) if (Object.prototype.hasOwnProperty.call(u, j)) merged[j] = u[j];
+    map[id] = merged;
+  });
+  var out = [];
+  for (var key in map) if (Object.prototype.hasOwnProperty.call(map, key)) out.push(map[key]);
+  return out;
+}
+
+function mergeSettings_(currentSettings, incomingSettings) {
+  var out = {};
+  currentSettings = currentSettings || {};
+  incomingSettings = incomingSettings || {};
+  for (var k in currentSettings) if (Object.prototype.hasOwnProperty.call(currentSettings, k)) out[k] = currentSettings[k];
+  for (var j in incomingSettings) {
+    if (Object.prototype.hasOwnProperty.call(incomingSettings, j) && incomingSettings[j] !== '' && incomingSettings[j] !== null && incomingSettings[j] !== undefined) out[j] = incomingSettings[j];
+  }
+  out.driveFolderId = out.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+  out.backupFolderId = out.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
+  out.calendarId = out.calendarId || DEFAULT_CALENDAR_ID;
+  return out;
+}
+
+function maxCounters_(a, b) {
+  a = a || {}; b = b || {};
+  return {
+    nextPerson: Math.max(Number(a.nextPerson || 1001), Number(b.nextPerson || 1001)),
+    nextLead: Math.max(Number(a.nextLead || 1), Number(b.nextLead || 1)),
+    nextJob: Math.max(Number(a.nextJob || 1), Number(b.nextJob || 1)),
+    nextReward: Math.max(Number(a.nextReward || 1), Number(b.nextReward || 1)),
+    nextFinance: Math.max(Number(a.nextFinance || 1), Number(b.nextFinance || 1))
+  };
+}
+
+function mergeStates_(current, incoming, userId) {
+  current = normalizeStateForMerge_(current);
+  incoming = normalizeStateForMerge_(incoming);
+  var now = new Date().toISOString();
+  var merged = emptyState_();
+  merged.version = Math.max(Number(current.version || 8), Number(incoming.version || 8));
+  merged.createdAt = current.createdAt || incoming.createdAt || now;
+  merged.updatedAt = now;
+  merged.portalMode = incoming.portalMode || current.portalMode || 'test';
+  merged.goLiveAt = incoming.goLiveAt || current.goLiveAt || '';
+  merged.settings = mergeSettings_(current.settings, incoming.settings);
+  merged.users = mergeUsers_(current.users, incoming.users);
+  merged.counters = maxCounters_(current.counters, incoming.counters);
+  merged.people = mergeRecordArrays_(current.people, incoming.people);
+  merged.leads = mergeRecordArrays_(current.leads, incoming.leads);
+  merged.jobs = mergeRecordArrays_(current.jobs, incoming.jobs);
+  merged.rewards = mergeRecordArrays_(current.rewards, incoming.rewards);
+  merged.finance = {
+    manualIncome: mergeRecordArrays_(current.finance.manualIncome, incoming.finance.manualIncome),
+    expenses: mergeRecordArrays_(current.finance.expenses, incoming.finance.expenses)
+  };
+  merged.audit = (current.audit || []).concat(incoming.audit || []).slice(-400);
+  if (userId) merged.audit.push({ at: now, by: userId, reason: 'cloud merge sync' });
+  return merged;
+}
+
+function backupFolderIdFromState_(state) {
+  var settings = (state && state.settings) || {};
+  return String(settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID || '').trim();
+}
+
+function backupFileName_(reason) {
+  var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  var safeReason = String(reason || 'backup').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 40);
+  return 'lumian-portal-' + stamp + '-' + safeReason + '.json';
+}
+
+function saveLatestBackup_(cleanState) {
+  try {
+    var folderId = backupFolderIdFromState_(cleanState);
+    if (!folderId) return null;
+    var folder = DriveApp.getFolderById(folderId);
+    var json = JSON.stringify(cleanState || {});
+    var latestName = 'lumian-portal-latest.json';
+    var files = folder.getFilesByName(latestName);
+    while (files.hasNext()) files.next().setTrashed(true);
+    return folder.createFile(latestName, json, 'application/json');
+  } catch (e) {
+    return null;
+  }
+}
+
+function createBackupSnapshot_(state, reason) {
+  try {
+    var clean = stateForStorage_(state || emptyState_());
+    var folderId = backupFolderIdFromState_(clean);
+    if (!folderId) return null;
+    var folder = DriveApp.getFolderById(folderId);
+    var file = folder.createFile(backupFileName_(reason), JSON.stringify(clean), 'application/json');
+    cleanupOldBackups_(folder, 80);
+    return file;
+  } catch (e) {
+    return null;
+  }
+}
+
+function createAutoBackupIfDue_(cleanState) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var last = Number(props.getProperty('LUMIAN_LAST_BACKUP_TS') || 0);
+    var now = new Date().getTime();
+    if (!last || now - last > 6 * 60 * 60 * 1000) {
+      createBackupSnapshot_(cleanState, 'auto');
+      props.setProperty('LUMIAN_LAST_BACKUP_TS', String(now));
+    }
+  } catch (e) {}
+}
+
+function cleanupOldBackups_(folder, keep) {
+  try {
+    var files = folder.getFiles();
+    var arr = [];
+    while (files.hasNext()) {
+      var f = files.next();
+      if (/^lumian-portal-.*\.json$/.test(f.getName()) && f.getName() !== 'lumian-portal-latest.json') {
+        arr.push(f);
+      }
+    }
+    arr.sort(function(a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+    for (var i = keep; i < arr.length; i++) arr[i].setTrashed(true);
+  } catch (e) {}
+}
+
 
 
 function normalizeAppointmentInput_(value) {
@@ -243,6 +512,17 @@ function doGet(e) {
   }
   if (action === 'testsync') {
     return jsonp_(callback, { ok: true, test: runSyncTest_(e.parameter || {}), at: new Date().toISOString() });
+  }
+  if (action === 'backupnow') {
+    var backupFolderId = String((e.parameter && e.parameter.backupFolderId) || '');
+    var backupResult = JSON.parse(backupNow_(backupFolderId).getContent());
+    return jsonp_(callback, backupResult);
+  }
+  if (action === 'golivereset') {
+    var goLiveConfirm = String((e.parameter && e.parameter.confirm) || '');
+    var goLiveBackupFolderId = String((e.parameter && e.parameter.backupFolderId) || '');
+    var goLiveResult = JSON.parse(goLiveReset_(goLiveConfirm, goLiveBackupFolderId).getContent());
+    return jsonp_(callback, goLiveResult);
   }
   if (action === 'resetall') {
     var confirmText = String((e.parameter && e.parameter.confirm) || '');
@@ -549,6 +829,8 @@ function saveState_(state, folder) {
     while (files.hasNext()) files.next().setTrashed(true);
     folder.createFile(filename, json, 'application/json');
   }
+  saveLatestBackup_(clean);
+  createAutoBackupIfDue_(clean);
   saveStateToSheet_(json);
   try {
     // Small pointer/cache only. If the state becomes too large, the Sheet remains the source of truth.
@@ -611,10 +893,10 @@ function writeSheets_(state) {
     ['Gewinn', finance.paidJobsTotal + finance.manualIncomeTotal - finance.expenseTotal, 'bezahlte Einnahmen minus Ausgaben']
   ]);
 
-  writeSheet_(ss, 'Finance Manual Income', ['IncomeId','Title','From','To','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.manualIncome) || []).map(function(x) {
+  writeSheet_(ss, 'Finance Manual Income', ['IncomeId','Title','From','To','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.manualIncome) || []).filter(function(x) { return !x.deletedAt; }).map(function(x) {
     return [x.id,x.title,x.from,x.to,x.amount,x.notes,x.createdAt,x.createdBy];
   }));
-  writeSheet_(ss, 'Finance Expenses', ['ExpenseId','Date','Category','Title','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.expenses) || []).map(function(x) {
+  writeSheet_(ss, 'Finance Expenses', ['ExpenseId','Date','Category','Title','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.expenses) || []).filter(function(x) { return !x.deletedAt; }).map(function(x) {
     return [x.id,x.date,x.category,x.title,x.amount,x.notes,x.createdAt,x.createdBy];
   }));
 
@@ -693,8 +975,8 @@ function calculateFinance_(state) {
     var status = String(l.status || '');
     return ['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden','Verloren'].indexOf(status) < 0 && amountValue_(l.expectedValue) > 0;
   });
-  var manualIncome = finance.manualIncome || [];
-  var expenses = finance.expenses || [];
+  var manualIncome = (finance.manualIncome || []).filter(function(x) { return !x.deletedAt; });
+  var expenses = (finance.expenses || []).filter(function(x) { return !x.deletedAt; });
 
   return {
     paidJobsCount: paidJobs.length,
@@ -757,13 +1039,16 @@ function runSyncTest_(params) {
   var state = loadState_() || {};
   var settings = state.settings || {};
   var folderId = String((params && params.driveFolderId) || settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID || '').trim();
+  var backupFolderId = String((params && params.backupFolderId) || settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID || '').trim();
   var calendarInput = String((params && params.calendarId) || settings.calendarId || DEFAULT_CALENDAR_ID || '').trim();
   var calendarId = parseCalendarId_(calendarInput || DEFAULT_CALENDAR_ID);
   var result = {
     driveFolderId: folderId,
+    backupFolderId: backupFolderId,
     calendarInput: calendarInput,
     calendarId: calendarId,
     drive: { ok: false, message: '' },
+    backup: { ok: false, message: '' },
     calendar: { ok: false, message: '' }
   };
 
@@ -776,6 +1061,17 @@ function runSyncTest_(params) {
     result.drive = { ok: true, message: 'OK: Drive Ordner erreichbar und Testdatei konnte erstellt werden: ' + folder.getName() + ' / ' + fileName };
   } catch (driveErr) {
     result.drive = { ok: false, message: 'FEHLER: Drive Ordner nicht beschreibbar. Folder ID/Berechtigung prüfen. Details: ' + String(driveErr) };
+  }
+
+  try {
+    if (!backupFolderId) throw new Error('Keine Backup Folder ID vorhanden.');
+    var backupFolder = DriveApp.getFolderById(backupFolderId);
+    var backupFile = backupFolder.createFile('lumian-backup-test-' + new Date().getTime() + '.txt', 'Lumian Backup Test ' + new Date().toISOString(), 'text/plain');
+    var backupFileName = backupFile.getName();
+    backupFile.setTrashed(true);
+    result.backup = { ok: true, message: 'OK: Backup-Ordner erreichbar und beschreibbar: ' + backupFolder.getName() + ' / ' + backupFileName };
+  } catch (backupErr) {
+    result.backup = { ok: false, message: 'FEHLER: Backup-Ordner nicht beschreibbar. Folder ID/Berechtigung prüfen. Details: ' + String(backupErr) };
   }
 
   try {

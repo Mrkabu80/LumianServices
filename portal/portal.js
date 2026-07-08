@@ -35,6 +35,7 @@
     googleReviewUrl: 'https://g.page/r/CQIaGL8jXr4wEAI/review',
     scriptUrl: 'https://script.google.com/macros/s/AKfycbxrPY6xXXbHjZXSaJJxujw-4xDCFhLg4aNpB7VqlxAkYmCYljSk4I2JfZ10cm1pjp9S/exec',
     driveFolderId: '1LByFV1zXcBrfbgGV1BjbAwKAcRBEJKQr',
+    backupFolderId: '1gCHjA3CKET8fPjYkc80_6rC4zIL7isy4',
     calendarId: 'lumianservices@gmail.com',
     recoveryCode: 'Lumian-Reset-2026',
     referralTemplate: 'Hoi {{name}}, danke nochmals für dein Vertrauen in Lumian Services.\n\nWenn du uns an Freunde, Familie oder Nachbarn weiterempfiehlst, erhalten sie CHF {{bonus}} Rabatt auf ihren ersten Auftrag ab CHF {{minOrder}}. Du erhältst nach abgeschlossenem Auftrag ebenfalls CHF {{bonus}} Guthaben für deine nächste Reinigung.\n\nDein Empfehlungslink:\n{{referralLink}}\n\nLiebe Grüsse\nLumian Services',
@@ -63,6 +64,8 @@
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       users: USERS.map(u => ({ ...u, role: 'admin', active: true, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '', recoveryCode: `${u.name}-Reset-2026` })),
+      portalMode: 'test',
+      goLiveAt: '',
       settings: { ...DEFAULT_SETTINGS },
       counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
       people: [],
@@ -138,6 +141,69 @@
 
   function hasBusinessData(s = state) {
     return !!s && [s.people, s.leads, s.jobs, s.rewards, s.finance?.manualIncome, s.finance?.expenses].some(arr => Array.isArray(arr) && arr.length);
+  }
+
+  function recordStamp(item = {}) {
+    return Date.parse(item.deletedAt || item.updatedAt || item.createdAt || '') || 0;
+  }
+
+  function mergeRecordsById(localArr = [], cloudArr = []) {
+    const map = new Map();
+    const put = item => {
+      if (!item || !item.id) return;
+      const id = String(item.id);
+      const old = map.get(id);
+      if (!old || recordStamp(item) >= recordStamp(old)) map.set(id, { ...old, ...item });
+    };
+    (cloudArr || []).forEach(put);
+    (localArr || []).forEach(put);
+    return Array.from(map.values());
+  }
+
+  function mergeUsers(localUsers = [], cloudUsers = []) {
+    const map = new Map();
+    (cloudUsers || []).forEach(u => { if (u?.id) map.set(String(u.id), { ...u }); });
+    (localUsers || []).forEach(u => { if (u?.id) map.set(String(u.id), { ...(map.get(String(u.id)) || {}), ...u }); });
+    return Array.from(map.values());
+  }
+
+  function maxCounters(a = {}, b = {}) {
+    return {
+      nextPerson: Math.max(Number(a.nextPerson || 1001), Number(b.nextPerson || 1001)),
+      nextLead: Math.max(Number(a.nextLead || 1), Number(b.nextLead || 1)),
+      nextJob: Math.max(Number(a.nextJob || 1), Number(b.nextJob || 1)),
+      nextReward: Math.max(Number(a.nextReward || 1), Number(b.nextReward || 1)),
+      nextFinance: Math.max(Number(a.nextFinance || 1), Number(b.nextFinance || 1))
+    };
+  }
+
+  function mergeLocalCloudStates(localState = {}, cloudState = {}) {
+    const local = migrateState({ ...localState });
+    const cloud = migrateState({ ...cloudState });
+    const merged = {
+      ...cloud,
+      ...local,
+      createdAt: cloud.createdAt || local.createdAt,
+      updatedAt: new Date().toISOString(),
+      portalMode: cloud.portalMode || local.portalMode || 'test',
+      goLiveAt: cloud.goLiveAt || local.goLiveAt || '',
+      settings: { ...DEFAULT_SETTINGS, ...(local.settings || {}), ...(cloud.settings || {}) },
+      users: mergeUsers(local.users, cloud.users),
+      counters: maxCounters(local.counters, cloud.counters),
+      people: mergeRecordsById(local.people, cloud.people),
+      leads: mergeRecordsById(local.leads, cloud.leads),
+      jobs: mergeRecordsById(local.jobs, cloud.jobs),
+      rewards: mergeRecordsById(local.rewards, cloud.rewards),
+      finance: {
+        manualIncome: mergeRecordsById(local.finance?.manualIncome || [], cloud.finance?.manualIncome || []),
+        expenses: mergeRecordsById(local.finance?.expenses || [], cloud.finance?.expenses || [])
+      },
+      audit: [...(cloud.audit || []), ...(local.audit || [])].slice(-400)
+    };
+    if (!merged.settings.scriptUrl && local.settings?.scriptUrl) merged.settings.scriptUrl = local.settings.scriptUrl;
+    if (!merged.settings.driveFolderId && local.settings?.driveFolderId) merged.settings.driveFolderId = local.settings.driveFolderId;
+    if (!merged.settings.backupFolderId && local.settings?.backupFolderId) merged.settings.backupFolderId = local.settings.backupFolderId;
+    return merged;
   }
 
   function queueCloudSync(reason = '') {
@@ -897,14 +963,14 @@
     });
   }
   function manualIncomeItems(range) {
-    return (state.finance?.manualIncome || []).filter(x => {
+    return (state.finance?.manualIncome || []).filter(x => !x.deletedAt).filter(x => {
       const start = x.from || x.date || x.createdAt;
       const end = x.to || start;
       return (!range.from || end >= range.from) && (!range.to || start <= range.to);
     }).map(x => ({ type:'Manuell', id:x.id, date:x.from || x.createdAt, from:x.from || '', to:x.to || '', title:x.title || 'Manuelle Einnahme', amount:amountValue(x.amount), notes:x.notes || '', createdBy:x.createdBy || '' }));
   }
   function expenseItems(range) {
-    return (state.finance?.expenses || []).filter(x => dateInRange(x.date || x.createdAt, range.from, range.to)).map(x => ({ ...x, amount:amountValue(x.amount) }));
+    return (state.finance?.expenses || []).filter(x => !x.deletedAt).filter(x => dateInRange(x.date || x.createdAt, range.from, range.to)).map(x => ({ ...x, amount:amountValue(x.amount) }));
   }
   function financeSummary(range) {
     const jobs = jobIncomeItems(range);
@@ -2014,7 +2080,8 @@
       if (!entry) return;
       if (!canEditFinanceEntry(entry)) return toast('Nur der Ersteller kann diesen Eintrag löschen.');
       if (!(await confirmSensitiveAction('Manuelle Einnahme löschen?'))) return;
-      state.finance.manualIncome = (state.finance.manualIncome || []).filter(x => x.id !== entry.id);
+      entry.deletedAt = new Date().toISOString();
+      entry.deletedBy = currentUser;
       saveState('manual income delete'); renderFinance(); toast('Einnahme gelöscht.');
     }
 
@@ -2041,7 +2108,8 @@
       if (!entry) return;
       if (!canEditFinanceEntry(entry)) return toast('Nur der Ersteller kann diese Ausgabe löschen.');
       if (!(await confirmSensitiveAction('Ausgabe löschen?'))) return;
-      state.finance.expenses = (state.finance.expenses || []).filter(x => x.id !== entry.id);
+      entry.deletedAt = new Date().toISOString();
+      entry.deletedBy = currentUser;
       saveState('expense delete'); renderFinance(); toast('Ausgabe gelöscht.');
     }
   });
@@ -2120,15 +2188,9 @@
     try { const imported = migrateState(JSON.parse(await file.text())); localStorage.setItem(STORE_KEY, JSON.stringify(imported)); location.reload(); }
     catch { toast('Backup konnte nicht gelesen werden.'); }
   });
-  $('[data-reset-cloud]')?.addEventListener('click', resetCloudAndLocal);
-  $('[data-reset-demo]')?.addEventListener('click', async () => {
-    if (!(await confirmSensitiveAction('Lokale Testdaten auf diesem Gerät wirklich löschen?'))) return;
-    if (confirm('Letzte Bestätigung: Nur die lokalen Portal-Daten auf diesem Gerät werden gelöscht. Cloud/Website-Anfragen bleiben bestehen.')) {
-      localStorage.removeItem(STORE_KEY);
-      OLD_KEYS.forEach(k => localStorage.removeItem(k));
-      location.reload();
-    }
-  });
+  $('[data-reset-cloud]')?.addEventListener('click', goLiveResetCloud);
+  $('[data-reset-demo]')?.addEventListener('click', clearLocalCacheAndReloadCloud);
+  $('[data-backup-now]')?.addEventListener('click', backupNow);
 
 
   function websiteLeadKey(row = {}) {
@@ -2243,7 +2305,8 @@
   function autoLoadCloudThenCheckWebsiteLeads() {
     const url = currentScriptUrl();
     if (!url) return;
-    if (hasBusinessData(state)) { checkWebsiteLeads(true); return; }
+    if (autoLoadCloudThenCheckWebsiteLeads._busy) return;
+    autoLoadCloudThenCheckWebsiteLeads._busy = true;
 
     const callbackName = `lumianAutoCloud_${Date.now()}`;
     const script = document.createElement('script');
@@ -2252,6 +2315,7 @@
     const done = () => {
       if (finished) return;
       finished = true;
+      autoLoadCloudThenCheckWebsiteLeads._busy = false;
       clearTimeout(timer);
       try { delete window[callbackName]; } catch {}
       script.remove();
@@ -2260,15 +2324,15 @@
     window[callbackName] = data => {
       try {
         const cloudState = data?.state;
-        if (hasBusinessData(cloudState)) {
+        if (cloudState) {
           suppressAutoCloudSync = true;
-          const imported = migrateState(cloudState);
-          localStorage.setItem(STORE_KEY, JSON.stringify(imported));
+          const merged = mergeCloudStatePreserveLocalMedia(state, cloudState);
+          state = migrateState(merged);
+          localStorage.setItem(STORE_KEY, JSON.stringify(state));
           suppressAutoCloudSync = false;
-          toast('Cloud-Daten geladen. Portal wird neu geladen...');
-          setTimeout(() => location.reload(), 500);
-          done();
-          return;
+          renderAll();
+          // Push any local/offline records that were newer than cloud after merging.
+          setTimeout(() => syncCloud(true), 900);
         }
       } catch {}
       done();
@@ -2336,7 +2400,7 @@
   }
 
   function mergeCloudStatePreserveLocalMedia(localState, cloudState) {
-    const merged = JSON.parse(JSON.stringify(cloudState || {}));
+    const merged = mergeLocalCloudStates(localState || {}, cloudState || {});
     const localJobs = new Map((localState?.jobs || []).map(j => [String(j.id || ''), j]));
     (merged.jobs || []).forEach(job => {
       const local = localJobs.get(String(job.id || ''));
@@ -2398,6 +2462,7 @@
     saveSettingsFromForm(false);
     suppressAutoCloudSync = false;
     const url = currentScriptUrl(); if (!url) { if (!silent) toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.'); return; }
+    if (navigator.onLine === false) { if (!silent) toast('Offline gespeichert. Sync startet automatisch, sobald das Gerät online ist.'); return; }
     if (cloudSyncInProgress) return;
     cloudSyncInProgress = true;
     const payload = makeCloudPayload();
@@ -2407,7 +2472,7 @@
     try {
       await fetch(url, { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(payload) });
       if (!silent) toast(refreshPhotos ? 'Sync gesendet. Fotos/Termine werden gespeichert...' : (refreshCalendar ? 'Sync gesendet. Google Calendar wird aktualisiert...' : 'Sync gesendet. Google Sheet/Drive prüfen.'));
-      if (refreshAfterSync || !silent) setTimeout(() => refreshCloudAfterSync(payload.syncRunId, silent), 6500);
+      setTimeout(() => refreshCloudAfterSync(payload.syncRunId, silent), refreshAfterSync ? 6500 : 2200);
     }
     catch { if (!silent) toast('Sync konnte nicht gesendet werden.'); }
     finally { cloudSyncInProgress = false; }
@@ -2422,13 +2487,17 @@
     window[callbackName] = data => {
       try {
         if (!data || !data.state) throw new Error('empty');
-        const imported = migrateState(data.state);
-        localStorage.setItem(STORE_KEY, JSON.stringify(imported));
-        toast('Cloud geladen. App lädt neu...'); setTimeout(() => location.reload(), 800);
+        suppressAutoCloudSync = true;
+        const imported = mergeCloudStatePreserveLocalMedia(state, data.state);
+        state = migrateState(imported);
+        localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        suppressAutoCloudSync = false;
+        renderAll();
+        toast('Cloud geladen und mit diesem Gerät abgeglichen.');
       } catch { toast('Cloud-Daten konnten nicht geladen werden.'); }
       delete window[callbackName]; script.remove();
     };
-    script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}`;
+    script.src = `${url}${url.includes('?')?'&':'?'}action=load&callback=${callbackName}&t=${Date.now()}`;
     script.onerror = () => { toast('Cloud laden fehlgeschlagen.'); delete window[callbackName]; script.remove(); };
     document.body.appendChild(script);
   }
@@ -2456,16 +2525,65 @@
     try {
       const data = await jsonpRequest(url, 'testsync', {
         driveFolderId: getSetting('driveFolderId') || DEFAULT_SETTINGS.driveFolderId,
+        backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId,
         calendarId: getSetting('calendarId') || DEFAULT_SETTINGS.calendarId
       });
       const test = data?.test || {};
       const driveMsg = test.drive?.message || 'Drive: keine Antwort';
       const calMsg = test.calendar?.message || 'Kalender: keine Antwort';
-      alert(`Lumian Sync Test\n\nDrive Folder ID:\n${test.driveFolderId || ''}\n\nKalender ID:\n${test.calendarId || ''}\n\nDrive:\n${driveMsg}\n\nKalender:\n${calMsg}`);
-      toast(test.drive?.ok && test.calendar?.ok ? 'Drive/Kalender Test OK.' : 'Test zeigt Fehler. Siehe Meldung.');
+      const backupMsg = test.backup?.message || 'Backup: keine Antwort';
+      alert(`Lumian Sync Test\n\nFoto Drive Folder ID:\n${test.driveFolderId || ''}\n\nBackup Folder ID:\n${test.backupFolderId || ''}\n\nKalender ID:\n${test.calendarId || ''}\n\nFotos Drive:\n${driveMsg}\n\nBackup Drive:\n${backupMsg}\n\nKalender:\n${calMsg}`);
+      toast(test.drive?.ok && test.backup?.ok && test.calendar?.ok ? 'Drive/Kalender/Backup Test OK.' : 'Test zeigt Fehler. Siehe Meldung.');
     } catch (err) {
       alert('Sync-Test fehlgeschlagen:\n' + (err?.message || err));
       toast('Sync-Test fehlgeschlagen.');
+    }
+  }
+
+  async function backupNow() {
+    if (!isAdmin()) return toast('Nur Admins können Backups erstellen.');
+    saveSettingsFromForm(false);
+    const url = currentScriptUrl();
+    if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
+    try {
+      const data = await jsonpRequest(url, 'backupnow', { backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId });
+      if (!data?.ok) throw new Error(data?.error || 'Backup nicht bestätigt.');
+      toast('Backup wurde auf Google Drive gespeichert.');
+    } catch (err) {
+      toast('Backup konnte nicht gespeichert werden.');
+    }
+  }
+
+  async function clearLocalCacheAndReloadCloud() {
+    if (!(await confirmSensitiveAction('Lokalen Cache auf diesem Gerät löschen und Cloud neu laden?'))) return;
+    const keep = migrateState(state);
+    const fresh = newState();
+    fresh.settings = { ...fresh.settings, ...keep.settings };
+    fresh.users = keep.users?.length ? keep.users : fresh.users;
+    localStorage.setItem(STORE_KEY, JSON.stringify(fresh));
+    OLD_KEYS.forEach(k => localStorage.removeItem(k));
+    state = fresh;
+    toast('Lokaler Cache gelöscht. Cloud wird geladen...');
+    loadCloud();
+  }
+
+  async function goLiveResetCloud() {
+    if (!isAdmin()) return toast('Nur Admins können Testdaten löschen.');
+    saveSettingsFromForm(false);
+    const url = currentScriptUrl();
+    if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
+    if (!(await confirmSensitiveAction('Testdaten löschen und produktiv starten?'))) return;
+    const typed = prompt('Letzte Bestätigung: Schreibe PRODUKTIV, um Test-Leads/Jobs/Kunden/Buchhaltung zu löschen. Benutzer, Passwörter und Einstellungen bleiben erhalten.');
+    if (typed !== 'PRODUKTIV') return toast('Vorgang abgebrochen.');
+    try {
+      const data = await jsonpRequest(url, 'golivereset', { confirm:'START-PRODUCTION', backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId });
+      if (!data?.ok) throw new Error(data?.error || 'Produktiv-Start nicht bestätigt.');
+      localStorage.removeItem(STORE_KEY);
+      OLD_KEYS.forEach(k => localStorage.removeItem(k));
+      toast('Testdaten gelöscht, Backup erstellt, Produktivmodus gestartet. Portal lädt neu...');
+      setTimeout(() => location.reload(), 900);
+    } catch {
+      toast('Produktiv-Start konnte nicht abgeschlossen werden.');
     }
   }
 
@@ -2474,8 +2592,8 @@
     saveSettingsFromForm(false);
     const url = currentScriptUrl();
     if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
-    if (!(await confirmSensitiveAction('Cloud + Website-Anfragen wirklich löschen?'))) return;
-    const typed = prompt('Letzte Bestätigung: Schreibe RESET, um Google Sheet, Cloud-State und Website-Anfragen zu leeren.');
+    if (!(await confirmSensitiveAction('Kompletten Cloud-Reset wirklich ausführen?'))) return;
+    const typed = prompt('Letzte Bestätigung: Schreibe RESET, um ALLES zu leeren.');
     if (typed !== 'RESET') return toast('Löschen abgebrochen.');
     try {
       const data = await jsonpRequest(url, 'resetall', { confirm:'RESET-LUMIAN-PORTAL' });
@@ -2493,6 +2611,16 @@
   $$('[data-test-sync]').forEach(btn => btn.addEventListener('click', testGoogleSync));
   $('[data-load-cloud]')?.addEventListener('click', loadCloud);
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
+  window.addEventListener('online', () => { if (currentUser && currentScriptUrl()) { toast('Gerät ist online. Sync läuft...'); syncCloud(true); } });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && currentUser && currentScriptUrl()) {
+      const now = Date.now();
+      if (!autoLoadCloudThenCheckWebsiteLeads._last || now - autoLoadCloudThenCheckWebsiteLeads._last > 60000) {
+        autoLoadCloudThenCheckWebsiteLeads._last = now;
+        autoLoadCloudThenCheckWebsiteLeads();
+      }
+    }
+  });
 
   // PWA install button: works on Android/Chrome. iPhone shows clear manual instructions.
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; });

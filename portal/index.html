@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=104">
+  <link rel="stylesheet" href="portal.css?v=107">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -412,15 +412,19 @@
               <div class="employee-form-section wide">
                 <h3>Benutzerrechte</h3>
                 <div class="permission-grid">
-                  <label class="check-label"><input name="permCreateLeads" type="checkbox"> Leads erstellen und eigene Leads bearbeiten</label>
-                  <label class="check-label"><input name="permViewAllOperational" type="checkbox"> Alle Leads, Jobs und Kunden sehen</label>
-                  <label class="check-label"><input name="permContactCustomers" type="checkbox"> Kundentelefon anzeigen / anrufen</label>
-                  <label class="check-label"><input name="permUpdateJobs" type="checkbox"> Zugewiesene Jobs bearbeiten</label>
-                  <label class="check-label"><input name="permUploadPhotos" type="checkbox"> Vorher-/Nachher-Fotos hochladen</label>
-                  <label class="check-label"><input name="permViewJobAmount" type="checkbox"> Auftragsbetrag sehen</label>
-                  <label class="check-label"><input name="permViewOwnCompensation" type="checkbox"> Eigene Vergütung sehen</label>
-                  <label class="check-label"><input name="permViewCustomerHistory" type="checkbox"> Zugewiesene Kundenhistorie sehen</label>
-                  <label class="check-label"><input name="permManageWebsiteLeads" type="checkbox"> Website-Leads prüfen, importieren und bearbeiten</label>
+                  <div class="permission-column">
+                    <label class="check-label"><input name="permCreateLeads" type="checkbox"><span>Leads erstellen und eigene Leads bearbeiten</span></label>
+                    <label class="check-label"><input name="permContactCustomers" type="checkbox"><span>Kundentelefon anzeigen / anrufen</span></label>
+                    <label class="check-label"><input name="permUploadPhotos" type="checkbox"><span>Vorher-/Nachher-Fotos hochladen</span></label>
+                    <label class="check-label"><input name="permManageWebsiteLeads" type="checkbox"><span>Website-Leads prüfen, importieren und bearbeiten</span></label>
+                  </div>
+                  <div class="permission-column">
+                    <label class="check-label"><input name="permViewAllOperational" type="checkbox"><span>Alle Leads, Jobs und Kunden sehen</span></label>
+                    <label class="check-label"><input name="permUpdateJobs" type="checkbox"><span>Zugewiesene Jobs bearbeiten</span></label>
+                    <label class="check-label"><input name="permViewJobAmount" type="checkbox"><span>Auftragsbetrag sehen</span></label>
+                    <label class="check-label"><input name="permViewOwnCompensation" type="checkbox"><span>Eigene Vergütung sehen</span></label>
+                    <label class="check-label"><input name="permViewCustomerHistory" type="checkbox"><span>Zugewiesene Kundenhistorie sehen</span></label>
+                  </div>
                 </div>
               </div>
               <div class="button-row wide">
@@ -765,6 +769,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=104"></script>
+  <script src="portal.js?v=107"></script>
 </body>
 </html>

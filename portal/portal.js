@@ -32,19 +32,19 @@
   const ROLE_PRESETS = {
     admin: {
       createLeads:true, viewAllOperational:true, contactCustomers:true, updateJobs:true,
-      uploadPhotos:true, viewJobAmount:true, viewOwnCompensation:true, viewCustomerHistory:true
+      uploadPhotos:true, viewJobAmount:true, viewOwnCompensation:true, viewCustomerHistory:true, manageWebsiteLeads:true
     },
     teamlead: {
       createLeads:true, viewAllOperational:true, contactCustomers:true, updateJobs:true,
-      uploadPhotos:true, viewJobAmount:true, viewOwnCompensation:true, viewCustomerHistory:true
+      uploadPhotos:true, viewJobAmount:true, viewOwnCompensation:true, viewCustomerHistory:true, manageWebsiteLeads:false
     },
     staff: {
       createLeads:true, viewAllOperational:false, contactCustomers:true, updateJobs:true,
-      uploadPhotos:true, viewJobAmount:false, viewOwnCompensation:true, viewCustomerHistory:true
+      uploadPhotos:true, viewJobAmount:false, viewOwnCompensation:true, viewCustomerHistory:true, manageWebsiteLeads:false
     },
     helper: {
       createLeads:false, viewAllOperational:false, contactCustomers:true, updateJobs:false,
-      uploadPhotos:true, viewJobAmount:false, viewOwnCompensation:true, viewCustomerHistory:false
+      uploadPhotos:true, viewJobAmount:false, viewOwnCompensation:true, viewCustomerHistory:false, manageWebsiteLeads:false
     }
   };
   function normalizedRole(role, id = '') {
@@ -105,11 +105,12 @@
     return normalizePermissions(u?.role || 'staff', u?.permissions || {});
   }
   function hasPermission(key, id = currentUser) { return !!userPermissions(id)[key]; }
+  function canManageWebsiteLeads(id = currentUser) { return isAdmin(id) || hasPermission('manageWebsiteLeads', id); }
   function canCreateJobs(id = currentUser) { return isAdmin(id) || normalizedRole(state?.users?.find?.(u=>u.id===id)?.role) === 'teamlead'; }
   function canAccessTab(tab) {
     if (isAdmin()) return true;
     if (tab === 'dashboard' || tab === 'jobs') return true;
-    if (tab === 'leads') return hasPermission('createLeads') || visibleLeads().length > 0;
+    if (tab === 'leads') return hasPermission('createLeads') || canManageWebsiteLeads() || visibleLeads().length > 0;
     if (tab === 'customers') return hasPermission('viewCustomerHistory') || visibleCustomers().length > 0;
     if (tab === 'settings') return true;
     return false;
@@ -724,10 +725,12 @@
   function canViewLead(lead = {}, userId = currentUser) {
     if (!lead || !userId) return false;
     if (isAdmin(userId) || hasPermission('viewAllOperational', userId)) return true;
+    if (canManageWebsiteLeads(userId) && (lead.websiteLeadKey || lead.createdBy === 'website')) return true;
     return [lead.createdBy, lead.updatedBy, lead.acquiredBy, lead.assignedTo].includes(userId);
   }
   function canEditLead(lead = {}, userId = currentUser) {
     if (isAdmin(userId) || hasPermission('viewAllOperational', userId)) return true;
+    if (canManageWebsiteLeads(userId) && (lead.websiteLeadKey || lead.createdBy === 'website')) return true;
     return hasPermission('createLeads', userId) && [lead.createdBy, lead.acquiredBy, lead.assignedTo].includes(userId);
   }
   function canViewJob(job = {}, userId = currentUser) {
@@ -1127,6 +1130,8 @@
       btn.hidden = !allowed;
     });
     $$('[data-admin-only]').forEach(el => { el.hidden = !admin; });
+    $$('[data-web-leads-permission]').forEach(el => { el.hidden = !canManageWebsiteLeads(); });
+    if (!canManageWebsiteLeads()) { const status = $('[data-web-leads-status]'); if (status) status.hidden = true; }
     $('[data-settings-form]')?.classList.toggle('personal-settings-only', !admin);
     $('[data-panel="settings"]')?.classList.toggle('personal-settings-panel', !admin);
     $$('[data-open-lead]').forEach(el => { el.hidden = !(admin || hasPermission('createLeads')); });
@@ -1300,7 +1305,7 @@
     $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)} · ${esc(roleLabel(u?.role || 'staff'))}`;
     setTab(activeTab);
     setTimeout(setupSmartStickyNav, 120);
-    if (!renderLogin._checkedWebsiteLeads && getSetting('scriptUrl')) {
+    if (isAdmin() && !renderLogin._checkedWebsiteLeads && getSetting('scriptUrl')) {
       renderLogin._checkedWebsiteLeads = true;
       setTimeout(() => autoLoadCloudThenCheckWebsiteLeads(), 900);
     }
@@ -3413,7 +3418,8 @@
     return {
       createLeads:'permCreateLeads', viewAllOperational:'permViewAllOperational', contactCustomers:'permContactCustomers',
       updateJobs:'permUpdateJobs', uploadPhotos:'permUploadPhotos', viewJobAmount:'permViewJobAmount',
-      viewOwnCompensation:'permViewOwnCompensation', viewCustomerHistory:'permViewCustomerHistory'
+      viewOwnCompensation:'permViewOwnCompensation', viewCustomerHistory:'permViewCustomerHistory',
+      manageWebsiteLeads:'permManageWebsiteLeads'
     };
   }
   function userEditorFields(form = $('[data-user-form]')) {
@@ -3495,8 +3501,9 @@
       const status = u.employmentActive === false ? 'Inaktiv' : (u.loginEnabled === false ? 'Aktiv · ohne Login' : 'Aktiv · Login');
       const work = d.workPayType === 'hourly' ? `Stundenlohn ${money(d.hourlyRate)}/Std.` : (d.workPayType === 'fixed' ? 'Fixbetrag pro Auftrag' : 'Keine Standard-Arbeitsvergütung');
       const pay = [work, (d.firstCommissionPct||d.repeatCommissionPct)?`Akquise ${d.firstCommissionPct}% / ${d.repeatCommissionPct}%`:'' ].filter(Boolean).join(' · ');
+      const specialRights = userPermissions(u.id).manageWebsiteLeads ? ' · Website-Leads' : '';
       return `<article class="item-card mini ${u.employmentActive===false?'employee-inactive':''}">
-        <div class="item-top"><div><div class="item-title">${esc(u.name)} <span class="badge">${esc(u.id)}</span></div><div class="item-sub">${esc(roleLabel(u.role))} · ${u.employeeType==='temporary'?'Temporär / Hilfskraft':'Fest / regelmässig'} · ${esc(status)}<br>${esc(u.phone || 'keine Telefonnummer')} · ${esc(u.email || 'keine E-Mail')}<br>${esc(pay)}</div></div><span class="badge ${u.employmentActive===false?'danger':u.loginEnabled===false?'warn':'ok'}">${esc(u.emoji || '?')}</span></div>
+        <div class="item-top"><div><div class="item-title">${esc(u.name)} <span class="badge">${esc(u.id)}</span></div><div class="item-sub">${esc(roleLabel(u.role))}${specialRights} · ${u.employeeType==='temporary'?'Temporär / Hilfskraft':'Fest / regelmässig'} · ${esc(status)}<br>${esc(u.phone || 'keine Telefonnummer')} · ${esc(u.email || 'keine E-Mail')}<br>${esc(pay)}</div></div><span class="badge ${u.employmentActive===false?'danger':u.loginEnabled===false?'warn':'ok'}">${esc(u.emoji || '?')}</span></div>
         <div class="actions">${locked ? '<span class="hint">Admin-Benutzer geschützt</span>' : `<button class="secondary" data-edit-user="${esc(u.id)}">Bearbeiten</button><button class="secondary ${u.employmentActive===false?'':'danger'}" data-toggle-user-active="${esc(u.id)}">${u.employmentActive===false?'Reaktivieren':'Deaktivieren'}</button>`}</div>
       </article>`;
     }).join('');
@@ -4160,6 +4167,7 @@
   }
 
   function autoLoadCloudThenCheckWebsiteLeads() {
+    if (!isAdmin()) return;
     const url = currentScriptUrl();
     if (!url && !DEFAULT_SETTINGS.scriptUrl) return;
     if (autoLoadCloudThenCheckWebsiteLeads._busy) return;
@@ -4188,6 +4196,10 @@
   }
 
   function checkWebsiteLeads(silent = false) {
+    if (!canManageWebsiteLeads()) {
+      if (!silent) toast('Keine Berechtigung zum Prüfen und Importieren von Website-Leads.');
+      return;
+    }
     suppressAutoCloudSync = true;
     saveSettingsFromForm(false);
     suppressAutoCloudSync = false;
@@ -4556,7 +4568,7 @@
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
   window.addEventListener('online', () => { if (currentUser && currentScriptUrl()) { toast('Gerät ist online. Sync läuft...'); syncCloud(true); flushActivityLog(true); } });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && currentUser && currentScriptUrl()) {
+    if (!document.hidden && currentUser && isAdmin() && currentScriptUrl()) {
       const now = Date.now();
       if (!autoLoadCloudThenCheckWebsiteLeads._last || now - autoLoadCloudThenCheckWebsiteLeads._last > 60000) {
         autoLoadCloudThenCheckWebsiteLeads._last = now;

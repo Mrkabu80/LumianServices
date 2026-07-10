@@ -105,7 +105,7 @@
             <a class="secondary" href="templates/lumian-leads-import-vorlage.xlsx" download>Vorlage herunterladen</a>
             <label class="file-button small">Vorlage importieren<input type="file" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" data-import-leads hidden></label>
             <button class="primary" data-open-lead>+ Lead hinzufügen</button>
-            <button class="secondary small-inline web-leads-button" type="button" data-check-website-leads>Web-Leads prüfen</button>
+            <button class="secondary small-inline web-leads-button" type="button" data-check-website-leads data-web-leads-permission>Web-Leads prüfen</button>
           </div>
         </div>
         <div class="import-hint">Vorlage herunterladen, in Excel ausfüllen und direkt wieder importieren.</div>
@@ -420,6 +420,7 @@
                   <label class="check-label"><input name="permViewJobAmount" type="checkbox"> Auftragsbetrag sehen</label>
                   <label class="check-label"><input name="permViewOwnCompensation" type="checkbox"> Eigene Vergütung sehen</label>
                   <label class="check-label"><input name="permViewCustomerHistory" type="checkbox"> Zugewiesene Kundenhistorie sehen</label>
+                  <label class="check-label"><input name="permManageWebsiteLeads" type="checkbox"> Website-Leads prüfen, importieren und bearbeiten</label>
                 </div>
               </div>
               <div class="button-row wide">

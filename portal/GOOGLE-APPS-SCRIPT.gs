@@ -356,20 +356,75 @@ function mergeRecordArrays_(currentArr, incomingArr) {
   return out;
 }
 
+function userRecordStamp_(user) {
+  user = user || {};
+  return new Date(user.updatedAt || user.createdAt || 0).getTime() || 0;
+}
+
+function userAccessStamp_(user) {
+  user = user || {};
+  if (user.accessUpdatedAt) return new Date(user.accessUpdatedAt).getTime() || 0;
+  return isUserLoginActive_(user) ? 0 : userRecordStamp_(user);
+}
+
+function isUserLoginActive_(user) {
+  return !!user && user.active !== false && user.loginEnabled !== false && user.employmentActive !== false;
+}
+
+function copyObject_(source) {
+  var out = {};
+  source = source || {};
+  for (var key in source) if (Object.prototype.hasOwnProperty.call(source, key)) out[key] = source[key];
+  return out;
+}
+
+function mergeUserObjects_(older, newer) {
+  var out = copyObject_(older);
+  newer = newer || {};
+  for (var key in newer) if (Object.prototype.hasOwnProperty.call(newer, key)) out[key] = newer[key];
+  return out;
+}
+
 function mergeUsers_(currentUsers, incomingUsers) {
-  var map = {};
-  (currentUsers || []).forEach(function(u) { if (u && u.id) map[String(u.id)] = u; });
-  (incomingUsers || []).forEach(function(u) {
-    if (!u || !u.id) return;
-    var id = String(u.id);
-    var old = map[id] || {};
-    var merged = {};
-    for (var k in old) if (Object.prototype.hasOwnProperty.call(old, k)) merged[k] = old[k];
-    for (var j in u) if (Object.prototype.hasOwnProperty.call(u, j)) merged[j] = u[j];
-    map[id] = merged;
-  });
+  var currentMap = {};
+  var incomingMap = {};
+  var ids = {};
+  (currentUsers || []).forEach(function(u) { if (u && u.id) { currentMap[String(u.id)] = u; ids[String(u.id)] = true; } });
+  (incomingUsers || []).forEach(function(u) { if (u && u.id) { incomingMap[String(u.id)] = u; ids[String(u.id)] = true; } });
   var out = [];
-  for (var key in map) if (Object.prototype.hasOwnProperty.call(map, key)) out.push(map[key]);
+  for (var id in ids) {
+    if (!Object.prototype.hasOwnProperty.call(ids, id)) continue;
+    var current = currentMap[id];
+    var incoming = incomingMap[id];
+    if (!current) { out.push(copyObject_(incoming)); continue; }
+    if (!incoming) { out.push(copyObject_(current)); continue; }
+
+    var currentStamp = userRecordStamp_(current);
+    var incomingStamp = userRecordStamp_(incoming);
+    var merged = currentStamp > incomingStamp ? mergeUserObjects_(incoming, current) : mergeUserObjects_(current, incoming);
+
+    // Access state is merged independently from profile, password and biometric
+    // updates. A stale device cannot undo an admin deactivation simply because
+    // it changed a password later while offline.
+    var currentAccessStamp = userAccessStamp_(current);
+    var incomingAccessStamp = userAccessStamp_(incoming);
+    var accessSource;
+    if (currentAccessStamp > incomingAccessStamp) accessSource = current;
+    else if (incomingAccessStamp > currentAccessStamp) accessSource = incoming;
+    else if (!isUserLoginActive_(current) && isUserLoginActive_(incoming)) accessSource = current;
+    else if (!isUserLoginActive_(incoming) && isUserLoginActive_(current)) accessSource = incoming;
+    else accessSource = currentStamp > incomingStamp ? current : incoming;
+
+    merged.employmentActive = accessSource.employmentActive !== false;
+    merged.loginEnabled = accessSource.loginEnabled !== false;
+    merged.active = accessSource.active !== false && merged.loginEnabled && merged.employmentActive;
+    merged.accessUpdatedAt = accessSource.accessUpdatedAt || merged.accessUpdatedAt || '';
+    if (!isUserLoginActive_(accessSource)) {
+      merged.credentialId = '';
+      merged.credentialUserHandle = '';
+    }
+    out.push(merged);
+  }
   return out;
 }
 

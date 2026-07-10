@@ -92,6 +92,16 @@
       recoveryCode: u.recoveryCode || `${name}-Reset-2026`
     };
   }
+  function isUserLoginActive(user) {
+    return !!user && user.active !== false && user.loginEnabled !== false && user.employmentActive !== false;
+  }
+  function touchUserRecord(user, by = currentUser || 'system') {
+    if (!user) return user;
+    user.updatedAt = new Date().toISOString();
+    user.updatedBy = by;
+    user.createdAt = user.createdAt || user.updatedAt;
+    return user;
+  }
   function isAdmin(id = currentUser) {
     const u = state?.users?.find?.(x => x.id === id);
     return ADMIN_IDS.includes(id) || u?.role === 'admin';
@@ -616,6 +626,7 @@
   }
 
   function saveState(reason = 'save', options = {}) {
+    reconcileRewardExpenseStates(state);
     state.updatedAt = new Date().toISOString();
     if (currentUser) state.audit.push({ at: state.updatedAt, by: currentUser, reason });
     if (!options.activityLogged) queueActivityFromSaveReason(reason);
@@ -645,11 +656,50 @@
     return Array.from(map.values());
   }
 
+  function userRecordStamp(user = {}) {
+    return Date.parse(user.updatedAt || user.createdAt || '') || 0;
+  }
+  function userAccessStamp(user = {}) {
+    if (user.accessUpdatedAt) return Date.parse(user.accessUpdatedAt) || 0;
+    // Legacy disabled users did not yet have a dedicated access timestamp.
+    return isUserLoginActive(user) ? 0 : userRecordStamp(user);
+  }
   function mergeUsers(localUsers = [], cloudUsers = []) {
-    const map = new Map();
-    (cloudUsers || []).forEach(u => { if (u?.id) map.set(String(u.id), { ...u }); });
-    (localUsers || []).forEach(u => { if (u?.id) map.set(String(u.id), { ...(map.get(String(u.id)) || {}), ...u }); });
-    return Array.from(map.values());
+    const ids = new Set([...(localUsers || []).map(u => String(u?.id || '')).filter(Boolean), ...(cloudUsers || []).map(u => String(u?.id || '')).filter(Boolean)]);
+    const localMap = new Map((localUsers || []).filter(u => u?.id).map(u => [String(u.id), u]));
+    const cloudMap = new Map((cloudUsers || []).filter(u => u?.id).map(u => [String(u.id), u]));
+    return Array.from(ids).map(id => {
+      const local = localMap.get(id);
+      const cloud = cloudMap.get(id);
+      if (!local) return { ...cloud };
+      if (!cloud) return { ...local };
+
+      const localStamp = userRecordStamp(local);
+      const cloudStamp = userRecordStamp(cloud);
+      let merged = cloudStamp > localStamp ? { ...local, ...cloud } : { ...cloud, ...local };
+
+      // Access rights are merged independently from profile/password changes.
+      // A later password or biometric change on a stale device must never undo
+      // an administrator's deactivation.
+      const localAccessStamp = userAccessStamp(local);
+      const cloudAccessStamp = userAccessStamp(cloud);
+      let accessSource = null;
+      if (cloudAccessStamp > localAccessStamp) accessSource = cloud;
+      else if (localAccessStamp > cloudAccessStamp) accessSource = local;
+      else if (!isUserLoginActive(cloud) && isUserLoginActive(local)) accessSource = cloud;
+      else if (!isUserLoginActive(local) && isUserLoginActive(cloud)) accessSource = local;
+      else accessSource = cloudStamp > localStamp ? cloud : local;
+
+      merged.employmentActive = accessSource.employmentActive !== false;
+      merged.loginEnabled = accessSource.loginEnabled !== false;
+      merged.active = accessSource.active !== false && merged.loginEnabled && merged.employmentActive;
+      merged.accessUpdatedAt = accessSource.accessUpdatedAt || merged.accessUpdatedAt || '';
+      if (!isUserLoginActive(accessSource)) {
+        merged.credentialId = '';
+        merged.credentialUserHandle = '';
+      }
+      return merged;
+    });
   }
 
   function maxCounters(a = {}, b = {}) {
@@ -1079,6 +1129,7 @@
     if (!u) return false;
     u.salt = makeSalt();
     u.passwordHash = await sha256(`${u.salt}:${password}`);
+    touchUserRecord(u);
     saveState(`Passwort geändert: ${userId}`);
     return true;
   }
@@ -1295,8 +1346,69 @@
     if (lock) { event.preventDefault(); lockSetupSection(lock.dataset.lockNow); }
   });
 
+  function endPortalSession(message = '') {
+    currentUser = '';
+    sessionStorage.removeItem(SESSION_KEY);
+    activeTab = 'dashboard';
+    setupUnlockedUntil.cloud = 0;
+    setupUnlockedUntil.backup = 0;
+    renderUserOptions();
+    $('[data-login-view]').hidden = false;
+    $('[data-portal-view]').hidden = true;
+    if (message) toast(message);
+  }
+  function enforceCurrentUserAccess(message = 'Dieser Portal-Zugang wurde deaktiviert. Bitte wende dich an einen Admin.') {
+    if (!currentUser) return true;
+    const user = state.users.find(u => u.id === currentUser);
+    if (isUserLoginActive(user)) return true;
+    endPortalSession(message);
+    return false;
+  }
+  let accessValidationInProgress = false;
+  async function cloudAllowsUserLogin(userId) {
+    const url = currentScriptUrl() || DEFAULT_SETTINGS.scriptUrl;
+    if (!url || navigator.onLine === false) return true;
+    try {
+      const data = await jsonpRequest(url, 'load');
+      if (data?._usedUrl) rememberWorkingScriptUrl(data._usedUrl);
+      const cloudUser = (data?.state?.users || []).find(u => u?.id === userId);
+      if (!cloudUser) return true;
+      state.users = mergeUsers(state.users || [], data.state.users || []).map(normalizeEmployeeUser);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      return isUserLoginActive(state.users.find(u => u.id === userId));
+    } catch {
+      // Offline/temporary cloud failure: local access rules remain authoritative.
+      return true;
+    }
+  }
+  async function validateCurrentUserAccessFromCloud(silent = true) {
+    if (!currentUser || accessValidationInProgress || navigator.onLine === false) return !!currentUser;
+    const url = currentScriptUrl() || DEFAULT_SETTINGS.scriptUrl;
+    if (!url) return enforceCurrentUserAccess();
+    accessValidationInProgress = true;
+    try {
+      const data = await jsonpRequest(url, 'load');
+      if (data?._usedUrl) rememberWorkingScriptUrl(data._usedUrl);
+      if (data?.state) {
+        suppressAutoCloudSync = true;
+        state = migrateState(mergeCloudStatePreserveLocalMedia(state, data.state));
+        localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        suppressAutoCloudSync = false;
+      }
+      if (!enforceCurrentUserAccess()) return false;
+      renderAll();
+      return true;
+    } catch {
+      if (!silent) toast('Zugangsstatus konnte gerade nicht geprüft werden. Lokale Anmeldung bleibt bestehen.');
+      return enforceCurrentUserAccess();
+    } finally {
+      accessValidationInProgress = false;
+    }
+  }
+
   function renderLogin() {
     renderUserOptions();
+    if (!enforceCurrentUserAccess()) return;
     $('[data-login-view]').hidden = !!currentUser;
     $('[data-portal-view]').hidden = !currentUser;
     if (!currentUser) return;
@@ -1316,8 +1428,11 @@
     const fd = new FormData(event.currentTarget);
     const userId = fd.get('user');
     const password = String(fd.get('password') || '');
-    const user = state.users.find(u => u.id === userId);
-    if (!user || user.active === false || user.loginEnabled === false || user.employmentActive === false) return toast('Portal-Login ist für diesen Benutzer nicht aktiv.');
+    let user = state.users.find(u => u.id === userId);
+    if (!isUserLoginActive(user)) return toast('Portal-Login ist für diesen Benutzer nicht aktiv.');
+    if (!(await cloudAllowsUserLogin(userId))) return toast('Dieser Portal-Zugang wurde von einem Admin deaktiviert.');
+    user = state.users.find(u => u.id === userId);
+    if (!isUserLoginActive(user)) return toast('Dieser Portal-Zugang wurde von einem Admin deaktiviert.');
     if (!user.passwordHash) {
       if (password.length < 4) return toast('Bitte mindestens 4 Zeichen verwenden.');
       await setPassword(userId, password);
@@ -1356,7 +1471,8 @@
   });
 
   function renderAll() {
-    if (!currentUser) return;
+    if (!currentUser || !enforceCurrentUserAccess()) return;
+    reconcileRewardExpenseStates(state);
     renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderFinance(); renderRewards(); renderUsers(); renderWebsiteContentEditor(); fillSettings(false); updatePortalModeUi(); applySetupLocks(); compactPortalInfoTexts();
   }
 
@@ -1698,6 +1814,13 @@
   function isRewardExpenseRecord(x = {}) {
     return x.category === 'Kundenbonus & Empfehlungen' || x.sourceType === 'referralReward';
   }
+  function normalizeRewardStatus(value = '') {
+    const status = String(value || '').trim().toLowerCase();
+    if (status === 'eingelöst / ausbezahlt' || status === 'eingeloest / ausbezahlt' || status === 'bezahlt') return 'eingelöst / ausbezahlt';
+    if (status === 'gutgeschrieben') return 'gutgeschrieben';
+    if (status === 'storniert' || status === 'deaktiviert') return 'storniert';
+    return 'offen';
+  }
   function isDeferredExpenseRecord(x = {}) { return isEmployeeExpenseRecord(x) || isRewardExpenseRecord(x); }
   function employeeExpensePaymentStatus(x = {}) {
     if (!isEmployeeExpenseRecord(x)) return '';
@@ -1707,7 +1830,9 @@
   }
   function rewardExpensePaymentStatus(x = {}) {
     if (!isRewardExpenseRecord(x)) return '';
-    return x.paymentStatus === 'bezahlt' ? 'bezahlt' : 'offen';
+    if (x.paymentStatus === 'bezahlt') return 'bezahlt';
+    if (x.paymentStatus === 'storniert' || normalizeRewardStatus(x.rewardStatus) === 'storniert') return 'storniert';
+    return 'offen';
   }
   function deferredExpensePaymentStatus(x = {}) {
     return isEmployeeExpenseRecord(x) ? employeeExpensePaymentStatus(x) : (isRewardExpenseRecord(x) ? rewardExpensePaymentStatus(x) : '');
@@ -1733,11 +1858,12 @@
     const employeeOpenTotal = employeeOpenExpenses.reduce((s,x)=>s+amountValue(x.amount),0);
     const rewardExpenses = expenses.filter(isRewardExpenseRecord);
     const rewardPaidExpenses = rewardExpenses.filter(x => rewardExpensePaymentStatus(x) === 'bezahlt');
-    const rewardOpenExpenses = rewardExpenses.filter(x => rewardExpensePaymentStatus(x) !== 'bezahlt');
+    const rewardOpenExpenses = rewardExpenses.filter(x => rewardExpensePaymentStatus(x) === 'offen');
+    const rewardCancelledExpenses = rewardExpenses.filter(x => rewardExpensePaymentStatus(x) === 'storniert');
     const rewardPaidTotal = rewardPaidExpenses.reduce((sum,x)=>sum+amountValue(x.amount),0);
     const rewardOpenTotal = rewardOpenExpenses.reduce((sum,x)=>sum+amountValue(x.amount),0);
     const forecastTotal = forecastAll.reduce((s,x)=>s+amountValue(x.amount),0);
-    return { jobs, manual, expenses, countedExpenses, employeeExpenses, employeePaidExpenses, employeeOpenExpenses, employeeCostTotal, employeeOpenTotal, rewardExpenses, rewardPaidExpenses, rewardOpenExpenses, rewardPaidTotal, rewardOpenTotal, forecast, forecastLeads, forecastAll, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
+    return { jobs, manual, expenses, countedExpenses, employeeExpenses, employeePaidExpenses, employeeOpenExpenses, employeeCostTotal, employeeOpenTotal, rewardExpenses, rewardPaidExpenses, rewardOpenExpenses, rewardCancelledExpenses, rewardPaidTotal, rewardOpenTotal, forecast, forecastLeads, forecastAll, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
   }
 
   function canEditFinanceEntry(x) {
@@ -1778,6 +1904,7 @@
 
   function renderFinance() {
     if (!$('[data-finance-stats]') || !isAdmin()) return;
+    reconcileRewardExpenseStates(state);
     const range = getFinanceRange();
     updateFinanceDateControls(range);
     const s = financeSummary(range);
@@ -1823,7 +1950,7 @@
       if (expenseType === 'vehicle' && x.category !== 'Fahrzeug / Benzin') return false;
       if (expenseType === 'advertising' && x.category !== 'Werbung / Druck') return false;
       if (expenseType === 'other' && (employee || reward || ['Maschine / Gerät','Reinigungsmittel / Seife','Mops / Tücher / Material','Fahrzeug / Benzin','Werbung / Druck'].includes(x.category))) return false;
-      if (expenseStatus === 'open' && (!isDeferredExpenseRecord(x) || status === 'bezahlt')) return false;
+      if (expenseStatus === 'open' && (!isDeferredExpenseRecord(x) || status !== 'offen')) return false;
       if (expenseStatus === 'paid' && isDeferredExpenseRecord(x) && status !== 'bezahlt') return false;
       if (!expenseQuery) return true;
       return [x.title,x.category,x.subtype,x.notes,x.jobId,userName(x.employeeId),userName(x.createdBy)].join(' ').toLowerCase().includes(expenseQuery);
@@ -1835,8 +1962,18 @@
       const isEmployeeExpense = isEmployeeExpenseRecord(x);
       const isRewardExpense = isRewardExpenseRecord(x);
       const paymentStatus = deferredExpensePaymentStatus(x);
-      const paymentBadge = isEmployeeExpense ? `<span class="badge ${paymentStatus==='bezahlt'?'ok':'warn'}">Lohn ${paymentStatus==='bezahlt'?'bezahlt':'offen'}</span>` : (isRewardExpense ? `<span class="badge ${paymentStatus==='bezahlt'?'ok':'warn'}">Bonus ${paymentStatus==='bezahlt'?'eingelöst / ausbezahlt':'gutgeschrieben'}</span>` : '');
-      const paymentToggle = isDeferredExpenseRecord(x) && isAdmin() ? `<button class="secondary" data-toggle-deferred-payment="${esc(x.id)}">${paymentStatus==='bezahlt'?'Als offen markieren':(isRewardExpense?'Als eingelöst / ausbezahlt markieren':'Als bezahlt markieren')}</button>` : '';
+      const rewardState = isRewardExpense ? normalizeRewardStatus(x.rewardStatus || (paymentStatus === 'bezahlt' ? 'eingelöst / ausbezahlt' : 'gutgeschrieben')) : '';
+      const paymentBadge = isEmployeeExpense
+        ? `<span class="badge ${paymentStatus==='bezahlt'?'ok':'warn'}">Lohn ${paymentStatus==='bezahlt'?'bezahlt':'offen'}</span>`
+        : (isRewardExpense ? `<span class="badge ${rewardState==='storniert'?'danger':(rewardState==='offen'?'warn':'ok')}">Bonus ${esc(rewardState)}</span>` : '');
+      let paymentToggle = '';
+      if (isEmployeeExpense && isAdmin()) paymentToggle = `<button class="secondary" data-toggle-deferred-payment="${esc(x.id)}">${paymentStatus==='bezahlt'?'Als offen markieren':'Als bezahlt markieren'}</button>`;
+      if (isRewardExpense && isAdmin()) {
+        if (rewardState === 'offen') paymentToggle = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(x.rewardId || '')}">Als gutgeschrieben markieren</button>`;
+        else if (rewardState === 'gutgeschrieben') paymentToggle = `<button class="secondary" data-set-reward-status="eingelöst / ausbezahlt" data-reward-id="${esc(x.rewardId || '')}">Als eingelöst / ausbezahlt markieren</button>`;
+        else if (rewardState === 'eingelöst / ausbezahlt') paymentToggle = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(x.rewardId || '')}">Wieder als gutgeschrieben setzen</button>`;
+        else paymentToggle = `<button class="secondary" data-tab-go="rewards">In Bonus verwalten</button>`;
+      }
       const editBtns = canEditFinanceEntry(x) ? `<div class="actions">${paymentToggle}<button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : (isDeferredExpenseRecord(x) ? `<div class="actions">${paymentToggle}${x.jobId?`<button class="secondary" data-edit-job="${esc(x.jobId)}">Auftrag ${esc(x.jobId)} öffnen</button>`:''}</div>` : '');
       return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(fmtDateOnly(x.date))}${by}${x.employeeId?` · Mitarbeiter ${esc(userName(x.employeeId))}`:''}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><div class="badges">${paymentBadge}<span class="badge danger">${esc(money(x.amount))}</span></div></div>${editBtns}</article>`;
     }).join('') : '<div class="empty">Keine passenden Ausgaben im Zeitraum.</div>';
@@ -1913,9 +2050,22 @@
     renderPager('rewards', pageData);
     $('[data-reward-list]').innerHTML = pageData.slice.length ? pageData.slice.map(r => {
       const receiver = personById(r.customerId); const from = personById(r.fromPersonId);
+      const status = normalizeRewardStatus(r.status);
+      const badgeClass = status === 'storniert' ? 'danger' : (status === 'offen' ? 'warn' : 'ok');
+      let actions = '';
+      if (status === 'offen') {
+        actions = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(r.id)}">Als gutgeschrieben markieren</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(r.id)}">Stornieren</button>`;
+      } else if (status === 'gutgeschrieben') {
+        actions = `<button class="secondary" data-set-reward-status="eingelöst / ausbezahlt" data-reward-id="${esc(r.id)}">Als eingelöst / ausbezahlt markieren</button><button class="secondary" data-set-reward-status="offen" data-reward-id="${esc(r.id)}">Wieder offen setzen</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(r.id)}">Stornieren</button>`;
+      } else if (status === 'eingelöst / ausbezahlt') {
+        actions = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(r.id)}">Wieder als gutgeschrieben setzen</button><button class="secondary" data-tab-go="finance">In Buchhaltung ansehen</button>`;
+      } else {
+        actions = `<button class="secondary" data-set-reward-status="offen" data-reward-id="${esc(r.id)}">Reaktivieren</button>`;
+      }
+      const reason = status === 'storniert' && r.cancelReason ? ` · Grund: ${esc(r.cancelReason)}` : '';
       return `<article class="item-card">
-        <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}</div></div><span class="badge ${r.status==='offen'?'warn':'ok'}">${esc(r.status || 'offen')}</span></div>
-        <div class="actions">${r.status==='eingelöst / ausbezahlt'?'<button class="secondary" data-tab-go="finance">In Buchhaltung ansehen</button>':`<button class="secondary" data-toggle-reward="${esc(r.id)}">${r.status==='offen'?'Als gutgeschrieben markieren':'Wieder offen setzen'}</button>`}${whatsappLink(receiver?.phone, `Hoi ${receiver?.name || ''}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`, 'WhatsApp')}</div>
+        <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}${reason}</div></div><span class="badge ${badgeClass}">${esc(status)}</span></div>
+        <div class="actions">${actions}${status !== 'storniert' ? whatsappLink(receiver?.phone, `Hoi ${receiver?.name || ''}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`, 'WhatsApp') : ''}</div>
       </article>`;
     }).join('') : '<div class="empty">Noch keine Boni. Sie entstehen automatisch, wenn ein Empfehlungs-Job erledigt wird und der Mindestauftrag erreicht ist.</div>';
   }
@@ -2509,55 +2659,89 @@
 
 
   function reconcileRewardExpenseStates(targetState = state) {
-    const rewards = Array.isArray(targetState?.rewards) ? targetState.rewards : [];
-    const expenses = Array.isArray(targetState?.finance?.expenses) ? targetState.finance.expenses : [];
+    if (!targetState) return false;
+    targetState.finance = targetState.finance || { manualIncome:[], expenses:[] };
+    targetState.finance.expenses = Array.isArray(targetState.finance.expenses) ? targetState.finance.expenses : [];
+    const rewards = Array.isArray(targetState.rewards) ? targetState.rewards : [];
+    const expenses = targetState.finance.expenses;
+    const people = Array.isArray(targetState.people) ? targetState.people : [];
+    const person = id => people.find(p => p.id === id) || {};
+    let changed = false;
+    const setField = (obj, key, value) => {
+      if (obj[key] !== value) { obj[key] = value; changed = true; }
+    };
+
     rewards.forEach(reward => {
       if (!reward?.id) return;
-      const entry = expenses.find(x => !x.deletedAt && (x.rewardId === reward.id || x.id === `BONUS-${reward.id}`));
-      if (!entry) return;
-      const paid = entry.paymentStatus === 'bezahlt';
-      const nextStatus = paid ? 'eingelöst / ausbezahlt' : 'gutgeschrieben';
-      reward.status = nextStatus;
-      if (paid) {
-        reward.redeemedAt = reward.redeemedAt || entry.paidAt || entry.date || new Date().toISOString();
-        reward.redeemedBy = reward.redeemedBy || entry.paidBy || entry.updatedBy || 'system';
-      } else {
-        reward.redeemedAt = ''; reward.redeemedBy = '';
-        reward.creditedAt = reward.creditedAt || entry.createdAt || entry.date || new Date().toISOString();
+      const id = rewardExpenseId(reward.id);
+      const matches = expenses.filter(x => x && (x.rewardId === reward.id || x.id === id)).sort((a,b)=>recordStamp(b)-recordStamp(a));
+      let entry = matches.find(x => !x.deletedAt) || matches[0];
+      if (!entry) {
+        entry = { id, createdAt:reward.createdAt || new Date().toISOString(), createdBy:'system' };
+        expenses.push(entry);
+        changed = true;
       }
-      entry.sourceType = 'referralReward';
-      entry.rewardId = reward.id;
-      entry.paymentStatus = paid ? 'bezahlt' : 'offen';
+
+      const rewardStamp = recordStamp(reward);
+      const entryStamp = recordStamp(entry);
+      let canonical = normalizeRewardStatus(reward.status);
+      const explicitExpenseStatus = entry.rewardStatus ? normalizeRewardStatus(entry.rewardStatus) : '';
+      if (entry.paymentStatus === 'bezahlt') canonical = 'eingelöst / ausbezahlt';
+      else if (entry.paymentStatus === 'storniert') canonical = 'storniert';
+      else if (explicitExpenseStatus && entryStamp > rewardStamp) canonical = explicitExpenseStatus;
+      else if (entryStamp > rewardStamp && canonical === 'eingelöst / ausbezahlt' && entry.paymentStatus === 'offen') canonical = 'gutgeschrieben';
+
+      const now = new Date().toISOString();
+      setField(reward, 'status', canonical);
+      if (canonical === 'offen') {
+        setField(reward, 'creditedAt', ''); setField(reward, 'creditedBy', '');
+        setField(reward, 'redeemedAt', ''); setField(reward, 'redeemedBy', '');
+        setField(reward, 'cancelledAt', ''); setField(reward, 'cancelledBy', ''); setField(reward, 'cancelReason', '');
+      } else if (canonical === 'gutgeschrieben') {
+        if (!reward.creditedAt) setField(reward, 'creditedAt', entry.createdAt || reward.updatedAt || now);
+        setField(reward, 'redeemedAt', ''); setField(reward, 'redeemedBy', '');
+        setField(reward, 'cancelledAt', ''); setField(reward, 'cancelledBy', ''); setField(reward, 'cancelReason', '');
+      } else if (canonical === 'eingelöst / ausbezahlt') {
+        if (!reward.creditedAt) setField(reward, 'creditedAt', entry.createdAt || reward.updatedAt || now);
+        if (!reward.redeemedAt) setField(reward, 'redeemedAt', entry.paidAt || entry.updatedAt || now);
+        setField(reward, 'cancelledAt', ''); setField(reward, 'cancelledBy', ''); setField(reward, 'cancelReason', '');
+      } else if (canonical === 'storniert') {
+        if (!reward.cancelledAt) setField(reward, 'cancelledAt', entry.cancelledAt || entry.updatedAt || now);
+        setField(reward, 'redeemedAt', ''); setField(reward, 'redeemedBy', '');
+      }
+
+      const receiver = person(reward.customerId);
+      const source = person(reward.fromPersonId);
+      const paymentStatus = canonical === 'eingelöst / ausbezahlt' ? 'bezahlt' : (canonical === 'storniert' ? 'storniert' : 'offen');
+      const values = {
+        id, deletedAt:'', deletedBy:'', sourceType:'referralReward', rewardId:reward.id, automatic:true,
+        category:'Kundenbonus & Empfehlungen', subtype:'Empfehlungsbonus', rewardStatus:canonical,
+        title:`Empfehlungsbonus ${receiver.name || reward.customerId || ''} · Auftrag ${reward.jobId || ''}`,
+        amount:amountValue(reward.amount || 0), jobId:reward.jobId || '', personId:reward.customerId || '', paymentStatus,
+        date:String(reward.redeemedAt || reward.creditedAt || reward.cancelledAt || reward.createdAt || now).slice(0,10),
+        notes:`Empfehlung für ${source.name || reward.fromPersonId || 'Neukunde'}${reward.jobId ? ` · Auftrag ${reward.jobId}` : ''}${reward.cancelReason ? ` · Stornogrund: ${reward.cancelReason}` : ''}`
+      };
+      Object.entries(values).forEach(([key,value]) => setField(entry, key, value));
+      if (paymentStatus === 'bezahlt') {
+        if (!entry.paidAt) setField(entry, 'paidAt', reward.redeemedAt || now);
+        if (!entry.paidBy) setField(entry, 'paidBy', reward.redeemedBy || reward.updatedBy || 'system');
+      } else {
+        setField(entry, 'paidAt', ''); setField(entry, 'paidBy', '');
+      }
+      if (canonical === 'storniert') setField(entry, 'cancelledAt', reward.cancelledAt || now);
+      else setField(entry, 'cancelledAt', '');
+      if (!entry.createdAt) setField(entry, 'createdAt', reward.createdAt || now);
+      if (!entry.createdBy) setField(entry, 'createdBy', 'system');
+      const sourceUpdatedAt = reward.updatedAt || entry.updatedAt || reward.createdAt || now;
+      if (changed && (!entry.updatedAt || recordStamp(reward) >= recordStamp(entry))) entry.updatedAt = sourceUpdatedAt;
     });
+    return changed;
   }
 
   function rewardExpenseId(rewardId) { return `BONUS-${String(rewardId || '').trim()}`; }
   function syncRewardExpense(reward) {
     if (!reward) return;
-    state.finance = state.finance || { manualIncome:[], expenses:[] };
-    state.finance.expenses = Array.isArray(state.finance.expenses) ? state.finance.expenses : [];
-    const id = rewardExpenseId(reward.id);
-    let entry = state.finance.expenses.find(x => x.id === id);
-    if (reward.status === 'offen') {
-      if (entry && !entry.deletedAt) { entry.deletedAt = new Date().toISOString(); entry.deletedBy = currentUser; }
-      return;
-    }
-    const receiver = personById(reward.customerId) || {};
-    const source = personById(reward.fromPersonId) || {};
-    if (!entry) {
-      entry = { id, createdAt:new Date().toISOString(), createdBy:'system' };
-      state.finance.expenses.push(entry);
-    }
-    Object.assign(entry, {
-      deletedAt:'', deletedBy:'', sourceType:'referralReward', rewardId:reward.id, automatic:true,
-      category:'Kundenbonus & Empfehlungen', subtype:'Empfehlungsbonus',
-      title:`Empfehlungsbonus ${receiver.name || reward.customerId || ''} · Auftrag ${reward.jobId || ''}`,
-      amount:amountValue(reward.amount || 0), jobId:reward.jobId || '', personId:reward.customerId || '',
-      paymentStatus:reward.status === 'eingelöst / ausbezahlt' ? 'bezahlt' : 'offen',
-      date:(reward.redeemedAt || reward.creditedAt || reward.createdAt || new Date().toISOString()).slice(0,10),
-      notes:`Empfehlung für ${source.name || reward.fromPersonId || 'Neukunde'}${reward.jobId ? ` · Auftrag ${reward.jobId}` : ''}`,
-      updatedAt:new Date().toISOString(), updatedBy:currentUser
-    });
+    reconcileRewardExpenseStates(state);
   }
 
   document.addEventListener('click', event => {
@@ -2585,16 +2769,32 @@
     if (copy && isAdmin()) { const link = referralLink(copy.dataset.copyRef); navigator.clipboard?.writeText(link); toast('Empfehlungslink kopiert.'); }
     const personJob = event.target.closest('[data-open-person-job]');
     if (personJob && canCreateJobs()) openJobDialog(null, null, personById(personJob.dataset.openPersonJob));
-    const rew = event.target.closest('[data-toggle-reward]');
-    if (rew && isAdmin()) {
-      const r = state.rewards.find(x => x.id === rew.dataset.toggleReward);
+    const rewardStatusBtn = event.target.closest('[data-set-reward-status]');
+    if (rewardStatusBtn && isAdmin()) {
+      const r = state.rewards.find(x => x.id === rewardStatusBtn.dataset.rewardId);
       if (r) {
-        if (r.status === 'eingelöst / ausbezahlt') return toast('Bereits eingelöste oder ausbezahlte Boni werden in der Buchhaltung verwaltet.');
-        if (r.status === 'offen') { r.status = 'gutgeschrieben'; r.creditedAt = new Date().toISOString(); r.creditedBy = currentUser; }
-        else { r.status = 'offen'; r.creditedAt = ''; r.redeemedAt = ''; r.redeemedBy = ''; }
-        r.updatedAt = new Date().toISOString(); r.updatedBy = currentUser;
+        const target = normalizeRewardStatus(rewardStatusBtn.dataset.setRewardStatus);
+        const now = new Date().toISOString();
+        if (target === 'storniert') {
+          const reason = prompt('Warum wird dieser Bonus storniert? Der Eintrag bleibt zur Nachvollziehbarkeit erhalten.', r.cancelReason || '');
+          if (reason === null) return;
+          r.cancelReason = String(reason || '').trim();
+          r.cancelledAt = now; r.cancelledBy = currentUser;
+          r.redeemedAt = ''; r.redeemedBy = '';
+        } else if (target === 'offen') {
+          r.creditedAt = ''; r.creditedBy = ''; r.redeemedAt = ''; r.redeemedBy = '';
+          r.cancelledAt = ''; r.cancelledBy = ''; r.cancelReason = '';
+        } else if (target === 'gutgeschrieben') {
+          r.creditedAt = r.creditedAt || now; r.creditedBy = r.creditedBy || currentUser;
+          r.redeemedAt = ''; r.redeemedBy = ''; r.cancelledAt = ''; r.cancelledBy = ''; r.cancelReason = '';
+        } else if (target === 'eingelöst / ausbezahlt') {
+          r.creditedAt = r.creditedAt || now; r.creditedBy = r.creditedBy || currentUser;
+          r.redeemedAt = now; r.redeemedBy = currentUser; r.cancelledAt = ''; r.cancelledBy = ''; r.cancelReason = '';
+        }
+        r.status = target; r.updatedAt = now; r.updatedBy = currentUser;
         syncRewardExpense(r);
-        saveState(`Bonus geändert: ${r.id}`); renderAll();
+        saveState(`Bonus ${target}: ${r.id}`); renderAll();
+        toast(`Bonus ist jetzt ${target}.`);
       }
     }
   });
@@ -2958,7 +3158,10 @@
       state.settings.minOrder = Number(state.settings.minOrder || 0);
     }
     const u = state.users.find(x => x.id === currentUser);
-    if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
+    if (u && fd.has('userRecoveryCode')) {
+      u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
+      touchUserRecord(u);
+    }
     const reason = admin ? (includeCloud ? 'Google/Drive Einstellungen geändert' : 'Einstellungen geändert') : 'Persönlichen Reset-Code geändert';
     saveState(reason);
     if (showToast) toast(admin ? (includeCloud ? 'Google/Drive Einstellungen gespeichert.' : 'Einstellungen gespeichert. Google/Drive bleibt separat geschützt.') : 'Persönlicher Reset-Code gespeichert.');
@@ -3533,8 +3736,14 @@
     const role = normalizedRole(fields.role.value, id);
     const permissions = {};
     Object.entries(userFormPermissionNames()).forEach(([key,name]) => { permissions[key] = !!fields[name].checked; });
+    const userUpdatedAt = new Date().toISOString();
+    const accessChanged = isNew || u.employmentActive === false || u.loginEnabled !== fields.loginEnabled.checked || u.active !== fields.loginEnabled.checked;
     Object.assign(u, normalizeEmployeeUser({
       ...u, id,
+      createdAt:u.createdAt || userUpdatedAt,
+      updatedAt:userUpdatedAt,
+      updatedBy:currentUser,
+      accessUpdatedAt:accessChanged ? userUpdatedAt : (u.accessUpdatedAt || ''),
       name:String(fields.name.value || id).trim(),
       emoji:String(fields.emoji.value || fields.name.value.slice(0,1) || id.slice(0,1)).trim().slice(0,2),
       phone:parsedPhone.ok && !parsedPhone.empty ? parsedPhone.tel : '',
@@ -3551,6 +3760,10 @@
         commissionActive:fields.commissionActive.checked
       }
     }));
+    if (!fields.loginEnabled.checked) {
+      u.credentialId = '';
+      u.credentialUserHandle = '';
+    }
     if (pw) await setPassword(id, pw);
     saveState(`Mitarbeiter ${isNew?'erstellt':'aktualisiert'}: ${u.id}`);
     resetUserEditor();
@@ -3574,6 +3787,13 @@
     u.employmentActive = activate;
     u.loginEnabled = activate ? u.loginEnabled !== false : false;
     u.active = u.loginEnabled;
+    if (!activate) {
+      // A deactivated account must not keep a usable device credential.
+      u.credentialId = '';
+      u.credentialUserHandle = '';
+    }
+    u.accessUpdatedAt = new Date().toISOString();
+    touchUserRecord(u);
     saveState(`Mitarbeiter ${activate?'reaktiviert':'deaktiviert'}: ${u.id}`);
     renderUserOptions(); renderUsers();
     toast(`Mitarbeiter ${activate?'reaktiviert':'deaktiviert'}.`);
@@ -3651,6 +3871,8 @@
       entry.paymentStatus = deferredExpensePaymentStatus(entry) === 'bezahlt' ? 'offen' : 'bezahlt';
       entry.paidAt = entry.paymentStatus === 'bezahlt' ? new Date().toISOString() : '';
       entry.paidBy = currentUser;
+      entry.updatedAt = new Date().toISOString();
+      entry.updatedBy = currentUser;
       if (isEmployeeExpenseRecord(entry)) { entry.employeePaidAt = entry.paidAt; entry.employeePaidBy = currentUser; }
       if (isRewardExpenseRecord(entry) && entry.rewardId) {
         const reward = (state.rewards || []).find(r => r.id === entry.rewardId);
@@ -3659,6 +3881,7 @@
           reward.redeemedAt = entry.paymentStatus === 'bezahlt' ? entry.paidAt : '';
           reward.redeemedBy = entry.paymentStatus === 'bezahlt' ? currentUser : '';
           reward.updatedAt = new Date().toISOString(); reward.updatedBy = currentUser;
+          entry.rewardStatus = reward.status;
         }
       }
       saveState(`${isEmployeeExpenseRecord(entry)?'Mitarbeiterlohn':'Empfehlungsbonus'} ${entry.paymentStatus}: ${entry.id} / Auftrag ${entry.jobId || ''}`);
@@ -4183,9 +4406,10 @@
           state = migrateState(merged);
           localStorage.setItem(STORE_KEY, JSON.stringify(state));
           suppressAutoCloudSync = false;
+          if (!enforceCurrentUserAccess()) return;
           renderAll();
           // Push any local/offline records that were newer than cloud after merging.
-          setTimeout(() => syncCloud(true), 900);
+          setTimeout(() => { if (currentUser) syncCloud(true); }, 900);
         }
       })
       .catch(() => {})
@@ -4270,6 +4494,7 @@
           state = migrateState(merged);
           localStorage.setItem(STORE_KEY, JSON.stringify(state));
           suppressAutoCloudSync = false;
+          if (!enforceCurrentUserAccess()) { cleanup(); return; }
           renderAll();
           const failedPhoto = (state.jobs || []).some(j => j?.beforePhoto?.error || j?.afterPhoto?.error);
           const failedCal = (state.jobs || []).some(j => String(j?.calendarSyncStatus || '').toLowerCase().includes('fehler'));
@@ -4330,6 +4555,7 @@
       state = migrateState(imported);
       localStorage.setItem(STORE_KEY, JSON.stringify(state));
       suppressAutoCloudSync = false;
+      if (!enforceCurrentUserAccess()) return;
       renderAll();
       queueActivity('Refresh / Cloud geladen', 'Sync', '', 'Aktuelle Cloud-Daten wurden auf dieses Gerät geladen.', { flush: true });
       toast('Cloud geladen und mit diesem Gerät abgeglichen.');
@@ -4566,16 +4792,31 @@
   $$('[data-test-sync]').forEach(btn => btn.addEventListener('click', testGoogleSync));
   $$('[data-load-cloud]').forEach(btn => btn.addEventListener('click', loadCloud));
   $$('[data-check-website-leads]').forEach(btn => btn.addEventListener('click', () => checkWebsiteLeads(false)));
-  window.addEventListener('online', () => { if (currentUser && currentScriptUrl()) { toast('Gerät ist online. Sync läuft...'); syncCloud(true); flushActivityLog(true); } });
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && currentUser && isAdmin() && currentScriptUrl()) {
-      const now = Date.now();
-      if (!autoLoadCloudThenCheckWebsiteLeads._last || now - autoLoadCloudThenCheckWebsiteLeads._last > 60000) {
-        autoLoadCloudThenCheckWebsiteLeads._last = now;
-        autoLoadCloudThenCheckWebsiteLeads();
-      }
+  window.addEventListener('online', async () => {
+    if (!currentUser || !currentScriptUrl()) return;
+    const allowed = isAdmin() ? enforceCurrentUserAccess() : await validateCurrentUserAccessFromCloud(true);
+    if (!allowed || !currentUser) return;
+    toast('Gerät ist online. Sync läuft...');
+    syncCloud(true);
+    flushActivityLog(true);
+  });
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden || !currentUser || !currentScriptUrl()) return;
+    if (!isAdmin()) {
+      await validateCurrentUserAccessFromCloud(true);
+      return;
+    }
+    const now = Date.now();
+    if (!autoLoadCloudThenCheckWebsiteLeads._last || now - autoLoadCloudThenCheckWebsiteLeads._last > 60000) {
+      autoLoadCloudThenCheckWebsiteLeads._last = now;
+      autoLoadCloudThenCheckWebsiteLeads();
     }
   });
+  // While a non-admin portal is open, re-check the cloud access status regularly.
+  // A device that is offline is checked immediately when it reconnects.
+  setInterval(() => {
+    if (currentUser && !isAdmin() && !document.hidden) validateCurrentUserAccessFromCloud(true);
+  }, 60000);
 
   // PWA install button: works on Android/Chrome. iPhone shows clear manual instructions.
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); deferredInstallPrompt = event; });
@@ -4636,6 +4877,7 @@
     if (!window.PublicKeyCredential || !navigator.credentials?.create) return toast('Biometrie/Passkey wird auf diesem Browser nicht unterstützt.');
     try {
       const user = state.users.find(u => u.id === currentUser);
+      if (!isUserLoginActive(user)) return toast('Dieser Portal-Zugang ist nicht aktiv.');
       const userHandle = new TextEncoder().encode(currentUser + '@lumian');
       const cred = await navigator.credentials.create({ publicKey: {
         challenge: randomChallenge(), rp: { name: 'Lumian Portal' },
@@ -4645,25 +4887,31 @@
         timeout: 60000, attestation: 'none'
       }});
       user.credentialId = b64url(cred.rawId); user.credentialUserHandle = b64url(userHandle);
+      touchUserRecord(user);
       saveState('Biometrie aktiviert'); toast('Face ID / Touch ID ist auf diesem Gerät aktiviert.');
     } catch { toast('Biometrie wurde nicht aktiviert.'); }
   }
   async function biometricLogin() {
     const select = $('[data-login-form]').elements.user;
     const user = state.users.find(u => u.id === select.value);
+    if (!isUserLoginActive(user)) return toast('Portal-Login ist für diesen Benutzer nicht aktiv.');
     if (!user?.credentialId) return toast('Für diesen Benutzer zuerst in den Einstellungen Biometrie aktivieren.');
+    if (!(await cloudAllowsUserLogin(user.id))) return toast('Dieser Portal-Zugang wurde von einem Admin deaktiviert.');
     if (!navigator.credentials?.get) return toast('Biometrie/Passkey wird auf diesem Browser nicht unterstützt.');
     try {
       await navigator.credentials.get({ publicKey: { challenge: randomChallenge(), allowCredentials: [{ type:'public-key', id: fromB64url(user.credentialId) }], userVerification:'preferred', timeout:60000 }});
+      const refreshedUser = state.users.find(u => u.id === user.id);
+      if (!isUserLoginActive(refreshedUser)) return toast('Dieser Portal-Zugang wurde von einem Admin deaktiviert.');
       currentUser = user.id; sessionStorage.setItem(SESSION_KEY, currentUser); renderLogin(); toast(`Willkommen, ${userName(user.id)}.`);
     } catch { toast('Biometrie abgebrochen oder fehlgeschlagen.'); }
   }
   $('[data-enable-biometric]')?.addEventListener('click', enableBiometric);
-  $('[data-disable-biometric]')?.addEventListener('click', () => { const u = state.users.find(x => x.id === currentUser); if (u) { u.credentialId=''; u.credentialUserHandle=''; saveState('Biometrie entfernt'); toast('Biometrie auf diesem Gerät entfernt.'); } });
+  $('[data-disable-biometric]')?.addEventListener('click', () => { const u = state.users.find(x => x.id === currentUser); if (u) { u.credentialId=''; u.credentialUserHandle=''; touchUserRecord(u); saveState('Biometrie entfernt'); toast('Biometrie auf diesem Gerät entfernt.'); } });
   $('[data-biometric-login]')?.addEventListener('click', biometricLogin);
 
   resetUserEditor();
   setDefaultFinanceDates();
   renderLogin();
+  if (currentUser && !isAdmin()) setTimeout(() => validateCurrentUserAccessFromCloud(true), 1200);
   setupSmartStickyNav();
 })();

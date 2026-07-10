@@ -1,0 +1,34 @@
+Lumian Services – Update v106
+=============================
+
+NEU: WEBSITE-LEADS ALS EINZELRECHT
+- Unter Mitarbeiter > Benutzerrechte gibt es neu:
+  „Website-Leads prüfen, importieren und bearbeiten“.
+- Noah und Timo besitzen das Recht als Admins immer.
+- Bei Teamleitung, Mitarbeiter und Hilfskraft ist es standardmässig deaktiviert.
+- Das Recht kann pro Person unabhängig von der Portalrolle aktiviert werden.
+- Nur berechtigte Benutzer sehen den Button „Web-Leads prüfen“.
+- Der Funktionsaufruf wird zusätzlich im JavaScript blockiert, wenn das Recht fehlt.
+- Berechtigte Benutzer sehen und bearbeiten importierte Website-Leads auch ohne das Recht
+  „Alle Leads, Jobs und Kunden sehen“.
+- In der Teamübersicht wird „Website-Leads“ angezeigt, wenn die Person das Recht besitzt.
+- Die automatische Hintergrundprüfung bei Login bzw. Rückkehr ins Portal bleibt nur für
+  Admins aktiv. Berechtigte Nicht-Admins prüfen bewusst per Button.
+
+DATEN, BACKUP UND CLOUD
+- Das neue Recht liegt im vorhandenen Permissions-Objekt des Mitarbeiters.
+- Lokales Komplettbackup, JSON-/Drive-Backup, Cloud-Sync, Google-Sheet-Employees-Ausgabe
+  und Mitarbeiter-Excel übernehmen es automatisch im bestehenden Rechte-JSON.
+- Alte Benutzerkonten werden automatisch migriert; das neue Recht ist bei Nicht-Admins
+  zunächst deaktiviert.
+
+UPLOAD VON V105 AUF V106
+1. Die vollständige Website aus diesem ZIP hochladen.
+2. Das Google Apps Script muss für dieses reine Berechtigungsupdate NICHT ersetzt oder
+   neu bereitgestellt werden.
+3. Portal neu öffnen und einmal Sync drücken.
+4. Falls noch die alte Oberfläche erscheint:
+   https://lumianservices.ch/portal/?swreset=1
+
+GOOGLE DRIVE
+- Keine neue Drive-ID und kein neuer Ordner notwendig.

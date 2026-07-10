@@ -15,19 +15,17 @@
   ],
   "icons": [
     {
-      "src": "/assets/img/app-icon-192.png",
+      "src": "https://www.lumianservices.ch/assets/img/favicon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "/assets/img/app-icon-512.png",
+      "src": "https://www.lumianservices.ch/assets/img/favicon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "/assets/img/apple-touch-icon.png",
+      "src": "https://www.lumianservices.ch/assets/img/apple-touch-icon.png",
       "sizes": "180x180",
       "type": "image/png"
     }

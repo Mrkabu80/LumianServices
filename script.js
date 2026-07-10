@@ -264,7 +264,7 @@ function buildGallery() {
   const slider = document.querySelector('[data-gallery]');
   const prev = document.querySelector('[data-gallery-prev]');
   const next = document.querySelector('[data-gallery-next]');
-  let timer;
+  let timer = slider?._lumianTimer || null;
 
   const slideWidth = () => {
     const slide = track.querySelector('.gallery-slide');
@@ -284,24 +284,30 @@ function buildGallery() {
     track.scrollBy({ left: slideWidth() * direction, behavior: 'smooth' });
   };
 
-  prev?.addEventListener('click', () => go(-1));
-  next?.addEventListener('click', () => go(1));
-
+  const stop = () => {
+    if (timer) window.clearInterval(timer);
+    timer = null;
+    if (slider) slider._lumianTimer = null;
+  };
   const start = () => {
     stop();
     timer = window.setInterval(() => go(1), 4200);
-  };
-  const stop = () => {
-    if (timer) window.clearInterval(timer);
+    if (slider) slider._lumianTimer = timer;
   };
 
-  slider?.addEventListener('mouseenter', stop);
-  slider?.addEventListener('mouseleave', start);
-  slider?.addEventListener('touchstart', stop, { passive: true });
-  slider?.addEventListener('touchend', start, { passive: true });
+  if (slider && slider.dataset.galleryBound !== '1') {
+    prev?.addEventListener('click', () => go(-1));
+    next?.addEventListener('click', () => go(1));
+    slider.addEventListener('mouseenter', stop);
+    slider.addEventListener('mouseleave', start);
+    slider.addEventListener('touchstart', stop, { passive: true });
+    slider.addEventListener('touchend', start, { passive: true });
+    slider.dataset.galleryBound = '1';
+  }
   start();
 }
 
+window.rebuildLumianGallery = buildGallery;
 buildGallery();
 
 const gallery = document.querySelector('[data-gallery]');

@@ -98,6 +98,13 @@ function syncFull_(payload) {
     });
   }
 
+  // Website content uses the same Drive main folder and creates its own WebsiteMedia subfolder automatically.
+  try {
+    state.websiteContent = saveWebsiteContentMedia_(photoFolder, state.websiteContent || {});
+  } catch (contentErr) {
+    state.syncDiagnostics.push(['Website Inhalte', 'FEHLER', '', String(contentErr)]);
+  }
+
   // Calendar sync must still run even when Drive fails.
   syncCalendar_(state, settings);
 
@@ -112,7 +119,7 @@ function syncFull_(payload) {
 function emptyState_() {
   var now = new Date().toISOString();
   return {
-    version: 8,
+    version: 10,
     createdAt: now,
     updatedAt: now,
     users: [],
@@ -123,6 +130,7 @@ function emptyState_() {
     jobs: [],
     rewards: [],
     finance: { manualIncome: [], expenses: [] },
+    websiteContent: { values: {}, media: {}, gallery: [], updatedAt: '', updatedBy: '' },
     audit: []
   };
 }
@@ -160,6 +168,9 @@ function goLiveReset_(confirmText, backupFolderId) {
   clean.portalMode = 'production';
   clean.goLiveAt = now;
   clean.users = current.users || [];
+  // Website content is production content, not disposable test data.
+  // Keep published texts, links, media and gallery during the Go-Live reset.
+  clean.websiteContent = current.websiteContent || { values: {}, media: {}, gallery: [], updatedAt: '', updatedBy: '' };
   clean.settings = current.settings || {};
   clean.settings.driveFolderId = clean.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
   clean.settings.backupFolderId = clean.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
@@ -177,7 +188,7 @@ function goLiveReset_(confirmText, backupFolderId) {
   clearWebsiteLeadSheet_();
   saveState_(clean, null);
   createBackupSnapshot_(clean, 'after-go-live-reset');
-  appendActivityLogEntries_([{ timestamp: now, userId: 'system', userName: 'System', action: 'Testdaten gelöscht & Produktivbetrieb gestartet', area: 'Setup', objectId: '', description: 'Go-Live Reset: Testdaten gelöscht, Einstellungen/Benutzer behalten.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: 'production', source: 'server' }], 'system', 'go-live-reset');
+  appendActivityLogEntries_([{ timestamp: now, userId: 'system', userName: 'System', action: 'Testdaten gelöscht & Produktivbetrieb gestartet', area: 'Setup', objectId: '', description: 'Go-Live Reset: Testdaten gelöscht, Einstellungen/Benutzer/Website-Inhalte behalten.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: 'production', source: 'server' }], 'system', 'go-live-reset');
   return json_({ ok: true, resetAt: now, mode: 'production' });
 }
 
@@ -308,6 +319,10 @@ function normalizeStateForMerge_(s) {
   out.finance = out.finance || { manualIncome: [], expenses: [] };
   out.finance.manualIncome = Array.isArray(out.finance.manualIncome) ? out.finance.manualIncome : [];
   out.finance.expenses = Array.isArray(out.finance.expenses) ? out.finance.expenses : [];
+  out.websiteContent = out.websiteContent || { values:{}, media:{}, gallery:[], updatedAt:'', updatedBy:'' };
+  out.websiteContent.values = out.websiteContent.values || {};
+  out.websiteContent.media = out.websiteContent.media || {};
+  out.websiteContent.gallery = Array.isArray(out.websiteContent.gallery) ? out.websiteContent.gallery : [];
   out.audit = Array.isArray(out.audit) ? out.audit : [];
   return out;
 }
@@ -404,6 +419,9 @@ function mergeStates_(current, incoming, userId) {
     manualIncome: mergeRecordArrays_(current.finance.manualIncome, incoming.finance.manualIncome),
     expenses: mergeRecordArrays_(current.finance.expenses, incoming.finance.expenses)
   };
+  var currentContentTime = new Date((current.websiteContent && current.websiteContent.updatedAt) || 0).getTime() || 0;
+  var incomingContentTime = new Date((incoming.websiteContent && incoming.websiteContent.updatedAt) || 0).getTime() || 0;
+  merged.websiteContent = JSON.parse(JSON.stringify(incomingContentTime >= currentContentTime ? (incoming.websiteContent || {}) : (current.websiteContent || {})));
   merged.audit = (current.audit || []).concat(incoming.audit || []).slice(-400);
   if (userId) merged.audit.push({ at: now, by: userId, reason: 'cloud merge sync' });
   return merged;
@@ -490,7 +508,7 @@ function normalizeAppointmentInput_(value) {
 function saveWebsiteLead_(lead) {
   var now = lead.createdAt || new Date().toISOString();
   var state = loadState_() || {
-    version: 8,
+    version: 10,
     createdAt: now,
     updatedAt: now,
     users: [],
@@ -595,6 +613,10 @@ function doGet(e) {
   }
   if (action === 'websiteleads') {
     return jsonp_(callback, { ok: true, leads: readWebsiteLeads_() });
+  }
+  if (action === 'websitecontent') {
+    var contentState = loadState_() || {};
+    return jsonp_(callback, { ok: true, content: contentState.websiteContent || { values:{}, media:{}, gallery:[] }, updatedAt: new Date().toISOString() });
   }
   if (action === 'syncdiagnostics') {
     return jsonp_(callback, { ok: true, diagnostics: getSyncDiagnostics_(), at: new Date().toISOString() });
@@ -902,6 +924,52 @@ function sanitizeDriveName_(value) {
   return safe.slice(0, 80);
 }
 
+function getOrCreateChildFolder_(parent, name) {
+  var folders = parent.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : parent.createFolder(name);
+}
+
+function websiteMediaFileName_(key, originalName) {
+  var ext = String(originalName || '').match(/\.([a-zA-Z0-9]{2,5})$/);
+  var suffix = ext ? ext[1].toLowerCase() : 'jpg';
+  return String(key || 'website-image').replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + new Date().getTime() + '.' + suffix;
+}
+
+function saveWebsiteMediaEntry_(folder, key, entry) {
+  entry = entry || {};
+  if (!entry.dataUrl) return entry;
+  var m = String(entry.dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+  if (!m) throw new Error('Ungültiges Website-Bild: ' + key);
+  var blob = Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], websiteMediaFileName_(key, entry.name));
+  var file = folder.createFile(blob);
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (shareErr) {}
+  var id = file.getId();
+  return {
+    src: 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w1800',
+    driveUrl: file.getUrl(), fileId: id, name: entry.name || file.getName(), mimeType: m[1],
+    size: Number(entry.size || blob.getBytes().length || 0), width: Number(entry.width || 0), height: Number(entry.height || 0),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function saveWebsiteContentMedia_(photoFolder, content) {
+  content = content || { values:{}, media:{}, gallery:[] };
+  content.values = content.values || {};
+  content.media = content.media || {};
+  content.gallery = Array.isArray(content.gallery) ? content.gallery : [];
+  var hasUploads = Object.keys(content.media).some(function(k){ return content.media[k] && content.media[k].dataUrl; }) || content.gallery.some(function(x){ return x && x.dataUrl; });
+  if (!hasUploads) return content;
+  if (!photoFolder) throw new Error('Für neue Website-Bilder ist der bestehende Drive-Fotoordner erforderlich.');
+  var folder = getOrCreateChildFolder_(photoFolder, 'WebsiteMedia');
+  Object.keys(content.media).forEach(function(key) { content.media[key] = saveWebsiteMediaEntry_(folder, key, content.media[key]); });
+  content.gallery = content.gallery.map(function(item, index) {
+    if (!item || !item.dataUrl) return item;
+    var saved = saveWebsiteMediaEntry_(folder, 'gallery-' + (item.id || index + 1), item);
+    return { id:item.id || ('g-' + (index+1)), src:saved.src, driveUrl:saved.driveUrl, fileId:saved.fileId, name:saved.name, size:saved.size || 0, width:saved.width || 0, height:saved.height || 0, title:item.title || '', caption:item.caption || '', updatedAt:saved.updatedAt };
+  });
+  return content;
+}
+
 function stateForStorage_(state) {
   // Never store huge local base64 image payloads in Script Properties / Sheet state.
   // If Drive upload worked, savePhoto_ already replaced dataUrl with Drive metadata.
@@ -918,6 +986,10 @@ function stateForStorage_(state) {
       }
     });
   });
+  var wc = clean.websiteContent || {};
+  var media = wc.media || {};
+  Object.keys(media).forEach(function(key) { if (media[key] && media[key].dataUrl) delete media[key].dataUrl; });
+  (wc.gallery || []).forEach(function(item) { if (item && item.dataUrl) delete item.dataUrl; });
   return clean;
 }
 
@@ -968,21 +1040,27 @@ function loadState_() {
 
 function writeSheets_(state) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  writeSheet_(ss, 'People', ['LumianNr','Status','Name','Phone','Email','Strasse/Nr','PLZ/Ort','Source','ReferredBy','CreatedAt','CreatedBy','CustomerSince'], (state.people || []).map(function(p) {
-    return [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.createdAt,p.createdBy,p.customerSince];
+  writeSheet_(ss, 'Employees', ['EmployeeId','Name','Phone','Email','EmployeeType','Role','EmploymentActive','LoginEnabled','PermissionsJson','CompensationDefaultsJson'], (state.users || []).map(function(u) {
+    return [u.id,u.name,u.phone || '',u.email || '',u.employeeType || '',u.role || '',u.employmentActive !== false,u.loginEnabled !== false,JSON.stringify(u.permissions || {}),JSON.stringify(u.compensationDefaults || {})];
   }));
-  writeSheet_(ss, 'Leads', ['LeadId','LumianNr','Service','Source','ExpectedValue','AppointmentAt','ReferredBy','Status','CreatedAt','CreatedBy','Notes'], (state.leads || []).map(function(l) {
-    return [l.id,l.personId,l.service,l.source,l.expectedValue,l.appointmentAt,l.referredById,l.status,l.createdAt,l.createdBy,l.notes];
+  writeSheet_(ss, 'People', ['LumianNr','Status','Name','Phone','Email','Strasse/Nr','PLZ/Ort','Source','ReferredBy','CreatedAt','CreatedBy','CustomerSince','AcquisitionAgreementJson'], (state.people || []).map(function(p) {
+    return [p.id,p.status,p.name,p.phone,p.email,p.address,p.place,p.source,p.referredById,p.createdAt,p.createdBy,p.customerSince,JSON.stringify(p.acquisitionAgreement || null)];
   }));
-  writeSheet_(ss, 'Jobs', ['JobId','LumianNr','LeadId','Service','AppointmentAt','Amount','Status','PaidAt','CompletedAt','CalendarEventId','CalendarSyncedAt','CalendarStatus','AssignedTo','Source','ReferredBy','BeforePhoto','AfterPhoto','CreatedAt','CreatedBy','Notes'], (state.jobs || []).map(function(j) {
-    return [j.id,j.personId,j.leadId,j.service,j.appointmentAt,j.amount,j.status,j.paidAt || '',j.completedAt || '',j.calendarEventId || '',j.calendarSyncedAt || '',j.calendarSyncStatus || '',j.assignedTo,j.source,j.referredById,photoLink_(j.beforePhoto),photoLink_(j.afterPhoto),j.createdAt,j.createdBy,j.notes];
+  writeSheet_(ss, 'Leads', ['LeadId','LumianNr','Service','Source','ExpectedValue','AppointmentAt','ReferredBy','Status','CreatedAt','CreatedBy','AcquiredBy','AssignedTo','CommissionAgreementJson','Notes'], (state.leads || []).map(function(l) {
+    return [l.id,l.personId,l.service,l.source,l.expectedValue,l.appointmentAt,l.referredById,l.status,l.createdAt,l.createdBy,l.acquiredBy || '',l.assignedTo || '',JSON.stringify(l.commissionAgreement || null),l.notes];
+  }));
+  writeSheet_(ss, 'Jobs', ['AuftragId','LumianNr','LeadId','Service','AppointmentAt','Amount','Status','PaidAt','CompletedAt','CalendarEventId','CalendarSyncedAt','CalendarStatus','PrimaryResponsible','TeamMemberIds','AcquiredBy','CommissionAgreementJson','CompensationLinesJson','EmployeeCost','Source','ReferredBy','BeforePhoto','AfterPhoto','CreatedAt','CreatedBy','Notes'], (state.jobs || []).map(function(j) {
+    var lines = Array.isArray(j.compensationLines) ? j.compensationLines : [];
+    var employeeCost = lines.reduce(function(sum, line) { var value = String(line.type || '') === 'hourly' ? amountValue_(line.hours) * amountValue_(line.rate) : amountValue_(line.amount); return sum + value; }, 0);
+    return [j.id,j.personId,j.leadId,j.service,j.appointmentAt,j.amount,j.status,j.paidAt || '',j.completedAt || '',j.calendarEventId || '',j.calendarSyncedAt || '',j.calendarSyncStatus || '',j.assignedTo || '',(j.teamMemberIds || []).join(', '),j.acquiredBy || '',JSON.stringify(j.commissionAgreement || null),JSON.stringify(lines),employeeCost,j.source,j.referredById,photoLink_(j.beforePhoto),photoLink_(j.afterPhoto),j.createdAt,j.createdBy,j.notes];
   }));
   writePhotosSheet_(ss, state);
   writePhotoSyncSheet_(ss, state);
   writeCalendarSyncSheet_(ss, state);
   writeSyncDiagnosticsSheet_(ss, state);
-  writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','CreatedAt','CreatedBy'], (state.rewards || []).map(function(r) {
-    return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,r.createdAt,r.createdBy];
+  writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','AccountingPaymentStatus','CreditedAt','CreditedBy','RedeemedAt','RedeemedBy','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy'], (state.rewards || []).map(function(r) {
+    var expense = (((state.finance || {}).expenses) || []).filter(function(x) { return !x.deletedAt && x.rewardId === r.id; })[0] || null;
+    return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,expense ? deferredExpensePaymentStatus_(expense) : '',r.creditedAt || '',r.creditedBy || '',r.redeemedAt || '',r.redeemedBy || '',r.createdAt,r.createdBy,r.updatedAt || '',r.updatedBy || ''];
   }));
 
   var finance = calculateFinance_(state);
@@ -990,22 +1068,29 @@ function writeSheets_(state) {
     ['Bezahlte Jobs', finance.paidJobsTotal, finance.paidJobsCount + ' kassierte Jobs'],
     ['Manuell ergänzt', finance.manualIncomeTotal, finance.manualIncomeCount + ' Eintrag(e)'],
     ['Pipeline offen', finance.forecastTotal, finance.forecastJobsCount + ' Job(s) + ' + finance.forecastLeadsCount + ' Lead(s)'],
-    ['Ausgaben', finance.expenseTotal, finance.expenseCount + ' Kostenposition(en)'],
+    ['Löhne & Mitarbeiter bezahlt', finance.employeeExpenseTotal, finance.employeeExpenseCount + ' bezahlt · ' + finance.employeeOpenExpenseCount + ' offen'],
+    ['Empfehlungsboni eingelöst / ausbezahlt', finance.rewardExpenseTotal, finance.rewardExpenseCount + ' bezahlt · ' + finance.rewardOpenExpenseCount + ' gutgeschrieben/offen'],
+    ['Ausgaben gesamt', finance.expenseTotal, finance.expenseCount + ' bezahlte/gebuchte Kostenposition(en)'],
     ['Gewinn', finance.paidJobsTotal + finance.manualIncomeTotal - finance.expenseTotal, 'bezahlte Einnahmen minus Ausgaben']
   ]);
 
   writeSheet_(ss, 'Finance Manual Income', ['IncomeId','Title','From','To','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.manualIncome) || []).filter(function(x) { return !x.deletedAt; }).map(function(x) {
     return [x.id,x.title,x.from,x.to,x.amount,x.notes,x.createdAt,x.createdBy];
   }));
-  writeSheet_(ss, 'Finance Expenses', ['ExpenseId','Date','Category','Title','Amount','Notes','CreatedAt','CreatedBy'], ((state.finance && state.finance.expenses) || []).filter(function(x) { return !x.deletedAt; }).map(function(x) {
-    return [x.id,x.date,x.category,x.title,x.amount,x.notes,x.createdAt,x.createdBy];
+  writeSheet_(ss, 'Finance Expenses', ['ExpenseId','Date','Category','Subtype','Title','Amount','EmployeeId','AuftragId','CustomerId','CompensationLineId','RewardId','SourceType','Automatic','PaymentStatus','CountedAsExpense','Notes','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy'], ((state.finance && state.finance.expenses) || []).filter(function(x) { return !x.deletedAt; }).map(function(x) {
+    return [x.id,x.date,x.category,x.subtype || '',x.title,x.amount,x.employeeId || '',x.jobId || '',x.personId || '',x.compensationLineId || '',x.rewardId || '',x.sourceType || '',x.automatic === true,x.paymentStatus || '',!isDeferredExpense_(x) || deferredExpensePaymentStatus_(x) === 'bezahlt',x.notes,x.createdAt,x.createdBy,x.updatedAt || '',x.updatedBy || ''];
   }));
+
+  var websiteContent = state.websiteContent || { values:{}, media:{}, gallery:[] };
+  var websiteRows = Object.keys(websiteContent.values || {}).map(function(k) { return ['Text/Link', k, websiteContent.values[k], websiteContent.updatedAt || '', websiteContent.updatedBy || '']; });
+  Object.keys(websiteContent.media || {}).forEach(function(k) { websiteRows.push(['Bild', k, JSON.stringify(websiteContent.media[k] || {}), websiteContent.updatedAt || '', websiteContent.updatedBy || '']); });
+  websiteRows.push(['Galerie', 'home.gallery.items', JSON.stringify(websiteContent.gallery || []), websiteContent.updatedAt || '', websiteContent.updatedBy || '']);
+  writeSheet_(ss, 'Website Content', ['Type','Key','Value','UpdatedAt','UpdatedBy'], websiteRows);
 
   writeSheet_(ss, 'Settings', ['Key','Value'], Object.keys(state.settings || {}).map(function(k) {
     return [k, state.settings[k]];
   }));
 }
-
 
 function writeCalendarSyncSheet_(ss, state) {
   var rows = state.calendarSyncLog || [];
@@ -1066,6 +1151,22 @@ function isCancelledJob_(job) {
   return status === 'abgesagt' || status.indexOf('abgesagt') >= 0;
 }
 
+function isEmployeeExpense_(x) {
+  return !!x && (x.category === 'Löhne & Mitarbeiter' || (!!x.employeeId && x.sourceType !== 'referral_reward'));
+}
+
+function isRewardExpense_(x) {
+  return !!x && (x.sourceType === 'referral_reward' || !!x.rewardId || x.category === 'Kundenbonus & Empfehlungen');
+}
+
+function isDeferredExpense_(x) {
+  return isEmployeeExpense_(x) || isRewardExpense_(x);
+}
+
+function deferredExpensePaymentStatus_(x) {
+  return x && x.paymentStatus === 'bezahlt' ? 'bezahlt' : 'offen';
+}
+
 function calculateFinance_(state) {
   var jobs = state.jobs || [];
   var leads = state.leads || [];
@@ -1078,6 +1179,13 @@ function calculateFinance_(state) {
   });
   var manualIncome = (finance.manualIncome || []).filter(function(x) { return !x.deletedAt; });
   var expenses = (finance.expenses || []).filter(function(x) { return !x.deletedAt; });
+  var countedExpenses = expenses.filter(function(x) { return !isDeferredExpense_(x) || deferredExpensePaymentStatus_(x) === 'bezahlt'; });
+  var employeeExpenses = expenses.filter(isEmployeeExpense_);
+  var employeePaidExpenses = employeeExpenses.filter(function(x) { return deferredExpensePaymentStatus_(x) === 'bezahlt'; });
+  var employeeOpenExpenses = employeeExpenses.filter(function(x) { return deferredExpensePaymentStatus_(x) !== 'bezahlt'; });
+  var rewardExpenses = expenses.filter(isRewardExpense_);
+  var rewardPaidExpenses = rewardExpenses.filter(function(x) { return deferredExpensePaymentStatus_(x) === 'bezahlt'; });
+  var rewardOpenExpenses = rewardExpenses.filter(function(x) { return deferredExpensePaymentStatus_(x) !== 'bezahlt'; });
 
   return {
     paidJobsCount: paidJobs.length,
@@ -1087,8 +1195,14 @@ function calculateFinance_(state) {
     forecastJobsCount: forecastJobs.length,
     forecastLeadsCount: forecastLeads.length,
     forecastTotal: forecastJobs.reduce(function(sum, j) { return sum + amountValue_(j.amount); }, 0) + forecastLeads.reduce(function(sum, l) { return sum + amountValue_(l.expectedValue); }, 0),
-    expenseCount: expenses.length,
-    expenseTotal: expenses.reduce(function(sum, x) { return sum + amountValue_(x.amount); }, 0)
+    expenseCount: countedExpenses.length,
+    expenseTotal: countedExpenses.reduce(function(sum, x) { return sum + amountValue_(x.amount); }, 0),
+    employeeExpenseCount: employeePaidExpenses.length,
+    employeeOpenExpenseCount: employeeOpenExpenses.length,
+    employeeExpenseTotal: employeePaidExpenses.reduce(function(sum, x) { return sum + amountValue_(x.amount); }, 0),
+    rewardExpenseCount: rewardPaidExpenses.length,
+    rewardOpenExpenseCount: rewardOpenExpenses.length,
+    rewardExpenseTotal: rewardPaidExpenses.reduce(function(sum, x) { return sum + amountValue_(x.amount); }, 0)
   };
 }
 

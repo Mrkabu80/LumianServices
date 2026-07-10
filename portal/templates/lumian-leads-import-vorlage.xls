@@ -20,6 +20,8 @@
 <Column ss:Width="125.0"/>
 <Column ss:Width="100.0"/>
 <Column ss:Width="240.0"/>
+<Column ss:Width="155.0"/>
+<Column ss:Width="135.0"/>
 <Row>
 <Cell ss:StyleID="Header"><Data ss:Type="String">Name</Data></Cell>
 <Cell ss:StyleID="Header"><Data ss:Type="String">Telefon</Data></Cell>
@@ -32,6 +34,8 @@
 <Cell ss:StyleID="Header"><Data ss:Type="String">Termin</Data></Cell>
 <Cell ss:StyleID="Header"><Data ss:Type="String">EmpfohlenVon</Data></Cell>
 <Cell ss:StyleID="Header"><Data ss:Type="String">Notizen</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">LeadGewonnenDurch</Data></Cell>
+<Cell ss:StyleID="Header"><Data ss:Type="String">Zustaendig</Data></Cell>
 </Row>
 <Row>
 <Cell ss:StyleID="Text"><Data ss:Type="String">Peter Beispiel</Data></Cell>
@@ -40,11 +44,13 @@
 <Cell ss:StyleID="Text"><Data ss:Type="String">Beispielweg 2</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="String">5400 Baden</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="String">Fensterreinigung</Data></Cell>
-<Cell ss:StyleID="Text"><Data ss:Type="String">Google</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Tür-zu-Tür</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="Number">350</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="String">2026-07-20 14:00</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="String">LM1001</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="String">Besichtigung nötig</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">noah</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">timo</Data></Cell>
 </Row>
 <Row>
 <Cell ss:StyleID="Text"><Data ss:Type="String"></Data></Cell>
@@ -438,6 +444,14 @@
 <Row>
 <Cell ss:StyleID="Text"><Data ss:Type="String">Termin</Data></Cell>
 <Cell ss:StyleID="Text"><Data ss:Type="String">Format z.B. 2026-07-20 14:00.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">LeadGewonnenDurch</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Benutzername/Kürzel oder exakter Mitarbeitername. Die Standard-Akquiseprovision wird automatisch übernommen.</Data></Cell>
+</Row>
+<Row>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Zustaendig</Data></Cell>
+<Cell ss:StyleID="Text"><Data ss:Type="String">Benutzername/Kürzel oder exakter Mitarbeitername der für den Lead zuständigen Person.</Data></Cell>
 </Row>
 <Row>
 <Cell ss:StyleID="Text"><Data ss:Type="String">Import</Data></Cell>

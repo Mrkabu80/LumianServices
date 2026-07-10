@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=79">
+  <link rel="stylesheet" href="portal.css?v=104">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -67,6 +67,8 @@
         <button data-tab="customers">Kunden</button>
         <button data-tab="finance">Buchhaltung</button>
         <button data-tab="rewards">Bonus</button>
+        <button data-tab="employees">Mitarbeiter</button>
+        <button data-tab="content">Website-Inhalte</button>
         <button data-tab="settings">Einstellungen</button>
       </nav>
 
@@ -175,7 +177,7 @@
         <div class="panel-head">
           <div>
             <h2>Buchhaltung</h2>
-            <p class="muted">Bezahlte Jobs und manuelle Einnahmen minus Ausgaben. Pipeline offen zeigt offene/geplante Jobs und offene Leads mit Betrag. Bei "Bisher / bis heute" bleibt Pipeline offen bewusst zukunftsgerichtet.</p>
+            <p class="muted">Bezahlte Jobs und manuelle Einnahmen minus tatsächlich gebuchte Ausgaben. Offene Mitarbeiterlöhne bleiben sichtbar, zählen aber erst nach Markierung als bezahlt als Ausgabe. Pipeline offen zeigt offene/geplante Jobs und offene Leads mit Betrag.</p>
           </div>
           <div class="panel-actions">
             <button class="secondary" type="button" data-finance-export>Excel-Report exportieren</button>
@@ -202,6 +204,14 @@
         </div>
 
         <div class="stats-grid finance-stats" data-finance-stats></div>
+
+        <article class="today-card employee-cost-card" data-admin-only>
+          <div class="panel-head slim">
+            <div><h2>Mitarbeiter &amp; Löhne</h2><p class="muted">Automatisch aus bezahlten Aufträgen erzeugte Fixlöhne, Stundenlöhne und Akquiseprovisionen. Sie zählen erst nach Markierung als bezahlt als Ausgabe.</p></div>
+            <button class="secondary" type="button" data-tab-go="employees">Mitarbeiter verwalten</button>
+          </div>
+          <div data-employee-cost-summary class="employee-cost-summary"></div>
+        </article>
 
         <div class="finance-grid">
           <article class="guide-card finance-chart-card">
@@ -236,7 +246,7 @@
 
           <article class="guide-card">
             <h2>Ausgabe hinzufügen</h2>
-            <p class="hint">Maschinen, Seife, Mops, Tücher, Benzin oder anderes Material. Wird vom Gewinn abgezogen.</p>
+            <p class="hint">Normale Kosten werden sofort vom Gewinn abgezogen. Löhne und Mitarbeiterkosten erst, wenn ihr Zahlungsstatus auf „Bezahlt“ steht.</p>
             <form class="finance-mini-form" data-expense-form>
               <input type="hidden" name="entryId">
               <label>Datum<input name="date" type="date" data-ch-date lang="de-CH" required></label>
@@ -247,11 +257,27 @@
                   <option>Mops / Tücher / Material</option>
                   <option>Fahrzeug / Benzin</option>
                   <option>Werbung / Druck</option>
+                  <option>Löhne &amp; Mitarbeiter</option>
                   <option>Sonstiges</option>
                 </select>
               </label>
+              <div class="employee-expense-fields" data-employee-expense-fields hidden>
+                <label>Mitarbeiter
+                  <select name="employeeId" data-expense-employee-select><option value="">– Mitarbeiter wählen –</option></select>
+                </label>
+                <label>Zugehöriger Auftrag
+                  <select name="jobId" data-expense-job-select><option value="">– optional / kein Auftrag –</option></select>
+                </label>
+                <label>Art
+                  <select name="subtype"><option>Zusätzlicher Lohn</option><option>Bonus</option><option>Vorschuss</option><option>Korrektur</option><option>Sonstige Mitarbeiterkosten</option></select>
+                </label>
+                <label>Zahlungsstatus
+                  <select name="paymentStatus"><option value="offen">Noch offen / nicht bezahlt</option><option value="bezahlt">Bezahlt</option></select>
+                </label>
+                <div class="expense-job-hint" data-expense-job-hint></div>
+              </div>
               <label>Bezeichnung
-                <input name="title" placeholder="z.B. Hochdruckreiniger, Seife, Mikrofasertücher" required>
+                <input name="title" placeholder="z.B. Bonus, Vorschuss oder Material" required>
               </label>
               <label>Betrag CHF
                 <input name="amount" type="number" min="0" step="0.05" inputmode="decimal" required>
@@ -267,13 +293,38 @@
         <div class="finance-grid two">
           <article class="today-card">
             <div class="panel-head slim"><h2>Einnahmen & Jobs</h2><span class="badge" data-income-count></span></div>
-            <div data-income-list class="list compact"></div>
-            <div data-income-pager class="pager"></div>
+            <div class="finance-list-filters">
+              <input data-income-search type="search" placeholder="Suchen: Kunde, Auftrag, Notiz">
+              <select data-income-type-filter aria-label="Einnahmen filtern">
+                <option value="all">Alle Einnahmen</option>
+                <option value="jobs">Bezahlte Jobs</option>
+                <option value="manual">Manuelle Einnahmen</option>
+              </select>
+            </div>
+            <div data-income-list class="list compact finance-scroll-list"></div>
+            <div data-income-pager class="pager" hidden></div>
           </article>
           <article class="today-card">
             <div class="panel-head slim"><h2>Ausgaben</h2><span class="badge" data-expense-count></span></div>
-            <div data-expense-list class="list compact"></div>
-            <div data-expenses-pager class="pager"></div>
+            <div class="finance-list-filters expense-filters">
+              <input data-expense-search type="search" placeholder="Suchen: Ausgabe, Mitarbeiter, Auftrag">
+              <select data-expense-type-filter aria-label="Ausgaben nach Art filtern">
+                <option value="all">Alle Arten</option>
+                <option value="wages">Löhne &amp; Mitarbeiter</option>
+                <option value="bonus">Empfehlungsboni</option>
+                <option value="material">Material &amp; Geräte</option>
+                <option value="vehicle">Fahrzeug / Benzin</option>
+                <option value="advertising">Werbung / Druck</option>
+                <option value="other">Sonstige</option>
+              </select>
+              <select data-expense-status-filter aria-label="Ausgaben nach Zahlstatus filtern">
+                <option value="all">Alle Zahlstatus</option>
+                <option value="paid">Bezahlt / gebucht</option>
+                <option value="open">Noch offen</option>
+              </select>
+            </div>
+            <div data-expense-list class="list compact finance-scroll-list"></div>
+            <div data-expenses-pager class="pager" hidden></div>
           </article>
         </div>
 
@@ -300,7 +351,7 @@
         <div class="panel-head">
           <div>
             <h2>Empfehlungsbonus</h2>
-            <p class="muted">Offene und gutgeschriebene Empfehlungsboni.</p>
+            <p class="muted">Offen = noch nicht gutgeschrieben. Gutgeschrieben erscheint als offene Bonusposition in der Buchhaltung; erst eingelöst oder ausbezahlt zählt als Ausgabe.</p>
           </div>
           <button class="secondary" data-tab-go="settings">Regeln ändern</button>
         </div>
@@ -308,19 +359,118 @@
         <div data-rewards-pager class="pager"></div>
       </section>
 
+      <section class="panel" data-panel="employees" data-admin-only>
+        <div class="panel-head">
+          <div>
+            <h2>Mitarbeiter</h2>
+            <p class="muted">Stammdaten, Portalzugang, Rechte, Standard-Arbeitsmodell und Akquiseprovision an einer Stelle.</p>
+          </div>
+        </div>
+        <div class="employee-page-grid">
+          <article class="guide-card employee-form-card">
+            <h2>Mitarbeiter erfassen oder bearbeiten</h2>
+            <p class="hint">Das Arbeitsmodell ist nur die Standardauswahl. Stunden und der konkrete Fixbetrag werden immer im jeweiligen Auftrag festgelegt.</p>
+            <div class="user-mini-form employee-editor" data-user-form>
+              <input type="hidden" name="editingUserId">
+              <label>Benutzername / Kürzel<input name="userId" autocomplete="off" placeholder="z.B. jana"></label>
+              <label>Anzeigename<input name="name" autocomplete="name" placeholder="z.B. Jana Müller"></label>
+              <label>Initial / Avatar<input name="emoji" maxlength="2" placeholder="J"></label>
+              <label>Telefon<input name="phone" inputmode="tel" autocomplete="tel" placeholder="077 123 45 67"></label>
+              <label>E-Mail<input name="email" type="email" autocomplete="email" placeholder="name@email.ch"></label>
+              <label>Mitarbeitertyp<select name="employeeType"><option value="fixed">Mitarbeiter / regelmässig</option><option value="temporary">Temporär / Hilfskraft</option></select></label>
+              <label>Portalrolle<select name="role"><option value="teamlead">Teamleitung</option><option value="staff" selected>Mitarbeiter</option><option value="helper">Hilfskraft</option></select></label>
+              <label class="check-label"><input name="loginEnabled" type="checkbox" checked> Portal-Login aktiv</label>
+              <label>Start-/neues Passwort<input name="password" type="password" autocomplete="new-password" placeholder="bei Änderung optional; mind. 4 Zeichen"></label>
+              <label>Reset-Code<input name="recoveryCode" autocomplete="off" placeholder="z.B. Jana-Reset-2026"></label>
+
+              <div class="employee-form-section wide">
+                <h3>Standard-Arbeitsvergütung</h3>
+                <div class="employee-form-grid">
+                  <label>Standardmodell
+                    <select name="defaultPayType">
+                      <option value="none">Keine automatische Arbeitsvergütung</option>
+                      <option value="hourly">Stundenlohn</option>
+                      <option value="fixed">Fixbetrag pro Auftrag</option>
+                    </select>
+                  </label>
+                  <label data-hourly-rate-field>Standard-Stundenlohn CHF<input name="defaultHourlyRate" type="number" min="0" step="0.05" inputmode="decimal" placeholder="z.B. 25"></label>
+                </div>
+                <p class="hint">Bei Fixbetrag wird hier bewusst kein Betrag hinterlegt. Der konkrete Betrag und die dokumentierten Stunden werden pro Auftrag eingetragen.</p>
+              </div>
+
+              <div class="employee-form-section wide">
+                <h3>Standard-Akquiseprovision</h3>
+                <p class="hint">Gilt, wenn diese Person einen Lead/Kunden bringt. Sie ist unabhängig davon, ob die Person später am Auftrag arbeitet.</p>
+                <div class="employee-form-grid">
+                  <label>Erster bezahlter Auftrag %<input name="firstCommissionPct" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="30"></label>
+                  <label>Folgeaufträge %<input name="repeatCommissionPct" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="10"></label>
+                  <label>Max. vergütete Aufträge<input name="maxCommissionJobs" type="number" min="0" step="1" inputmode="numeric" placeholder="0 = unbegrenzt"></label>
+                  <label class="check-label"><input name="commissionActive" type="checkbox"> Provision aktiv</label>
+                </div>
+              </div>
+
+              <div class="employee-form-section wide">
+                <h3>Benutzerrechte</h3>
+                <div class="permission-grid">
+                  <label class="check-label"><input name="permCreateLeads" type="checkbox"> Leads erstellen und eigene Leads bearbeiten</label>
+                  <label class="check-label"><input name="permViewAllOperational" type="checkbox"> Alle Leads, Jobs und Kunden sehen</label>
+                  <label class="check-label"><input name="permContactCustomers" type="checkbox"> Kundentelefon anzeigen / anrufen</label>
+                  <label class="check-label"><input name="permUpdateJobs" type="checkbox"> Zugewiesene Jobs bearbeiten</label>
+                  <label class="check-label"><input name="permUploadPhotos" type="checkbox"> Vorher-/Nachher-Fotos hochladen</label>
+                  <label class="check-label"><input name="permViewJobAmount" type="checkbox"> Auftragsbetrag sehen</label>
+                  <label class="check-label"><input name="permViewOwnCompensation" type="checkbox"> Eigene Vergütung sehen</label>
+                  <label class="check-label"><input name="permViewCustomerHistory" type="checkbox"> Zugewiesene Kundenhistorie sehen</label>
+                </div>
+              </div>
+              <div class="button-row wide">
+                <button class="primary" type="button" data-save-user>Mitarbeiter speichern</button>
+                <button class="secondary" type="button" data-cancel-user-edit hidden>Bearbeitung abbrechen</button>
+              </div>
+            </div>
+          </article>
+          <article class="today-card employee-list-card">
+            <div class="panel-head slim"><div><h2>Team</h2><p class="muted">Aktive und inaktive Mitarbeiter mit Kontakt, Login und Vergütungsmodell.</p></div></div>
+            <div data-user-list class="list compact"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="content" data-admin-only>
+        <div class="panel-head">
+          <div>
+            <h2>Website-Inhalte</h2>
+            <p class="muted">Homepage, Empfehlungsseite sowie Impressum, Datenschutz und Cookies bearbeiten, ohne HTML zu ändern. Jeder Abschnitt wird separat gespeichert und veröffentlicht.</p>
+          </div>
+          <button class="secondary" type="button" data-refresh-content>Aktuelle Inhalte laden</button>
+        </div>
+        <div class="content-info-card">
+          <strong>Sicherer Inhaltsmodus</strong>
+          <p>Layout, Funktionen und Code bleiben unverändert. Bearbeitet werden nur freigegebene Texte, Links und Bilder. Bestehende lokale Bilder verwenden vollständige HTTPS-Links unter https://lumianservices.ch/assets/img/. Neue Uploads werden vor dem Speichern automatisch komprimiert und im bestehenden Drive-Unterordner WebsiteMedia gespeichert; die statischen Inhalte bleiben als Fallback erhalten.</p>
+        </div>
+        <div class="content-page-switch" role="tablist" aria-label="Website-Seite wählen">
+          <button class="secondary active" type="button" data-content-page="home">Homepage</button>
+          <button class="secondary" type="button" data-content-page="referral">Empfehlungsseite</button>
+          <button class="secondary" type="button" data-content-page="gallery">Galerie</button>
+          <button class="secondary" type="button" data-content-page="imprint">Impressum</button>
+          <button class="secondary" type="button" data-content-page="privacy">Datenschutz</button>
+          <button class="secondary" type="button" data-content-page="cookies">Cookies</button>
+        </div>
+        <div data-content-editor class="content-editor"></div>
+      </section>
+
       <section class="panel" data-panel="settings">
         <div class="panel-head">
           <div>
             <h2>Einstellungen</h2>
-            <p class="muted">Bonus, Texte, Google Review, Google Sheet, Drive, Passwort, Biometrie und Backup.</p>
+            <p class="muted" data-settings-description>Persönliches Passwort und Biometrie. Admins verwalten zusätzlich Bonusregeln, WhatsApp, Google Sheet, Drive und Backups.</p>
           </div>
           <div class="panel-actions">
-            <button class="primary setup-save-top" type="submit" form="settings-form">Einstellungen speichern</button>
+            <button class="primary setup-save-top" type="submit" form="settings-form" data-admin-only>Einstellungen speichern</button>
             <button class="secondary danger" data-logout type="button">Logout</button>
           </div>
         </div>
 
-        <div class="mode-strip" data-mode-strip>
+        <div class="mode-strip" data-mode-strip data-admin-only>
           <strong>Portal-Modus:</strong> <span class="mode-badge" data-portal-mode-label>TESTBETRIEB</span>
           <p class="hint">Testbetrieb ist für Übungsdaten. Vor echtem Start: Testdaten löschen & produktiv starten. Danach bleibt der Produktivmodus sichtbar.</p>
         </div>
@@ -379,46 +529,13 @@
             </label>
             <div class="button-row vertical">
               <button class="secondary" type="button" data-change-password>Passwort ändern</button>
+              <button class="secondary" type="button" data-save-personal-security>Persönlichen Reset-Code speichern</button>
               <button class="secondary" type="button" data-enable-biometric>Face ID / Touch ID auf diesem Gerät aktivieren</button>
               <button class="secondary" type="button" data-disable-biometric>Biometrie entfernen</button>
             </div>
-            <p class="hint">Jeder Benutzer hat seinen eigenen Reset-Code. Nur Admins können Passwörter ändern und neue Mitarbeiter anlegen.</p>
+            <p class="hint">Jeder Portal-Benutzer kann hier sein eigenes Passwort ändern und Biometrie/Passkey auf seinem Gerät aktivieren oder entfernen. Admins können im Bereich Mitarbeiter jederzeit ein neues Startpasswort setzen oder den Login deaktivieren.</p>
           </fieldset>
 
-              <fieldset data-admin-only>
-            <legend>Benutzer & Rechte</legend>
-            <p class="hint">Noah und Timo sind Admins. Neue Mitarbeiter sehen nur Übersicht, Leads, Jobs und Kunden. Buchhaltung, Bonus und volle Einstellungen bleiben Admins vorbehalten.</p>
-            <div class="user-mini-form" data-user-form>
-              <label>Benutzername
-                <input name="userId" autocomplete="off" placeholder="z.B. jana">
-              </label>
-              <label>Anzeigename
-                <input name="name" autocomplete="name" placeholder="z.B. Jana">
-              </label>
-              <label>Initial / Avatar
-                <input name="emoji" maxlength="2" placeholder="J">
-              </label>
-              <label>Start-Passwort
-                <input name="password" type="password" autocomplete="new-password" placeholder="mind. 4 Zeichen">
-              </label>
-              <label>Reset-Code
-                <input name="recoveryCode" autocomplete="off" placeholder="z.B. Jana-Reset-2026">
-              </label>
-              <label>Rolle
-                <select name="role">
-                  <option value="staff">Mitarbeiter: Übersicht, Leads, Jobs, Kunden</option>
-                </select>
-              </label>
-              <button class="primary" type="button" data-save-user>Mitarbeiter speichern</button>
-            </div>
-            <div data-user-list class="list compact"></div>
-          </fieldset>
-
-
-            </div>
-          </div>
-
-          <div class="setup-sensitive-bottom" data-admin-only>
             <fieldset data-admin-only data-lock-section="cloud" class="locked-fieldset">
             <legend>Google Sheet / Drive</legend>
             <div class="lock-toolbar">
@@ -436,7 +553,7 @@
             <label>Google Drive Folder ID für Portal-Backups
               <input name="backupFolderId" placeholder="optional, für automatische JSON-Backups">
             </label>
-            <p class="hint">Fotos werden beim Sync komprimiert und so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Im Portal werden danach Drive-Vorschauen angezeigt. Termine werden im Lumian Google Calendar erstellt oder beim Ändern des Termins aktualisiert, nicht doppelt angelegt. Wichtig: Der iCal-Link ist nur zum Lesen. Für automatisches Erstellen braucht Apps Script Schreibzugriff auf den Kalender lumianservices@gmail.com. Trage deshalb als Calendar ID am besten direkt lumianservices@gmail.com ein.</p>
+            <p class="hint">Fotos werden beim Sync komprimiert und so gespeichert: Drive-Hauptordner → Kundenordner mit Lumian-Nr. z.B. LM1001 → Jxxxx_before.jpg / Jxxxx_after.jpg. Neue oder ersetzte Website-Bilder werden automatisch im Unterordner WebsiteMedia desselben Drive-Hauptordners abgelegt; der Ordner wird vom Apps Script selbst erstellt. Die bereits vorhandenen Bilder in assets/img und assets/img/gallery bleiben als Fallback bestehen. Termine werden im Lumian Google Calendar erstellt oder beim Ändern des Termins aktualisiert, nicht doppelt angelegt. Wichtig: Der iCal-Link ist nur zum Lesen. Für automatisches Erstellen braucht Apps Script Schreibzugriff auf den Kalender lumianservices@gmail.com. Trage deshalb als Calendar ID am besten direkt lumianservices@gmail.com ein.</p>
             <label>Google Calendar ID
               <input name="calendarId" placeholder="lumianservices@gmail.com">
             </label>
@@ -448,7 +565,10 @@
             <p class="hint">Google/Drive IDs werden erst mit dem separaten Speichern-Button übernommen. Sync und Refresh sind oben neben Logout immer verfügbar.</p>
             </div>
           </fieldset>
+            </div>
+          </div>
 
+          <div class="setup-sensitive-bottom" data-admin-only>
             <fieldset data-admin-only data-lock-section="backup" class="locked-fieldset danger-zone">
             <legend>Daten, Import & Backup</legend>
             <div class="lock-toolbar">
@@ -481,7 +601,7 @@
               <button class="secondary danger" type="button" data-reset-demo>Lokalen Cache löschen & Cloud neu laden</button>
               <button class="secondary danger" type="button" data-reset-cloud>Testdaten löschen & produktiv starten</button>
             </div>
-            <p class="hint">Lokales Komplettbackup speichert eine ZIP-Datei direkt auf diesem Gerät. Darin sind Kunden, Leads, Jobs, Buchhaltung und Bonus als Excel-Dateien sowie der komplette Portal-Stand als JSON für eine spätere Wiederherstellung enthalten. Importiert wird für die Wiederherstellung am sichersten die ZIP oder die JSON-Datei. Web-App Cache erneuern löscht nur zwischengespeicherte App-Dateien auf diesem Gerät und lädt die Portal-Version neu. Geschäftsdaten bleiben erhalten. Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter und Einstellungen.</p>
+            <p class="hint">Lokales Komplettbackup speichert eine ZIP-Datei direkt auf diesem Gerät. Darin sind Mitarbeiter, Kunden, Leads, Jobs, Vergütungen, Buchhaltung, Bonus, Website-Inhalte und Galerie als Excel-Dateien sowie der komplette Portal-Stand als JSON für eine spätere Wiederherstellung enthalten. Importiert wird für die Wiederherstellung am sichersten die ZIP oder die JSON-Datei. Web-App Cache erneuern löscht nur zwischengespeicherte App-Dateien auf diesem Gerät und lädt die Portal-Version neu. Geschäftsdaten bleiben erhalten. Lokalen Cache löschen betrifft nur dieses Gerät und lädt danach die Cloud neu. Testdaten löschen & produktiv starten erstellt zuerst ein Drive-Backup, löscht Leads, Jobs, Kunden, Bonus und Buchhaltung, behält aber Benutzer, Passwörter, Einstellungen und veröffentlichte Website-Inhalte.</p>
             </div>
           </fieldset>
           </div>
@@ -504,6 +624,8 @@
         <label>PLZ / Ort<input name="place" autocomplete="address-level2" placeholder="z.B. 5600 Lenzburg"></label>
         <label>Service<select name="service"><option>Fensterreinigung</option><option>Dachrinnenreinigung</option><option>Dachreinigung</option><option>Solaranlagenreinigung</option><option>Storen / Rollläden</option><option>Terrasse / Balkon</option><option>Umzugsreinigung</option><option>Kombination / weiss noch nicht</option></select></label>
         <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
+        <label>Kunde/Lead gewonnen durch<select name="acquiredBy" data-employee-select></select></label>
+        <label>Zuständig für diesen Lead<select name="leadAssignedTo" data-employee-select></select></label>
         <label>Betrag/Schätzung CHF<input name="expectedValue" type="number" min="0" step="10" placeholder="350"></label>
         <label>Besichtigung/Termin<input name="appointmentAt" type="datetime-local" data-ch-datetime lang="de-CH"></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
@@ -511,6 +633,7 @@
           <input name="referredById" type="hidden">
           <div class="suggestions" data-ref-suggestions="lead" hidden></div>
         </label>
+        <div class="wide acquisition-summary" data-lead-commission-summary></div>
         <label class="wide">Notizen<textarea name="notes" rows="3" placeholder="Fotos per WhatsApp, Zugang, Besonderheiten..."></textarea></label>
       </div>
       <footer>
@@ -551,7 +674,8 @@
       <input type="hidden" name="jobId">
       <input type="hidden" name="leadId">
       <input type="hidden" name="personId">
-      <p class="hint">Job = Termin/Besichtigung/Reinigung. Ein Job wird erst abgeschlossen und zum Kunden, wenn die Zahlung bezahlt/bestätigt ist. Offene Jobs zählen als voraussichtlich.</p>
+      <p class="hint">Job = Auftrag/Termin. Jeder Job erhält automatisch eine eindeutige Auftragsnummer wie J0001. Ein Auftrag wird erst abgeschlossen und zum Kunden, wenn die Zahlung bezahlt/bestätigt ist.</p>
+      <div class="order-number-strip" data-job-order-number>Neue Auftragsnummer wird beim Speichern vergeben</div>
       <div class="form-grid">
         <label class="wide autocomplete-wrap">Bestehenden Lead/Kunden suchen
           <input name="personSearch" data-person-search="job" autocomplete="off" placeholder="Name, Telefon oder LM-Nr. tippen – z.B. Müller oder LM1001">
@@ -567,13 +691,24 @@
         <label>Termin<input name="appointmentAt" type="datetime-local" data-ch-datetime lang="de-CH"></label>
         <label>Fixer Betrag CHF<input name="amount" type="number" min="0" step="10" placeholder="350"></label>
         <label>Status<select name="status"><option value="Geplant">Geplant</option><option value="Bestätigt">Bestätigt</option><option value="Bezahlt">Bezahlt / Job abgeschlossen / wird Kunde</option><option value="Abgesagt">Abgesagt</option></select></label>
-        <label>Zuständig<select name="assignedTo" data-assigned-select></select></label>
-        <label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select></label>
+        <fieldset class="wide job-team-compensation" data-job-team-section data-admin-only>
+          <legend>Team &amp; Arbeitsvergütung</legend>
+          <label>Hauptverantwortlich<select name="assignedTo" data-assigned-select></select></label>
+          <div class="team-assignment-block">
+            <div class="field-label">Mitarbeiter auswählen</div>
+            <div class="employee-check-grid" data-team-member-options></div>
+            <p class="hint">Jede Person wird nur einmal gewählt. Danach erscheint automatisch ihre Arbeitskarte. Stunden werden immer dokumentiert; berechnet wird entweder Fixlohn oder Stundenlohn.</p>
+          </div>
+          <div data-team-compensation-list class="team-compensation-list"></div>
+          <div class="compensation-total" data-job-compensation-total></div>
+        </fieldset>
+        <label data-job-source-label>Quelle<select name="source"><option>Google</option><option>Google Maps</option><option>Website</option><option>WhatsApp</option><option>Tür-zu-Tür</option><option>Flyer</option><option>Empfehlung</option><option>Bestehender Kunde</option><option>Andere</option></select><small data-job-source-note></small></label>
         <label class="wide autocomplete-wrap">Empfohlen von Kunde
           <input name="referredBySearch" data-ref-search="job" autocomplete="off" placeholder="Name oder LM-Nr. tippen">
           <input name="referredById" type="hidden">
           <div class="suggestions" data-ref-suggestions="job" hidden></div>
         </label>
+        <div class="wide acquisition-summary" data-job-acquisition-summary></div>
         <label class="wide">Notizen<textarea name="notes" rows="3"></textarea></label>
         <label>Vorher Foto<input name="beforePhoto" type="file" accept="image/*" capture="environment"></label>
         <label>Nachher Foto<input name="afterPhoto" type="file" accept="image/*" capture="environment"></label>
@@ -581,8 +716,24 @@
       </div>
       <footer>
         <button type="button" class="secondary" data-close-modal>Abbrechen</button>
+        <button class="secondary" type="submit" data-save-notify-team>Speichern &amp; Team informieren</button>
         <button class="primary" type="submit">Job speichern</button>
       </footer>
+    </form>
+  </dialog>
+
+  <dialog data-commission-dialog class="modal">
+    <form method="dialog" class="modal-card small" data-commission-form novalidate>
+      <header><h2>Akquiseprovision bearbeiten</h2><button type="button" data-close-modal>×</button></header>
+      <input type="hidden" name="personId">
+      <p class="hint" data-commission-customer-label></p>
+      <label>Mitarbeiter<select name="employeeId" data-employee-select></select></label>
+      <label>Erster Auftrag %<input name="firstPct" type="number" min="0" max="100" step="0.1" inputmode="decimal"></label>
+      <label>Folgeaufträge %<input name="repeatPct" type="number" min="0" max="100" step="0.1" inputmode="decimal"></label>
+      <label>Max. vergütete Aufträge<input name="maxJobs" type="number" min="0" step="1" inputmode="numeric" placeholder="0 = unbegrenzt"></label>
+      <label class="check-label"><input name="active" type="checkbox"> Provision für neue Aufträge aktiv</label>
+      <p class="hint">Bereits erzeugte Lohnbuchungen bleiben erhalten. Deaktivieren stoppt nur neue Provisionspositionen.</p>
+      <footer><button type="button" class="secondary" data-close-modal>Abbrechen</button><button class="primary" type="submit">Speichern</button></footer>
     </form>
   </dialog>
 
@@ -613,6 +764,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=81"></script>
+  <script src="portal.js?v=104"></script>
 </body>
 </html>

@@ -29,17 +29,158 @@
   function normalizeUserId(value) {
     return String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   }
+  const ROLE_PRESETS = {
+    admin: {
+      createLeads:true, viewAllOperational:true, contactCustomers:true, updateJobs:true,
+      uploadPhotos:true, viewJobAmount:true, viewOwnCompensation:true, viewCustomerHistory:true
+    },
+    teamlead: {
+      createLeads:true, viewAllOperational:true, contactCustomers:true, updateJobs:true,
+      uploadPhotos:true, viewJobAmount:true, viewOwnCompensation:true, viewCustomerHistory:true
+    },
+    staff: {
+      createLeads:true, viewAllOperational:false, contactCustomers:true, updateJobs:true,
+      uploadPhotos:true, viewJobAmount:false, viewOwnCompensation:true, viewCustomerHistory:true
+    },
+    helper: {
+      createLeads:false, viewAllOperational:false, contactCustomers:true, updateJobs:false,
+      uploadPhotos:true, viewJobAmount:false, viewOwnCompensation:true, viewCustomerHistory:false
+    }
+  };
+  function normalizedRole(role, id = '') {
+    if (ADMIN_IDS.includes(id) || role === 'admin') return 'admin';
+    return ['teamlead','staff','helper'].includes(role) ? role : 'staff';
+  }
+  function roleLabel(role) {
+    return ({ admin:'Admin · volle Rechte', teamlead:'Teamleitung', staff:'Mitarbeiter', helper:'Hilfskraft' })[role] || 'Mitarbeiter';
+  }
+  function defaultPermissionsForRole(role) { return { ...(ROLE_PRESETS[normalizedRole(role)] || ROLE_PRESETS.staff) }; }
+  function normalizePermissions(role, permissions = {}) { return { ...defaultPermissionsForRole(role), ...(permissions || {}) }; }
+  function normalizeCompensationDefaults(raw = {}) {
+    const hourlyRate = amountValue(raw.hourlyRate || raw.defaultHourlyRate || 0);
+    const legacyFixed = amountValue(raw.fixedAmount || raw.defaultFixedAmount || 0);
+    let workPayType = String(raw.workPayType || raw.defaultPayType || '').toLowerCase();
+    if (!['none','hourly','fixed'].includes(workPayType)) workPayType = hourlyRate > 0 ? 'hourly' : (legacyFixed > 0 ? 'fixed' : 'none');
+    return {
+      workPayType,
+      hourlyRate,
+      firstCommissionPct: Math.max(0, Math.min(100, amountValue(raw.firstCommissionPct || 0))),
+      repeatCommissionPct: Math.max(0, Math.min(100, amountValue(raw.repeatCommissionPct || 0))),
+      maxCommissionJobs: Math.max(0, Math.floor(amountValue(raw.maxCommissionJobs || 0))),
+      commissionActive: raw.commissionActive === true || raw.commissionActive === 'true'
+    };
+  }
+  function normalizeEmployeeUser(u = {}, fallback = {}) {
+    const id = normalizeUserId(u.id || fallback.id || '');
+    const role = normalizedRole(u.role || fallback.role, id);
+    const name = String(u.name || fallback.name || id || 'Mitarbeiter').trim();
+    const loginEnabled = u.loginEnabled !== undefined ? u.loginEnabled !== false : u.active !== false;
+    return {
+      ...fallback, ...u, id, name,
+      emoji: String(u.emoji || fallback.emoji || name.slice(0,1).toUpperCase()).slice(0,2),
+      role,
+      employeeType: u.employeeType === 'temporary' || role === 'helper' ? 'temporary' : 'fixed',
+      phone: String(u.phone || '').trim(),
+      email: String(u.email || '').trim(),
+      employmentActive: u.employmentActive !== false,
+      loginEnabled,
+      active: loginEnabled,
+      permissions: normalizePermissions(role, u.permissions),
+      compensationDefaults: normalizeCompensationDefaults(u.compensationDefaults || u),
+      passwordHash: u.passwordHash || '', salt: u.salt || '',
+      credentialId: u.credentialId || '', credentialUserHandle: u.credentialUserHandle || '',
+      recoveryCode: u.recoveryCode || `${name}-Reset-2026`
+    };
+  }
   function isAdmin(id = currentUser) {
     const u = state?.users?.find?.(x => x.id === id);
     return ADMIN_IDS.includes(id) || u?.role === 'admin';
   }
-  function activeUsers() {
-    return (state?.users || []).filter(u => u.active !== false);
+  function employeeUsers() { return (state?.users || []).filter(u => u.employmentActive !== false); }
+  function activeUsers() { return employeeUsers(); }
+  function loginUsers() { return employeeUsers().filter(u => u.loginEnabled !== false && u.active !== false); }
+  function userPermissions(id = currentUser) {
+    const u = state?.users?.find?.(x => x.id === id);
+    if (isAdmin(id)) return { ...ROLE_PRESETS.admin };
+    return normalizePermissions(u?.role || 'staff', u?.permissions || {});
   }
+  function hasPermission(key, id = currentUser) { return !!userPermissions(id)[key]; }
+  function canCreateJobs(id = currentUser) { return isAdmin(id) || normalizedRole(state?.users?.find?.(u=>u.id===id)?.role) === 'teamlead'; }
   function canAccessTab(tab) {
     if (isAdmin()) return true;
-    return ['dashboard','leads','jobs','customers'].includes(tab);
+    if (tab === 'dashboard' || tab === 'jobs') return true;
+    if (tab === 'leads') return hasPermission('createLeads') || visibleLeads().length > 0;
+    if (tab === 'customers') return hasPermission('viewCustomerHistory') || visibleCustomers().length > 0;
+    if (tab === 'settings') return true;
+    return false;
   }
+
+  function normalizeCommissionAgreement(raw = {}, employeeId = '') {
+    const id = normalizeUserId(raw.employeeId || employeeId || '');
+    return {
+      employeeId: id,
+      firstPct: Math.max(0, Math.min(100, amountValue(raw.firstPct ?? raw.firstCommissionPct ?? 0))),
+      repeatPct: Math.max(0, Math.min(100, amountValue(raw.repeatPct ?? raw.repeatCommissionPct ?? 0))),
+      maxJobs: Math.max(0, Math.floor(amountValue(raw.maxJobs ?? raw.maxCommissionJobs ?? 0))),
+      active: raw.active !== false && raw.commissionActive !== false && !!id,
+      stoppedAt: raw.stoppedAt || '',
+      createdAt: raw.createdAt || '',
+      updatedAt: raw.updatedAt || ''
+    };
+  }
+  function commissionAgreementFromEmployee(employeeId) {
+    const u = state?.users?.find?.(x => x.id === employeeId);
+    const d = normalizeCompensationDefaults(u?.compensationDefaults || {});
+    return normalizeCommissionAgreement({
+      employeeId,
+      firstPct:d.firstCommissionPct,
+      repeatPct:d.repeatCommissionPct,
+      maxJobs:d.maxCommissionJobs,
+      active:d.commissionActive,
+      createdAt:new Date().toISOString()
+    }, employeeId);
+  }
+  function normalizeCompensationLine(line = {}, index = 0) {
+    const type = ['none','fixed','hourly','commission'].includes(line.type) ? line.type : 'none';
+    const id = String(line.id || `line-${Date.now()}-${index}-${Math.random().toString(36).slice(2,6)}`);
+    const hours = Math.max(0, amountValue(line.hours || 0));
+    const rate = Math.max(0, amountValue(line.rate || 0));
+    const percent = Math.max(0, Math.min(100, amountValue(line.percent || 0)));
+    const baseAmount = amountValue(line.baseAmount || 0);
+    let amount = amountValue(line.amount || 0);
+    if (type === 'hourly') amount = Math.round(hours * rate * 100) / 100;
+    if (type === 'commission' && !amount && percent && baseAmount) amount = Math.round(baseAmount * percent) / 100;
+    return {
+      ...line, id, type,
+      employeeId: normalizeUserId(line.employeeId || ''),
+      amount, hours, rate, percent, baseAmount,
+      automatic: line.automatic === true,
+      description: String(line.description || '')
+    };
+  }
+  function normalizePersonRecord(p = {}) {
+    const agreement = p.acquisitionAgreement?.employeeId ? normalizeCommissionAgreement(p.acquisitionAgreement) : null;
+    return { email:'', contactStatus:'Aktiv', ...p, acquisitionAgreement:agreement };
+  }
+  function normalizeLeadRecord(l = {}) {
+    const acquiredBy = normalizeUserId(l.acquiredBy || l.leadOwner || l.createdBy || '');
+    return {
+      ...l, acquiredBy, assignedTo:normalizeUserId(l.assignedTo || l.createdBy || acquiredBy || ''),
+      commissionAgreement:l.commissionAgreement?.employeeId ? normalizeCommissionAgreement(l.commissionAgreement, acquiredBy) : null
+    };
+  }
+  function normalizeJobRecord(j = {}) {
+    const team = Array.from(new Set([...(Array.isArray(j.teamMemberIds) ? j.teamMemberIds : []), j.assignedTo].filter(Boolean).map(normalizeUserId)));
+    return {
+      ...j,
+      acquiredBy:normalizeUserId(j.acquiredBy || ''),
+      assignedTo:normalizeUserId(j.assignedTo || j.createdBy || ''),
+      teamMemberIds:team,
+      commissionAgreement:j.commissionAgreement?.employeeId ? normalizeCommissionAgreement(j.commissionAgreement, j.acquiredBy) : null,
+      compensationLines:Array.isArray(j.compensationLines) ? j.compensationLines.map(normalizeCompensationLine) : []
+    };
+  }
+
   const DEFAULT_SETTINGS = {
     bonusAmount: 50,
     minOrder: 300,
@@ -57,6 +198,181 @@
     reviewTemplate: 'Hoi {{name}}, danke nochmals für dein Vertrauen in Lumian Services.\n\nWenn du mit unserer Arbeit zufrieden warst, freuen wir uns sehr über eine kurze Google-Bewertung. Das hilft uns als junges Schweizer Unternehmen enorm.\n\nHier direkt bewerten:\n{{googleReviewLink}}\n\nLiebe Grüsse\nLumian Services'
   };
 
+  const DEFAULT_GALLERY = [
+    { id:'g1', src:'https://lumianservices.ch/assets/img/gallery/01-before-after.jpg', title:'Vorher / Nachher', caption:'Fenster wieder klar – der Unterschied ist sofort sichtbar.' },
+    { id:'g2', src:'https://lumianservices.ch/assets/img/gallery/02-window-after.jpg', title:'Klares Finish', caption:'Glasflächen sauber gereinigt und frisch im Look.' },
+    { id:'g3', src:'https://lumianservices.ch/assets/img/gallery/03-balcony-glass.jpg', title:'Balkon & Glas', caption:'Balkon- und Glasflächen mit sauberem Finish.' },
+    { id:'g4', src:'https://lumianservices.ch/assets/img/gallery/04-terrace-work.jpg', title:'Aussenbereich', caption:'Aussenreinigung direkt vor Ort – unkompliziert und sauber.' },
+    { id:'g5', src:'https://lumianservices.ch/assets/img/gallery/05-inside-window.jpg', title:'Innenfenster', caption:'Rahmen, Glas und Innenflächen sorgfältig gepflegt.' },
+    { id:'g6', src:'https://lumianservices.ch/assets/img/gallery/06-high-window.jpg', title:'Hohe Fenster', caption:'Auch schwer erreichbare Flächen werden sauber bearbeitet.' }
+  ];
+  const WEBSITE_CONTENT_SECTIONS = [
+    { page:'home', id:'hero', title:'Homepage · Hero', fields:[
+      ['home.hero.eyebrow','Leistungszeile','text'],['home.hero.title','Hauptüberschrift','textarea'],['home.hero.lead','Einleitung','textarea'],
+      ['home.hero.primaryText','Primärer Button','text'],['home.hero.primaryHref','Primärer Button-Link','url'],['home.hero.whatsappText','WhatsApp Button','text'],['home.hero.whatsappHref','WhatsApp Link','url'],
+      ['home.hero.image','Hero-Logo/Bild','image'],['global.logo','Website-Logo dunkel','image'],
+      ['home.nav.story','Navigation: Story','text'],['home.nav.services','Navigation: Angebot','text'],['home.nav.gallery','Navigation: Galerie','text'],['home.nav.referral','Navigation: Danke-Programm','text'],['home.nav.faq','Navigation: FAQ','text'],['home.nav.redeem','Navigation: Danke-Code','text'],['home.nav.cta','Navigation: Offerte','text'],
+      ['home.hero.trust1','Vorteil 1','text'],['home.hero.trust2','Vorteil 2','text'],['home.hero.trust3','Vorteil 3','text'],['home.hero.pill','Text am Hero-Bild','text'],
+      ['home.hero.mini1Title','Mini-Karte 1 Titel','text'],['home.hero.mini1Text','Mini-Karte 1 Text','text'],['home.hero.mini2Title','Mini-Karte 2 Titel','text'],['home.hero.mini2Text','Mini-Karte 2 Text','text'],['home.hero.mini3Title','Mini-Karte 3 Titel','text'],['home.hero.mini3Text','Mini-Karte 3 Text','text']
+    ]},
+    { page:'home', id:'story', title:'Homepage · Story & Team', fields:[
+      ['home.story.kicker','Bereichstitel','text'],['home.story.title','Überschrift','textarea'],['home.story.p1','Text 1','textarea'],['home.story.p2','Text 2','textarea'],
+      ['home.story.noahName','Name Noah','text'],['home.story.noahImage','Bild Noah','image'],['home.story.timoName','Name Timo','text'],['home.story.timoImage','Bild Timo','image']
+    ]},
+    { page:'home', id:'referral', title:'Homepage · Danke-Programm', fields:[
+      ['home.referral.kicker','Bereichstitel','text'],['home.referral.title','Überschrift','textarea'],['home.referral.text','Einleitung','textarea'],['home.referral.highlight','Hervorgehobener Text','textarea'],
+      ['home.referral.ticketTitle','Ticket-Titel','text'],['home.referral.ticketValue','Ticket-Vorteil','text'],['home.referral.ticketCondition','Ticket-Bedingung','text'],['home.referral.smallPrint','Kleingedrucktes','textarea']
+    ]},
+    { page:'home', id:'services', title:'Homepage · Angebot', fields:[
+      ['home.services.kicker','Bereichstitel','text'],['home.services.title','Überschrift','text'],['home.services.intro','Einleitung','textarea'],
+      ['home.services.1.title','Service 1 Titel','text'],['home.services.1.text','Service 1 Text','textarea'],['home.services.2.title','Service 2 Titel','text'],['home.services.2.text','Service 2 Text','textarea'],
+      ['home.services.3.title','Service 3 Titel','text'],['home.services.3.text','Service 3 Text','textarea'],['home.services.4.title','Service 4 Titel','text'],['home.services.4.text','Service 4 Text','textarea'],
+      ['home.services.5.title','Service 5 Titel','text'],['home.services.5.text','Service 5 Text','textarea'],['home.services.6.title','Service 6 Titel','text'],['home.services.6.text','Service 6 Text','textarea']
+    ]},
+    { page:'home', id:'galleryHead', title:'Homepage · Galerie-Kopf', fields:[
+      ['home.gallery.kicker','Bereichstitel','text'],['home.gallery.title','Überschrift','text'],['home.gallery.intro','Einleitung','textarea']
+    ]},
+    { page:'home', id:'booking', title:'Homepage · Buchung & Gebiet', fields:[
+      ['home.booking.kicker','Bereichstitel','text'],['home.booking.title','Überschrift','textarea'],['home.booking.intro','Einleitung','textarea'],['home.booking.refTitle','Danke-Code Titel','text'],['home.booking.refText','Danke-Code Text','textarea'],['home.booking.refButton','Danke-Code Button','text'],['home.booking.refHref','Danke-Code Link','url'],
+      ['home.booking.bullet1','Hinweis 1','text'],['home.booking.bullet2','Hinweis 2','text'],['home.booking.bullet3','Hinweis 3','text'],['home.booking.submit','Formular-Button','text'],['home.booking.note','Formular-Hinweis','textarea'],
+      ['home.area.kicker','Gebiet Bereichstitel','text'],['home.area.title','Gebiet Überschrift','text'],['home.area.text','Gebiet Text','textarea'],['global.phoneHuman','Telefon sichtbar','text'],['global.phoneTel','Telefon-Link','url'],['global.email','E-Mail','text'],['global.emailHref','E-Mail-Link','url'],['home.area.whatsappText','Direktkontakt WhatsApp Text','text'],['global.whatsappText','Footer WhatsApp Text','text'],['global.whatsappHref','WhatsApp Link','url']
+    ]},
+    { page:'home', id:'faq', title:'Homepage · FAQ & Abschluss', fields:[
+      ['home.faq.kicker','FAQ Bereichstitel','text'],['home.faq.title','FAQ Überschrift','text'],['home.faq.intro','FAQ Einleitung','textarea'],
+      ['home.faq.1.q','Frage 1','text'],['home.faq.1.a','Antwort 1','textarea'],['home.faq.2.q','Frage 2','text'],['home.faq.2.a','Antwort 2','textarea'],['home.faq.3.q','Frage 3','text'],['home.faq.3.a','Antwort 3','textarea'],['home.faq.4.q','Frage 4','text'],['home.faq.4.a','Antwort 4','textarea'],['home.faq.5.q','Frage 5','text'],['home.faq.5.a','Antwort 5','textarea'],['home.faq.6.q','Frage 6','text'],['home.faq.6.a','Antwort 6','textarea'],
+      ['home.final.title','Abschlussüberschrift','textarea'],['home.final.button','Abschlussbutton','text'],['home.final.href','Abschlusslink','url'],
+      ['home.app.kicker','App Bereichstitel','text'],['home.app.title','App Überschrift','text'],['home.app.text','App Text','textarea'],['home.app.button','App Button','text'],
+      ['global.footerText','Footer-Text','text'],['global.footerContactTitle','Footer: Kontakt Titel','text'],['global.footerLegalTitle','Footer: Rechtliches Titel','text'],['global.footerImprintText','Footer: Impressum Text','text'],['global.footerImprintHref','Footer: Impressum Link','url'],['global.footerPrivacyText','Footer: Datenschutz Text','text'],['global.footerPrivacyHref','Footer: Datenschutz Link','url'],['global.footerCookiesText','Footer: Cookies Text','text'],['global.footerCookiesHref','Footer: Cookies Link','url'],['global.footerBookingText','Footer: Buchungshinweise Text','text'],['global.footerBookingHref','Footer: Buchungshinweise Link','url'],['global.copyright','Copyright','text']
+    ]},
+    { page:'referral', id:'refHero', title:'Empfehlungsseite · Inhalt', fields:[
+      ['referral.kicker','Bereichstitel','text'],['referral.title','Hauptüberschrift','text'],['referral.lead','Einleitung','textarea'],['referral.missingTitle','Kein Code Titel','text'],['referral.missingText','Kein Code Text','textarea'],
+      ['referral.flowTitle','Ablauf Titel','text'],['referral.flowText','Ablauf Text','textarea'],['referral.headerBrand','Header Markenname','text'],['referral.backText','Zur Website Button','text'],['referral.backHref','Zur Website Link','url'],['referral.detectedTitle','Erkannter Code Titel','text'],['referral.detectedNote','Erkannter Code Hinweis','text'],['referral.bullet1','Hinweis 1','text'],['referral.bullet2','Hinweis 2','text'],['referral.bullet3','Hinweis 3','text'],['referral.submitText','Formular-Button','text'],['referral.formNote','Formular-Hinweis','textarea'],['global.logo','Logo','image'],['global.footerText','Footer-Text','text'],['global.footerContactTitle','Footer Kontakt Titel','text'],['global.footerLegalTitle','Footer Rechtliches Titel','text'],['global.copyright','Copyright','text']
+    ]},
+    { page:'imprint', id:'imprintMain', title:'Impressum · Anbieter & Zweck', fields:[
+      ['imprint.kicker','Bereichstitel','text'],['imprint.title','Seitentitel','text'],['imprint.providerTitle','Anbieter Titel','text'],
+      ['imprint.businessName','Firmenname','text'],['imprint.owner','Inhaber','text'],['imprint.legalForm','Rechtsform','text'],['imprint.street','Strasse','text'],['imprint.city','PLZ / Ort','text'],['imprint.country','Land','text'],
+      ['imprint.purposeTitle','Zweck Titel','text'],['imprint.purpose1','Zweck Text 1','textarea'],['imprint.purpose2','Zweck Text 2','textarea']
+    ]},
+    { page:'imprint', id:'imprintTerms', title:'Impressum · Preise & Haftung', fields:[
+      ['imprint.pricesTitle','Preise Titel','text'],['imprint.prices1','Preise Text 1','textarea'],['imprint.prices2','Preise Text 2','textarea'],
+      ['imprint.contentTitle','Haftung Inhalte Titel','text'],['imprint.content1','Haftung Inhalte Text 1','textarea'],['imprint.content2','Haftung Inhalte Text 2','textarea'],
+      ['imprint.linksTitle','Externe Links Titel','text'],['imprint.links1','Externe Links Text','textarea']
+    ]},
+    { page:'imprint', id:'imprintRights', title:'Impressum · Urheberrecht & Datenschutz', fields:[
+      ['imprint.copyrightTitle','Urheberrechte Titel','text'],['imprint.copyright1','Urheberrechte Text 1','textarea'],['imprint.copyright2','Urheberrechte Text 2','textarea'],
+      ['imprint.privacyTitle','Datenschutz Titel','text'],['imprint.privacyText','Datenschutz Hinweis','textarea']
+    ]},
+    { page:'privacy', id:'privacyBasics', title:'Datenschutz · Grundlagen', fields:[
+      ['privacy.kicker','Bereichstitel','text'],['privacy.title','Seitentitel','text'],
+      ['privacy.s1Title','1. Titel','text'],['privacy.s1p1','1. Text 1','textarea'],['privacy.s1p2','1. Text 2','textarea'],
+      ['privacy.s2Title','2. Titel','text'],['privacy.s2p1','2. Text 1','textarea'],['privacy.s2p2','2. Text 2','textarea'],
+      ['privacy.s3Title','3. Titel','text'],['privacy.s3p1','3. Text 1','textarea'],['privacy.s3p2','3. Text 2','textarea']
+    ]},
+    { page:'privacy', id:'privacyServices', title:'Datenschutz · Kontakt, Hosting, Cloud & Bilder', fields:[
+      ['privacy.s4Title','4. Titel','text'],['privacy.s4p1','4. Text','textarea'],
+      ['privacy.s5Title','5. Titel','text'],['privacy.s5p1','5. Text 1','textarea'],['privacy.s5p2','5. Text 2','textarea'],
+      ['privacy.s6Title','6. Titel','text'],['privacy.s6p1','6. Text 1','textarea'],['privacy.s6p2','6. Text 2','textarea'],
+      ['privacy.s7Title','7. Titel','text'],['privacy.s7p1','7. Text 1','textarea'],['privacy.s7p2','7. Text 2','textarea']
+    ]},
+    { page:'privacy', id:'privacyRights', title:'Datenschutz · Empfänger, Aufbewahrung, Rechte & Sicherheit', fields:[
+      ['privacy.s8Title','8. Titel','text'],['privacy.s8p1','8. Text 1','textarea'],['privacy.s8p2','8. Text 2','textarea'],
+      ['privacy.s9Title','9. Titel','text'],['privacy.s9p1','9. Text','textarea'],
+      ['privacy.s10Title','10. Titel','text'],['privacy.s10p1','10. Text 1','textarea'],['privacy.s10p2','10. Text 2','textarea'],
+      ['privacy.s11Title','11. Titel','text'],['privacy.s11p1','11. Text 1','textarea'],['privacy.s11p2','Stand','text'],
+      ['privacy.localTitle','Lokale Speicherung Titel','text'],['privacy.local1','Lokale Speicherung Text 1','textarea'],['privacy.local2','Lokale Speicherung Text 2','textarea']
+    ]},
+    { page:'cookies', id:'cookiesMain', title:'Cookies & lokale Speicherung · Hinweise', fields:[
+      ['cookies.kicker','Bereichstitel','text'],['cookies.title','Seitentitel','text'],
+      ['cookies.s1Title','Technische Speicherung Titel','text'],['cookies.s1p1','Text 1','textarea'],['cookies.s1p2','Text 2','textarea'],
+      ['cookies.s2Title','App-Funktion Titel','text'],['cookies.s2p1','App-Funktion Text','textarea'],
+      ['cookies.s3Title','Externe Dienste Titel','text'],['cookies.s3p1','Externe Dienste Text','textarea'],
+      ['cookies.s4Title','Änderungen Titel','text'],['cookies.s4p1','Änderungen Text','textarea'],['cookies.s4p2','Stand','text']
+    ]}
+  ];
+  const DEFAULT_WEBSITE_VALUES = {
+    'home.hero.eyebrow':'Fensterreinigung · Storen · Dachrinnen · Dach- & Aussenreinigung','home.hero.title':'Fensterreinigung & Aussenreinigung, die man sofort sieht.','home.hero.lead':'Lumian Services reinigt Fenster, Glasflächen, Storen, Rollläden, Dachrinnen, Terrassen, Balkone und Aussenflächen für Privat- und Geschäftskunden in der Schweiz. Schnell, fair und unkompliziert per WhatsApp.','home.hero.primaryText':'Offerte in 60 Sekunden','home.hero.primaryHref':'#booking','home.hero.whatsappText':'WhatsApp starten','home.hero.whatsappHref':'https://wa.me/41772794707?text=Hoi%20Lumian%20Services%2C%20ich%20m%C3%B6chte%20eine%20Reinigung%20anfragen.',
+    'home.nav.story':'Story','home.nav.services':'Angebot','home.nav.gallery':'Galerie','home.nav.referral':'Danke-Programm','home.nav.faq':'FAQ','home.nav.redeem':'Danke-Code einlösen','home.nav.cta':'Offerte anfragen','home.hero.trust1':'⭐ 5.0 Google','home.hero.trust2':'24h Anfrage','home.hero.trust3':'Unverbindliche Kurzofferte','home.hero.pill':'Jung. Schnell. Sichtbar sauber.','home.hero.mini1Title':'Fenster','home.hero.mini1Text':'streifenarm und klar','home.hero.mini2Title':'Storen','home.hero.mini2Text':'frisch statt grau','home.hero.mini3Title':'Dachrinnen','home.hero.mini3Text':'frei und sauber',
+    'home.story.kicker':'Die Story','home.story.title':'Noah & Timo. Zwei Studenten, ein klares Ziel.','home.story.p1':'Gestartet mit kleinen Fensterreinigungen und Aussenreinigungen. Geblieben wegen dem Gefühl, wenn Kunden nachher sagen: «Wow, das sieht wieder richtig frisch aus.»','home.story.p2':'Lumian Services ist jung, direkt und unkompliziert: Fenster putzen, Storen reinigen, Dachrinnen freimachen, Balkon, Terrasse und Aussenflächen sauber liefern. Keine grosse Show. Nur ein Ergebnis, das man sofort sieht.','home.story.noahName':'Noah','home.story.timoName':'Timo',
+    'home.referral.kicker':'Danke-Programm','home.referral.title':'Empfehlen soll sich gut anfühlen.','home.referral.text':'Ihre Empfehlung ist für uns das schönste Kompliment. Deshalb bedanken wir uns mit unserem Lumian Danke-Programm.','home.referral.highlight':'Wenn Sie Lumian Services weiterempfehlen und daraus ein bezahlter Auftrag entsteht, erhalten Sie als Dankeschön eine persönliche Aufmerksamkeit. Auch Ihr empfohlener Kontakt profitiert bei der ersten passenden Buchung.','home.referral.ticketTitle':'Danke-Code','home.referral.ticketValue':'z.B. CHF 50 Vorteil','home.referral.ticketCondition':'für Neukunden bei Aufträgen ab CHF 300','home.referral.smallPrint':'Das Dankeschön kann als Rabatt, Migros Gutschein, Coop Gutschein, Lidl Gutschein oder als kleine Aufmerksamkeit erfolgen. Nicht bar auszahlbar. Details je nach Aktion.',
+    'home.services.kicker':'Angebot','home.services.title':'Glanz draussen. Ruhe drinnen.','home.services.intro':'Für Wohnungen, Einfamilienhäuser, Balkone, Terrassen, Wintergärten, Fassadenbereiche und kleinere Gewerbeflächen in Aargau, Zürich, Zug, Luzern und Umgebung.',
+    'home.services.1.title':'Fensterreinigung','home.services.1.text':'Fenster innen und aussen, Rahmen, Simse und Glasflächen. Streifenarme Fensterreinigung und Glasreinigung für Wohnungen, Häuser und kleinere Gewerbeflächen.','home.services.2.title':'Storen & Rollläden','home.services.2.text':'Storenreinigung und Rollladenreinigung gegen Staub, Pollen, Spinnweben und graue Ablagerungen, damit Fensterbereiche wieder gepflegt aussehen.','home.services.3.title':'Dachrinnen','home.services.3.text':'Dachrinnenreinigung und kleine Dachreinigung auf Anfrage: Laub, Moos und Ablagerungen entfernen, damit Wasser wieder sauber abläuft.','home.services.4.title':'Terrasse & Balkon','home.services.4.text':'Terrassenreinigung, Balkonreinigung, Geländer, Glas und Aussenbereich. Ideal vor Besuch, Sommer, Wohnungsübergabe oder Umzugsreinigung.','home.services.5.title':'Aussenreinigung','home.services.5.text':'Fassadennahe Flächen, Eingänge, Wege, Steinflächen, Solarpanel- und PV-Reinigung sowie kleine Spezialaufträge auf Anfrage.','home.services.6.title':'Quick Check','home.services.6.text':'Fotos senden, Ort nennen, Fensterzahl, Fläche oder Verschmutzung kurz beschreiben. Wir melden uns schnell mit einer Einschätzung.',
+    'home.gallery.kicker':'Galerie','home.gallery.title':'So sieht sauber aus.','home.gallery.intro':'Echte Eindrücke aus Fensterreinigung, Storenreinigung, Balkonreinigung, Terrassenreinigung und Aussenreinigung.',
+    'home.booking.kicker':'Buchen','home.booking.title':'Reinigungsanfrage in 60 Sekunden senden.','home.booking.intro':'Kurz Name, Ort und Anliegen senden. Die Anfrage öffnet WhatsApp mit allen Angaben. Lumian meldet sich persönlich, prüft Aufwand, Preis und Termin und bestätigt den Auftrag erst danach.','home.booking.refTitle':'Danke-Code erhalten?','home.booking.refText':'Wenn Sie einen Danke-Code oder Empfehlungslink erhalten haben, starten Sie hier Ihre Anfrage. Der Code wird auf der nächsten Seite automatisch erkannt oder kann manuell eingetragen werden.','home.booking.refButton':'Anfrage mit Danke-Code starten','home.booking.refHref':'empfehlung/','home.booking.bullet1':'Fotos können danach einfach per WhatsApp gesendet werden.','home.booking.bullet2':'Termin wird nach Rückbestätigung fixiert.','home.booking.bullet3':'Keine Online Zahlung nötig.','home.booking.submit':'Anfrage per WhatsApp senden','home.booking.note':'Die Anfrage ist unverbindlich. Wenn ein Empfehlungscode vorhanden ist, wird er automatisch mitgesendet.',
+    'home.area.kicker':'Gebiet','home.area.title':'Zug, Luzern & Umgebung.','home.area.text':'Lumian Services arbeitet auf Anfrage in Aargau, Zürich, Zug, Luzern, Lenzburg, Aarau, Baden, Brugg, Wohlen, Othmarsingen und Umgebung. Fotos senden, Standort nennen. Wir prüfen, ob es passt.',
+    'home.faq.kicker':'FAQ','home.faq.title':'Kurz beantwortet.','home.faq.intro':'Die wichtigsten Fragen zu Fensterreinigung, Dachrinnen, Storen, Aussenreinigung und Offerten.','home.faq.1.q':'Wie schnell bekomme ich eine Offerte?','home.faq.1.a':'Meist reicht eine kurze Beschreibung mit Fotos. Danach melden wir uns so schnell wie möglich mit einer Einschätzung oder Rückfrage.','home.faq.2.q':'Muss ich online zahlen?','home.faq.2.a':'Nein. Aktuell läuft die Bezahlung nach Absprache, zum Beispiel per TWINT, bar oder Rechnung, je nach Auftrag.','home.faq.3.q':'Ist der gebuchte Slot fix?','home.faq.3.a':'Der Slot ist eine Reservation. Fix wird der Termin, sobald Lumian Services ihn per WhatsApp, SMS, Telefon oder Mail bestätigt.','home.faq.4.q':'Was muss ich vorbereiten?','home.faq.4.a':'Am besten Fensterbereiche frei machen, Zugang klären und spezielle Stellen kurz fotografieren. Den Rest besprechen wir einfach vorher.','home.faq.5.q':'Reinigt ihr auch Storen und Dachrinnen?','home.faq.5.a':'Ja. Fensterreinigung, Glasreinigung, Storen, Rollläden, Dachrinnen, Balkon, Terrasse, fassadennahe Aussenreinigung und kleine Dach- oder Solarpanel-Reinigungen auf Anfrage gehören zu den Hauptservices.','home.faq.6.q':'Was ist das Lumian Danke-Programm?','home.faq.6.a':'Wenn Sie mit unserer Arbeit zufrieden sind und uns weiterempfehlen, können Sie einen persönlichen Danke-Code erhalten. Ihr Kontakt profitiert bei der ersten passenden Buchung und Sie erhalten nach einem erfolgreichen Auftrag ein kleines Dankeschön.','home.final.title':'Fenster wieder klar. Dachrinnen wieder frei. Aussenbereiche wieder frisch.','home.final.button':'Jetzt anfragen','home.final.href':'#booking','home.app.kicker':'Als App speichern','home.app.title':'Lumian direkt auf dem Home-Bildschirm.','home.app.text':'Speichern Sie die Website wie eine App auf dem Smartphone. So sind Kontakt, Offerte und WhatsApp immer schnell erreichbar.','home.app.button':'App-Hinweis anzeigen',
+    'referral.kicker':'Empfehlung','referral.title':'Danke-Code erhalten?','referral.lead':'Willkommen bei Lumian Services. Wenn Sie einen Danke-Code oder Empfehlungslink erhalten haben, wird der Code automatisch übernommen. Senden Sie uns kurz Ihre Angaben — wir melden uns persönlich per WhatsApp oder Telefon.','referral.missingTitle':'Kein Code erkannt?','referral.missingText':'Tragen Sie den Empfehlungs-/Danke-Code unten ein, falls Sie ihn separat erhalten haben.','referral.flowTitle':'So läuft es:','referral.flowText':'Anfrage senden → Lumian meldet sich → Termin & Preis werden persönlich bestätigt.','referral.headerBrand':'Lumian Services','referral.backText':'Zur Website','referral.backHref':'../index.html','referral.detectedTitle':'Empfehlungs-/Danke-Code erkannt','referral.detectedNote':'Dieser Code wird mit Ihrer Anfrage mitgesendet.','referral.bullet1':'Keine Online-Zahlung.','referral.bullet2':'Fotos können danach per WhatsApp gesendet werden.','referral.bullet3':'Termin erst nach persönlicher Bestätigung fix.','referral.submitText':'Anfrage per WhatsApp senden','referral.formNote':'WhatsApp öffnet sich mit allen Angaben inklusive Empfehlungs-/Danke-Code.',
+    'imprint.kicker':'Rechtliches','imprint.title':'Impressum','imprint.providerTitle':'Anbieter und Kontaktadresse','imprint.businessName':'Lumian Services','imprint.owner':'Fares Aburok','imprint.legalForm':'Einzelunternehmen','imprint.street':'Wilhalde 8A','imprint.city':'5504 Othmarsingen','imprint.country':'Schweiz',
+    'imprint.purposeTitle':'Inhalt und Zweck dieser Website','imprint.purpose1':'Diese Website informiert über die Dienstleistungen von Lumian Services. Dazu gehören insbesondere Fensterreinigung, Storenreinigung, Rollladenreinigung, Dachrinnenreinigung, Balkonreinigung, Terrassenreinigung und weitere Arbeiten im Aussenbereich.','imprint.purpose2':'Anfragen können über WhatsApp, Telefon, E-Mail oder über das Formular auf der Website gestellt werden. Eine Anfrage ist noch kein verbindlicher Auftrag. Ein Termin und ein Preis gelten erst dann als bestätigt, wenn Lumian Services dies ausdrücklich bestätigt.',
+    'imprint.pricesTitle':'Preise, Angebote und Verfügbarkeit','imprint.prices1':'Preisangaben, Beispiele, Aktionen und Verfügbarkeiten auf dieser Website sind ohne ausdrückliche Bestätigung unverbindlich. Der effektive Preis hängt vom Objekt, von der Zugänglichkeit, vom Verschmutzungsgrad, vom Sicherheitsaufwand und vom gewünschten Leistungsumfang ab.','imprint.prices2':'Individuelle Offerten werden nach Möglichkeit auf Basis von Fotos, Beschreibung und Standort erstellt. Bei unklaren Angaben kann eine Besichtigung oder eine Rückfrage nötig sein.',
+    'imprint.contentTitle':'Haftung für Inhalte','imprint.content1':'Die Inhalte dieser Website werden sorgfältig erstellt und regelmässig geprüft. Trotzdem kann Lumian Services keine Gewähr für Vollständigkeit, Richtigkeit und Aktualität übernehmen.','imprint.content2':'Änderungen an Texten, Leistungen, Preisen und Verfügbarkeiten sind jederzeit möglich.','imprint.linksTitle':'Haftung für externe Links','imprint.links1':'Diese Website kann Links zu externen Angeboten enthalten, zum Beispiel zu WhatsApp, Telefonfunktionen, E-Mail Programmen oder später zu einem Buchungstool. Für Inhalte und Datenschutz dieser externen Anbieter ist der jeweilige Anbieter verantwortlich.',
+    'imprint.copyrightTitle':'Urheberrechte','imprint.copyright1':'Texte, Bilder, Logos, Gestaltung und sonstige Inhalte dieser Website gehören Lumian Services oder werden mit entsprechender Berechtigung verwendet. Eine Verwendung, Kopie oder Veröffentlichung ist nur mit vorheriger Zustimmung erlaubt.','imprint.copyright2':'Bilder von Kundenobjekten werden nur zu Präsentationszwecken verwendet. Wenn ein Bild entfernt oder zusätzlich anonymisiert werden soll, genügt eine kurze Nachricht an Lumian Services.','imprint.privacyTitle':'Datenschutz','imprint.privacyText':'Informationen zur Bearbeitung von Personendaten stehen in der',
+    'privacy.kicker':'Datenschutz','privacy.title':'Datenschutzerklärung','privacy.s1Title':'1. Verantwortliche Stelle','privacy.s1p1':'Verantwortlich für die Bearbeitung von Personendaten ist Lumian Services, Inhaber Fares Aburok. Die vollständige Kontaktadresse steht im','privacy.s1p2':'Für Datenschutzanfragen erreichen Sie uns per E-Mail oder telefonisch:',
+    'privacy.s2Title':'2. Welche Daten wir bearbeiten','privacy.s2p1':'Wir bearbeiten Daten, die Sie uns freiwillig senden. Dazu gehören zum Beispiel Name, Telefonnummer, E-Mail Adresse, Ort, gewünschte Dienstleistung, Terminwunsch, Nachrichtentext und Fotos, die Sie uns für eine Offerte oder Rückfrage senden.','privacy.s2p2':'Beim Besuch der Website können technische Daten anfallen. Dazu gehören zum Beispiel IP Adresse, Datum und Uhrzeit des Zugriffs, verwendeter Browser, Betriebssystem und aufgerufene Seiten. Diese Daten helfen, die Website sicher und stabil zu betreiben.',
+    'privacy.s3Title':'3. Warum wir Daten bearbeiten','privacy.s3p1':'Wir verwenden Ihre Angaben, um Anfragen zu beantworten, Offerten zu erstellen, Termine zu koordinieren, Aufträge auszuführen, Rückfragen zu klären und das Referral Programm abzuwickeln.','privacy.s3p2':'Wir bearbeiten nur Daten, die für diese Zwecke sinnvoll oder notwendig sind.',
+    'privacy.s4Title':'4. Kontakt über WhatsApp, Telefon und E-Mail','privacy.s4p1':'Wenn Sie uns per WhatsApp, Telefon oder E-Mail kontaktieren, werden die von Ihnen übermittelten Daten über den jeweiligen Anbieter verarbeitet. Bitte senden Sie nur Informationen und Bilder, die für Ihre Anfrage nötig sind.',
+    'privacy.s5Title':'5. Hosting und technische Dienstleister','privacy.s5p1':'Diese Website kann über GitHub Pages oder einen ähnlichen statischen Hosting Dienst betrieben werden. Dabei können technische Zugriffsdaten durch den Hosting Anbieter verarbeitet werden.','privacy.s5p2':'Falls später externe Buchungstools, Karten, Analytics oder weitere Dienste eingebunden werden, wird diese Datenschutzerklärung angepasst.',
+    'privacy.s6Title':'6. Cookies und Tracking','privacy.s6p1':'Diese Website ist bewusst schlank aufgebaut. Lumian Services setzt aktuell keine eigenen Marketing Cookies, kein Google Analytics und kein Tracking ein.','privacy.s6p2':'Falls später externe Tools eingebunden werden, können diese Anbieter Cookies oder ähnliche Technologien verwenden.',
+    'privacy.s7Title':'7. Referral Programm','privacy.s7p1':'Für Referral Codes bearbeiten wir die Angaben, die nötig sind, um eine Empfehlung einem Auftrag zuzuordnen und einen möglichen Vorteil korrekt auszugeben.','privacy.s7p2':'Eine Barauszahlung besteht nicht, sofern nichts anderes ausdrücklich schriftlich vereinbart wurde.',
+    'privacy.s8Title':'8. Weitergabe von Daten','privacy.s8p1':'Wir geben Personendaten nur weiter, wenn dies für die Bearbeitung einer Anfrage, die Ausführung eines Auftrags, den Betrieb der Website, gesetzliche Pflichten oder berechtigte Interessen notwendig ist.','privacy.s8p2':'Eine Weitergabe zu fremden Werbezwecken findet nicht statt.',
+    'privacy.s9Title':'9. Aufbewahrung','privacy.s9p1':'Wir bewahren Personendaten nur so lange auf, wie es für die Bearbeitung der Anfrage, die Ausführung des Auftrags, gesetzliche Pflichten oder berechtigte Geschäftsinteressen nötig ist.',
+    'privacy.s10Title':'10. Ihre Rechte','privacy.s10p1':'Sie können Auskunft über Ihre Personendaten verlangen. Soweit gesetzlich vorgesehen, können Sie auch Berichtigung, Löschung oder Einschränkung der Bearbeitung verlangen.','privacy.s10p2':'Kontaktieren Sie uns dafür über die oben genannte E-Mail Adresse.',
+    'privacy.s11Title':'11. Änderungen','privacy.s11p1':'Wir können diese Datenschutzerklärung jederzeit anpassen. Es gilt die jeweils auf dieser Website veröffentlichte Version.','privacy.s11p2':'Stand: Juli 2026','privacy.localTitle':'Cookie-Hinweise und lokale Speicherung','privacy.local1':'Wir verwenden keine eigenen Marketing-Cookies und kein Tracking. Damit der Cookie-Hinweis nicht bei jedem Besuch erneut erscheint, speichern wir lokal im Browser die Information, dass der Hinweis verstanden wurde. Diese Speicherung dient nur der Bedienbarkeit der Website.','privacy.local2':'Weitere Informationen finden Sie in den',
+    'cookies.kicker':'Cookies','cookies.title':'Cookie-Hinweise','cookies.s1Title':'Technisch notwendige Speicherung','cookies.s1p1':'Diese Website ist bewusst schlank aufgebaut. Lumian Services setzt keine Werbe-Cookies, kein Tracking und kein Google Analytics ein.','cookies.s1p2':'Damit der Cookie-Hinweis nicht bei jedem Besuch erneut erscheint, speichern wir lokal im Browser die Information, dass der Hinweis verstanden wurde. Diese Speicherung dient nur der Bedienbarkeit der Website.','cookies.s2Title':'Lokale App-Funktion','cookies.s2p1':'Wenn Sie Lumian Services auf dem Smartphone zum Home-Bildschirm hinzufügen, kann der Browser einzelne Dateien zwischenspeichern, damit die Website schneller startet und bei schlechter Verbindung besser reagiert.','cookies.s3Title':'Externe Dienste','cookies.s3p1':'Beim Kontakt über WhatsApp, Telefon oder E-Mail gelten zusätzlich die Bedingungen und Datenschutzhinweise der jeweiligen Anbieter. Externe Buchungstools oder Statistikdienste sind aktuell nicht eingebunden.','cookies.s4Title':'Änderungen','cookies.s4p1':'Falls später Statistik, Marketing oder externe Buchungstools eingebunden werden, werden diese Hinweise und die Datenschutzerklärung entsprechend angepasst.','cookies.s4p2':'Stand: Juli 2026',
+    'global.phoneHuman':'+41 77 279 47 07','global.phoneTel':'tel:+41772794707','global.email':'info@lumianservices.ch','global.emailHref':'mailto:info@lumianservices.ch','home.area.whatsappText':'WhatsApp öffnen','global.whatsappText':'WhatsApp','global.whatsappHref':'https://wa.me/41772794707','global.footerText':'Lumian Services. Reinigung mit frischem Anspruch.','global.footerContactTitle':'Kontakt','global.footerLegalTitle':'Rechtliches','global.footerImprintText':'Impressum','global.footerImprintHref':'impressum.html','global.footerPrivacyText':'Datenschutz','global.footerPrivacyHref':'datenschutz.html','global.footerCookiesText':'Cookies','global.footerCookiesHref':'cookies.html','global.footerBookingText':'Buchungshinweise','global.footerBookingHref':'buchung.html','global.copyright':'© 2026 Lumian Services. Alle Rechte vorbehalten.'
+  };
+  const DEFAULT_WEBSITE_MEDIA = {
+    'home.hero.image':{ src:'https://lumianservices.ch/assets/img/lumian-logo-hero.png', name:'Hero Logo' },
+    'global.logo':{ src:'https://lumianservices.ch/assets/img/lumian-logo-dark.png', name:'Lumian Logo dunkel' },
+    'home.story.noahImage':{ src:'https://lumianservices.ch/assets/img/founders/noah.png', name:'Noah' },
+    'home.story.timoImage':{ src:'https://lumianservices.ch/assets/img/founders/timo.png', name:'Timo' }
+  };
+
+  const LEGACY_LEGAL_WEBSITE_VALUES_V103 = {"imprint.kicker":"Rechtliches","imprint.title":"Impressum","imprint.providerTitle":"Anbieter und Kontaktadresse","imprint.businessName":"Lumian Services","imprint.owner":"Fares Aburok","imprint.legalForm":"Einzelunternehmen","imprint.street":"Wilhalde 8A","imprint.city":"5504 Othmarsingen","imprint.country":"Schweiz","imprint.purposeTitle":"Inhalt und Zweck dieser Website","imprint.purpose1":"Diese Website informiert über die Dienstleistungen von Lumian Services. Dazu gehören insbesondere Fensterreinigung, Storenreinigung, Rollladenreinigung, Dachrinnenreinigung, Balkonreinigung, Terrassenreinigung und weitere Arbeiten im Aussenbereich.","imprint.purpose2":"Anfragen können über WhatsApp, Telefon, E-Mail oder über das Formular auf der Website gestellt werden. Eine Anfrage ist noch kein verbindlicher Auftrag. Ein Termin und ein Preis gelten erst dann als bestätigt, wenn Lumian Services dies ausdrücklich bestätigt.","imprint.pricesTitle":"Preise, Angebote und Verfügbarkeit","imprint.prices1":"Preisangaben, Beispiele, Aktionen und Verfügbarkeiten auf dieser Website sind ohne ausdrückliche Bestätigung unverbindlich. Der effektive Preis hängt vom Objekt, von der Zugänglichkeit, vom Verschmutzungsgrad, vom Sicherheitsaufwand und vom gewünschten Leistungsumfang ab.","imprint.prices2":"Individuelle Offerten werden nach Möglichkeit auf Basis von Fotos, Beschreibung und Standort erstellt. Bei unklaren Angaben kann eine Besichtigung oder eine Rückfrage nötig sein.","imprint.contentTitle":"Haftung für Inhalte","imprint.content1":"Die Inhalte dieser Website werden sorgfältig erstellt und regelmässig geprüft. Trotzdem kann Lumian Services keine Gewähr für Vollständigkeit, Richtigkeit und Aktualität übernehmen.","imprint.content2":"Änderungen an Texten, Leistungen, Preisen und Verfügbarkeiten sind jederzeit möglich.","imprint.linksTitle":"Haftung für externe Links","imprint.links1":"Diese Website kann Links zu externen Angeboten enthalten, zum Beispiel zu WhatsApp, Telefonfunktionen, E-Mail Programmen oder später zu einem Buchungstool. Für Inhalte und Datenschutz dieser externen Anbieter ist der jeweilige Anbieter verantwortlich.","imprint.copyrightTitle":"Urheberrechte","imprint.copyright1":"Texte, Bilder, Logos, Gestaltung und sonstige Inhalte dieser Website gehören Lumian Services oder werden mit entsprechender Berechtigung verwendet. Eine Verwendung, Kopie oder Veröffentlichung ist nur mit vorheriger Zustimmung erlaubt.","imprint.copyright2":"Bilder von Kundenobjekten werden nur zu Präsentationszwecken verwendet. Wenn ein Bild entfernt oder zusätzlich anonymisiert werden soll, genügt eine kurze Nachricht an Lumian Services.","imprint.privacyTitle":"Datenschutz","imprint.privacyText":"Informationen zur Bearbeitung von Personendaten stehen in der","privacy.kicker":"Datenschutz","privacy.title":"Datenschutzerklärung","privacy.s1Title":"1. Verantwortliche Stelle","privacy.s1p1":"Verantwortlich für die Bearbeitung von Personendaten ist Lumian Services, Inhaber Fares Aburok. Die vollständige Kontaktadresse steht im","privacy.s1p2":"Für Datenschutzanfragen erreichen Sie uns per E-Mail oder telefonisch:","privacy.s2Title":"2. Welche Daten wir bearbeiten","privacy.s2p1":"Wir bearbeiten Daten, die Sie uns freiwillig senden. Dazu gehören zum Beispiel Name, Telefonnummer, E-Mail Adresse, Ort, gewünschte Dienstleistung, Terminwunsch, Nachrichtentext und Fotos, die Sie uns für eine Offerte oder Rückfrage senden.","privacy.s2p2":"Beim Besuch der Website können technische Daten anfallen. Dazu gehören zum Beispiel IP Adresse, Datum und Uhrzeit des Zugriffs, verwendeter Browser, Betriebssystem und aufgerufene Seiten. Diese Daten helfen, die Website sicher und stabil zu betreiben.","privacy.s3Title":"3. Warum wir Daten bearbeiten","privacy.s3p1":"Wir verwenden Ihre Angaben, um Anfragen zu beantworten, Offerten zu erstellen, Termine zu koordinieren, Aufträge auszuführen, Rückfragen zu klären und das Referral Programm abzuwickeln.","privacy.s3p2":"Wir bearbeiten nur Daten, die für diese Zwecke sinnvoll oder notwendig sind.","privacy.s4Title":"4. Kontakt über WhatsApp, Telefon und E-Mail","privacy.s4p1":"Wenn Sie uns per WhatsApp, Telefon oder E-Mail kontaktieren, werden die von Ihnen übermittelten Daten über den jeweiligen Anbieter verarbeitet. Bitte senden Sie nur Informationen und Bilder, die für Ihre Anfrage nötig sind.","privacy.s5Title":"5. Hosting und technische Dienstleister","privacy.s5p1":"Diese Website kann über GitHub Pages oder einen ähnlichen statischen Hosting Dienst betrieben werden. Dabei können technische Zugriffsdaten durch den Hosting Anbieter verarbeitet werden.","privacy.s5p2":"Falls später externe Buchungstools wie Calendly oder Cal.com, Karten, Analytics oder weitere Dienste eingebunden werden, wird diese Datenschutzerklärung angepasst.","privacy.s6Title":"6. Cookies und Tracking","privacy.s6p1":"Diese Website ist bewusst schlank aufgebaut. Lumian Services setzt aktuell keine eigenen Marketing Cookies, kein Google Analytics und kein Tracking ein.","privacy.s6p2":"Falls später externe Tools eingebunden werden, können diese Anbieter Cookies oder ähnliche Technologien verwenden.","privacy.s7Title":"7. Referral Programm","privacy.s7p1":"Für Referral Codes bearbeiten wir die Angaben, die nötig sind, um eine Empfehlung einem Auftrag zuzuordnen und einen möglichen Vorteil korrekt auszugeben.","privacy.s7p2":"Eine Barauszahlung besteht nicht, sofern nichts anderes ausdrücklich schriftlich vereinbart wurde.","privacy.s8Title":"8. Weitergabe von Daten","privacy.s8p1":"Wir geben Personendaten nur weiter, wenn dies für die Bearbeitung einer Anfrage, die Ausführung eines Auftrags, den Betrieb der Website, gesetzliche Pflichten oder berechtigte Interessen notwendig ist.","privacy.s8p2":"Eine Weitergabe zu fremden Werbezwecken findet nicht statt.","privacy.s9Title":"9. Aufbewahrung","privacy.s9p1":"Wir bewahren Personendaten nur so lange auf, wie es für die Bearbeitung der Anfrage, die Ausführung des Auftrags, gesetzliche Pflichten oder berechtigte Geschäftsinteressen nötig ist.","privacy.s10Title":"10. Ihre Rechte","privacy.s10p1":"Sie können Auskunft über Ihre Personendaten verlangen. Soweit gesetzlich vorgesehen, können Sie auch Berichtigung, Löschung oder Einschränkung der Bearbeitung verlangen.","privacy.s10p2":"Kontaktieren Sie uns dafür über die oben genannte E-Mail Adresse.","privacy.s11Title":"11. Änderungen","privacy.s11p1":"Wir können diese Datenschutzerklärung jederzeit anpassen. Es gilt die jeweils auf dieser Website veröffentlichte Version.","privacy.s11p2":"Stand: Juli 2026","privacy.localTitle":"Cookie-Hinweise und lokale Speicherung","privacy.local1":"Wir verwenden keine eigenen Marketing-Cookies und kein Tracking. Damit der Cookie-Hinweis nicht bei jedem Besuch erneut erscheint, speichern wir lokal im Browser die Information, dass der Hinweis verstanden wurde. Diese Speicherung dient nur der Bedienbarkeit der Website.","privacy.local2":"Weitere Informationen finden Sie in den","cookies.kicker":"Cookies","cookies.title":"Cookie-Hinweise","cookies.s1Title":"Technisch notwendige Speicherung","cookies.s1p1":"Diese Website ist bewusst schlank aufgebaut. Lumian Services setzt keine Werbe-Cookies, kein Tracking und kein Google Analytics ein.","cookies.s1p2":"Damit der Cookie-Hinweis nicht bei jedem Besuch erneut erscheint, speichern wir lokal im Browser die Information, dass der Hinweis verstanden wurde. Diese Speicherung dient nur der Bedienbarkeit der Website.","cookies.s2Title":"Lokale App-Funktion","cookies.s2p1":"Wenn Sie Lumian Services auf dem Smartphone zum Home-Bildschirm hinzufügen, kann der Browser einzelne Dateien zwischenspeichern, damit die Website schneller startet und bei schlechter Verbindung besser reagiert.","cookies.s3Title":"Externe Dienste","cookies.s3p1":"Beim Kontakt über WhatsApp, Telefon oder E-Mail gelten zusätzlich die Bedingungen und Datenschutzhinweise der jeweiligen Anbieter. Externe Buchungstools oder Statistikdienste sind aktuell nicht eingebunden.","cookies.s4Title":"Änderungen","cookies.s4p1":"Falls später Statistik, Marketing oder externe Buchungstools eingebunden werden, werden diese Hinweise und die Datenschutzerklärung entsprechend angepasst.","cookies.s4p2":"Stand: Juli 2026"};
+  const LEGAL_WEBSITE_VALUES_V104 = {"imprint.kicker":"Rechtliches","imprint.title":"Impressum","imprint.providerTitle":"Anbieter und Kontaktadresse","imprint.businessName":"Lumian Services","imprint.owner":"Fares Aburok","imprint.legalForm":"Einzelunternehmen","imprint.street":"Wilhalde 8A","imprint.city":"5504 Othmarsingen","imprint.country":"Schweiz","imprint.purposeTitle":"Angebot und Zweck der Website","imprint.purpose1":"Diese Website informiert über die Reinigungs- und Unterhaltsdienstleistungen von Lumian Services, insbesondere Fenster-, Storen-, Rollladen-, Dachrinnen-, Balkon-, Terrassen- und weitere Reinigungsarbeiten im Aussenbereich.","imprint.purpose2":"Anfragen über Website, WhatsApp, Telefon oder E-Mail sind unverbindlich. Ein Auftrag, ein Termin und ein Preis gelten erst als vereinbart, wenn Lumian Services die Anfrage ausdrücklich bestätigt. Individuelle Absprachen und die bestätigte Offerte gehen allgemeinen Website-Angaben vor.","imprint.pricesTitle":"Preise, Offerten und Verfügbarkeit","imprint.prices1":"Preisbeispiele, Aktionen, Rabatte und Verfügbarkeitsangaben auf dieser Website sind freibleibend, sofern sie nicht ausdrücklich als verbindlich bezeichnet werden. Der endgültige Preis richtet sich insbesondere nach Objekt, Fläche, Zugänglichkeit, Verschmutzungsgrad, Sicherheitsaufwand, Materialbedarf und Leistungsumfang.","imprint.prices2":"Offerten können auf Basis der übermittelten Angaben und Fotos erstellt werden. Stellt sich vor Ort heraus, dass die tatsächlichen Verhältnisse wesentlich abweichen, informiert Lumian Services den Kunden vor zusätzlichen oder geänderten Leistungen über eine erforderliche Anpassung.","imprint.contentTitle":"Haftung und Gewähr","imprint.content1":"Lumian Services erstellt und pflegt die Inhalte dieser Website mit angemessener Sorgfalt. Eine Gewähr für jederzeitige Verfügbarkeit sowie für die vollständige, fehlerfreie und stets aktuelle Darstellung wird jedoch nur im gesetzlich zulässigen Umfang übernommen.","imprint.content2":"Für Schäden aus der Nutzung oder vorübergehenden Nichtverfügbarkeit der Website wird die Haftung soweit gesetzlich zulässig ausgeschlossen. Zwingende gesetzliche Haftungsbestimmungen, insbesondere für vorsätzlich oder grobfahrlässig verursachte Schäden, bleiben vorbehalten.","imprint.linksTitle":"Externe Links und Dienste","imprint.links1":"Diese Website enthält Links oder Weiterleitungen zu externen Diensten, beispielsweise WhatsApp, Telefon-, E-Mail- oder Kartenfunktionen. Beim Aufruf verlassen Sie den Einflussbereich von Lumian Services. Für Inhalt, Verfügbarkeit und Datenbearbeitung des jeweiligen Drittanbieters ist dieser selbst verantwortlich.","imprint.copyrightTitle":"Urheberrechte und Bildmaterial","imprint.copyright1":"Texte, Bilder, Logos, Gestaltung, Daten und sonstige Inhalte dieser Website sind urheberrechtlich oder anderweitig geschützt und gehören Lumian Services oder werden mit entsprechender Berechtigung verwendet. Jede über den privaten Gebrauch hinausgehende Nutzung, Vervielfältigung, Bearbeitung oder Veröffentlichung bedarf der vorherigen Zustimmung.","imprint.copyright2":"Fotos von Kundenobjekten werden nur mit entsprechender Berechtigung und nach Möglichkeit ohne unnötige personenbezogene Merkmale veröffentlicht. Betroffene Personen können sich wegen Entfernung oder zusätzlicher Anonymisierung an Lumian Services wenden.","imprint.privacyTitle":"Datenschutz und anwendbares Recht","imprint.privacyText":"Für die Bearbeitung von Personendaten gilt die auf dieser Website veröffentlichte Datenschutzerklärung. Im Übrigen gilt schweizerisches Recht. Zwingende gesetzliche Gerichtsstände und Schutzbestimmungen bleiben vorbehalten. Weitere Informationen:","privacy.kicker":"Datenschutz","privacy.title":"Datenschutzerklärung","privacy.s1Title":"1. Verantwortliche Stelle und Kontakt","privacy.s1p1":"Verantwortlich für die Bearbeitung von Personendaten ist Lumian Services, Inhaber Fares Aburok, Wilhalde 8A, 5504 Othmarsingen, Schweiz. Die vollständigen Anbieterangaben stehen im","privacy.s1p2":"Datenschutzanfragen können an folgende Kontaktdaten gerichtet werden:","privacy.s2Title":"2. Umfang und Kategorien der bearbeiteten Daten","privacy.s2p1":"Wir bearbeiten diejenigen Personendaten, die Sie uns mitteilen oder die bei der Nutzung unserer Angebote anfallen. Dazu können Name, Telefonnummer, E-Mail-Adresse, Anschrift, gewünschte Dienstleistung, Terminangaben, Nachrichten, Empfehlungsdaten, Auftrags- und Zahlungsinformationen sowie Fotos eines Objekts gehören.","privacy.s2p2":"Beim Besuch der Website oder des geschützten Portals können technische Daten wie IP-Adresse, Datum und Uhrzeit, aufgerufene Seite, Browser, Betriebssystem, Geräteinformationen und Fehler- oder Sicherheitsprotokolle anfallen. Im Mitarbeiterportal werden zusätzlich Benutzerkonto, Rechte, Zuweisungen, Aktivitäten, Arbeitsstunden und Vergütungsinformationen verarbeitet.","privacy.s3Title":"3. Zwecke und Grundsätze der Bearbeitung","privacy.s3p1":"Wir bearbeiten Personendaten zur Beantwortung von Anfragen, Erstellung von Offerten, Terminplanung, Durchführung und Dokumentation von Aufträgen, Kundenbetreuung, Buchhaltung, Empfehlungsprogramm, Mitarbeiterkoordination, Sicherung des Betriebs sowie zur Erfüllung gesetzlicher Pflichten.","privacy.s3p2":"Die Bearbeitung erfolgt verhältnismässig und zweckgebunden, insbesondere zur Vertragsanbahnung und Vertragserfüllung, aufgrund gesetzlicher Pflichten, zur Wahrung berechtigter betrieblicher Interessen oder — soweit erforderlich — mit Einwilligung der betroffenen Person.","privacy.s4Title":"4. Kontakt, Formulare, WhatsApp und Fotos","privacy.s4p1":"Wenn Sie uns über ein Formular, WhatsApp, Telefon oder E-Mail kontaktieren, verarbeiten wir die übermittelten Angaben zur Bearbeitung Ihrer Anfrage. Bei WhatsApp und E-Mail werden Daten zusätzlich durch die jeweiligen Anbieter verarbeitet. Bitte übermitteln Sie nur erforderliche Angaben und keine besonders schützenswerten Informationen. Fotos sollten keine erkennbaren Personen, Nummernschilder, Dokumente oder sonstige unnötige personenbezogene Details zeigen.","privacy.s5Title":"5. Hosting und technische Zugriffsdaten","privacy.s5p1":"Die öffentliche Website wird als statische Website über GitHub Pages bereitgestellt. Der Hosting- und Infrastrukturbetreiber kann technisch notwendige Zugriffs- und Sicherheitsdaten verarbeiten. Diese Bearbeitung dient der sicheren, stabilen und effizienten Bereitstellung der Website.","privacy.s5p2":"Wir verwenden derzeit kein Google Analytics, keine Werbenetzwerke und kein eigenes verhaltensbasiertes Tracking. Externe Inhalte wie Karten werden nicht automatisch eingebettet, sondern grundsätzlich erst durch einen bewussten Klick auf einen entsprechenden Link aufgerufen.","privacy.s6Title":"6. Google-Dienste, Portal und Cloud-Speicherung","privacy.s6p1":"Zur operativen Verwaltung nutzen wir Google Apps Script, Google Sheets, Google Drive und Google Calendar. Dort können Kunden-, Lead-, Auftrags-, Mitarbeiter-, Foto-, Kalender-, Protokoll- und Buchhaltungsdaten gespeichert oder synchronisiert werden. Der Zugriff ist auf berechtigte Benutzer beschränkt.","privacy.s6p2":"Teile der Portaldaten werden zusätzlich lokal im Browser des verwendeten Geräts gespeichert und für Synchronisierung, Offline-Funktion, Backups und Konfliktvermeidung verarbeitet. Administratoren und Mitarbeiter sind verpflichtet, ihre Zugangsdaten und Geräte angemessen zu schützen.","privacy.s7Title":"7. Empfehlungsprogramm und veröffentlichte Bilder","privacy.s7p1":"Für Empfehlungs- und Danke-Codes bearbeiten wir die Daten, die erforderlich sind, um eine Empfehlung einem Kunden und Auftrag zuzuordnen, den Anspruch zu prüfen und einen Bonus oder Vorteil zu verwalten. Der Empfehlende erhält keine weitergehenden Informationen über den Neukunden oder dessen Auftrag.","privacy.s7p2":"Bilder für die Website oder Galerie werden nur mit entsprechender Berechtigung veröffentlicht. Erkennbare Personen werden grundsätzlich nur mit Einwilligung gezeigt. Ein Widerruf oder ein begründetes Löschbegehren kann über die oben genannten Kontaktdaten eingereicht werden.","privacy.s8Title":"8. Empfänger, Auftragsbearbeiter und Auslandbezug","privacy.s8p1":"Personendaten können an sorgfältig ausgewählte Dienstleister weitergegeben werden, soweit dies für Hosting, Kommunikation, Cloud-Speicherung, Kalender, IT-Support, Buchhaltung oder die Erfüllung eines Auftrags erforderlich ist. Diese Dienstleister dürfen Daten nur im Rahmen des jeweiligen Zwecks bearbeiten.","privacy.s8p2":"Einzelne Anbieter, insbesondere Google, GitHub, Meta/WhatsApp oder deren Unterauftragnehmer, können Daten auch ausserhalb der Schweiz bearbeiten. Wir achten auf die nach schweizerischem Datenschutzrecht erforderlichen Voraussetzungen, insbesondere anerkannte Angemessenheit, geeignete vertragliche Garantien oder eine gesetzliche Ausnahme.","privacy.s9Title":"9. Aufbewahrung und Löschung","privacy.s9p1":"Wir bewahren Personendaten nur so lange auf, wie dies für den jeweiligen Zweck, zur Durchsetzung oder Abwehr von Ansprüchen und zur Erfüllung gesetzlicher Pflichten erforderlich ist. Anfragen ohne Auftrag werden in der Regel gelöscht oder anonymisiert, sobald sie nicht mehr benötigt werden. Geschäfts- und Buchungsunterlagen werden entsprechend den gesetzlichen Aufbewahrungspflichten grundsätzlich zehn Jahre aufbewahrt.","privacy.s10Title":"10. Rechte betroffener Personen","privacy.s10p1":"Sie können im Rahmen des anwendbaren Datenschutzrechts insbesondere Auskunft über Ihre bearbeiteten Personendaten, Berichtigung unrichtiger Daten, Löschung oder Vernichtung, Einschränkung oder Unterlassung einer unzulässigen Bearbeitung sowie gegebenenfalls Herausgabe oder Übertragung Ihrer Daten verlangen.","privacy.s10p2":"Ein Begehren kann an die oben genannte E-Mail-Adresse gerichtet werden. Zur Verhinderung missbräuchlicher Auskünfte können wir einen geeigneten Identitätsnachweis verlangen. Gesetzliche Aufbewahrungspflichten und überwiegende berechtigte Interessen bleiben vorbehalten.","privacy.s11Title":"11. Datensicherheit und Änderungen","privacy.s11p1":"Wir treffen angemessene technische und organisatorische Massnahmen, um Personendaten vor unbefugtem Zugriff, Verlust, Missbrauch oder Veränderung zu schützen. Eine vollständig risikofreie Datenübertragung oder Speicherung kann jedoch nicht garantiert werden. Diese Datenschutzerklärung wird angepasst, wenn sich Bearbeitungen, Dienste oder rechtliche Anforderungen ändern.","privacy.s11p2":"Stand: 10. Juli 2026","privacy.localTitle":"Cookies, lokale Speicherung und PWA","privacy.local1":"Wir setzen keine Marketing- oder Analyse-Cookies ein. Für den Cookie-Hinweis, Referral-Code, Login-Sitzung, Portalbetrieb und die installierbare Web-App können technisch notwendige Cookies, Local Storage, Session Storage und Browser-Cache verwendet werden. Diese Informationen dienen der Bedienbarkeit, Sicherheit, Offline-Funktion und Synchronisierung.","privacy.local2":"Einzelheiten und Hinweise zur Löschung finden Sie in den","cookies.kicker":"Cookies & lokale Speicherung","cookies.title":"Cookie- und Speicherhinweise","cookies.s1Title":"Technisch notwendige Speicherung","cookies.s1p1":"Lumian Services verwendet aktuell keine Werbe-Cookies, kein Google Analytics und kein verhaltensbasiertes Tracking. Es werden nur technisch notwendige Speichermechanismen eingesetzt, damit Website und Portal zuverlässig funktionieren.","cookies.s1p2":"Für die Bestätigung des Cookie-Hinweises wird der Schlüssel „lumian_cookie_notice_ok_v1“ als Cookie und/oder im Local Storage gespeichert. Die vorgesehene Speicherdauer beträgt bis zu zwölf Monate. Dadurch erscheint der Hinweis nicht bei jedem Besuch erneut.","cookies.s2Title":"Session Storage, Portal und installierbare Web-App","cookies.s2p1":"Session Storage kann vorübergehend einen Empfehlungs-Code oder die aktive Portal-Sitzung speichern. Das geschützte Portal verwendet Local Storage für betriebliche Daten, Einstellungen, Offline-Arbeit und Synchronisierung. Ein Service Worker kann Website-Dateien im Browser-Cache speichern, damit die installierbare Web-App schneller startet und bei instabiler Verbindung nutzbar bleibt.","cookies.s3Title":"Externe Dienste und bewusste Weiterleitung","cookies.s3p1":"WhatsApp, E-Mail-, Telefon-, Karten- oder Google-Dienste werden nur genutzt, wenn Sie einen entsprechenden Link oder eine Funktion aktiv aufrufen beziehungsweise ein Formular absenden. Ab diesem Zeitpunkt gelten zusätzlich die Datenschutz- und Speicherregeln des jeweiligen Anbieters. Auf der öffentlichen Website sind derzeit keine externen Analyse- oder Werbeskripte eingebunden.","cookies.s4Title":"Verwaltung, Löschung und Änderungen","cookies.s4p1":"Sie können Cookies, Website-Daten, Local Storage und Cache jederzeit über die Datenschutz- oder Website-Einstellungen Ihres Browsers löschen oder blockieren. Einzelne Funktionen, insbesondere Login, Offline-Nutzung, gespeicherte Einstellungen oder Referral-Zuordnung, können danach eingeschränkt sein. Werden künftig nicht notwendige Analyse- oder Marketingtechnologien eingesetzt, werden diese Hinweise und — soweit erforderlich — die Auswahlmöglichkeiten vorab angepasst.","cookies.s4p2":"Stand: 10. Juli 2026"};
+  Object.assign(DEFAULT_WEBSITE_VALUES, LEGAL_WEBSITE_VALUES_V104);
+  function migrateLegalWebsiteValues(rawValues = {}) {
+    const incoming = { ...(rawValues || {}) };
+    Object.entries(LEGAL_WEBSITE_VALUES_V104).forEach(([key, value]) => {
+      if (!Object.prototype.hasOwnProperty.call(incoming, key) || incoming[key] === LEGACY_LEGAL_WEBSITE_VALUES_V103[key]) incoming[key] = value;
+    });
+    return incoming;
+  }
+
+  function canonicalWebsiteAssetUrl(value) {
+    const src = String(value || '').trim();
+    if (!src) return '';
+    if (/^(data:|blob:)/i.test(src)) return src;
+    if (/^https?:\/\//i.test(src)) return src.replace(/^https?:\/\/www\.lumianservices\.ch\//i, 'https://lumianservices.ch/');
+    const clean = src.replace(/^\.\.\//, '').replace(/^\//, '');
+    if (clean.startsWith('assets/')) return `https://lumianservices.ch/${clean}`;
+    return src;
+  }
+  function approximateDataUrlBytes(dataUrl) {
+    const value = String(dataUrl || '');
+    const comma = value.indexOf(',');
+    return comma < 0 ? 0 : Math.max(0, Math.round((value.length - comma - 1) * 0.75));
+  }
+  function humanFileSize(bytes) {
+    const n = Number(bytes || 0);
+    if (!n) return '';
+    if (n < 1024) return `${n} B`;
+    if (n < 1024*1024) return `${Math.round(n/102.4)/10} KB`;
+    return `${Math.round(n/1024/102.4)/10} MB`;
+  }
+
+  function defaultWebsiteContent() {
+    return { values:{...DEFAULT_WEBSITE_VALUES}, media:JSON.parse(JSON.stringify(DEFAULT_WEBSITE_MEDIA)), gallery:JSON.parse(JSON.stringify(DEFAULT_GALLERY)), updatedAt:'', updatedBy:'' };
+  }
+  function normalizeWebsiteContent(raw = {}) {
+    const base = defaultWebsiteContent();
+    return {
+      values:{...base.values,...migrateLegalWebsiteValues(raw.values || {})},
+      media:Object.fromEntries(Object.entries({...base.media,...(raw.media || {})}).map(([key,item])=>{ const normalized = typeof item === 'string' ? { src:item } : (item || {}); return [key,{...normalized,src:canonicalWebsiteAssetUrl(normalized.src || normalized.url || '')}]; })),
+      gallery:Array.isArray(raw.gallery) && raw.gallery.length ? raw.gallery.map((x,i)=>({ id:String(x.id || `g-${i+1}`), src:canonicalWebsiteAssetUrl(x.src || ''), title:String(x.title || ''), caption:String(x.caption || ''), dataUrl:x.dataUrl || '', name:x.name || '', size:Number(x.size || 0), width:Number(x.width || 0), height:Number(x.height || 0) })) : base.gallery.map(x=>({...x,src:canonicalWebsiteAssetUrl(x.src)})),
+      updatedAt:raw.updatedAt || '', updatedBy:raw.updatedBy || ''
+    };
+  }
+
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   let currentUser = sessionStorage.getItem(SESSION_KEY) || '';
@@ -65,6 +381,7 @@
   let listPages = { today: 1, leads: 1, jobs: 1, customers: 1, income: 1, expenses: 1, activity: 1, rewards: 1 };
   let customerListMode = 'search';
   let stagedPhotos = { before: null, after: null };
+  let editingCompensationLines = [];
   let deferredInstallPrompt = null;
   let cloudSyncTimer = null;
   let cloudSyncInProgress = false;
@@ -76,10 +393,10 @@
 
   function newState() {
     return {
-      version: 8,
+      version: 10,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      users: USERS.map(u => ({ ...u, role: 'admin', active: true, passwordHash: '', salt: '', credentialId: '', credentialUserHandle: '', recoveryCode: `${u.name}-Reset-2026` })),
+      users: USERS.map(u => normalizeEmployeeUser({ ...u, role:'admin', active:true, loginEnabled:true, employmentActive:true, employeeType:'fixed', passwordHash:'', salt:'', credentialId:'', credentialUserHandle:'', recoveryCode:`${u.name}-Reset-2026` }, u)),
       portalMode: 'test',
       goLiveAt: '',
       settings: { ...DEFAULT_SETTINGS },
@@ -89,6 +406,7 @@
       jobs: [],
       rewards: [],
       finance: { manualIncome: [], expenses: [] },
+      websiteContent: defaultWebsiteContent(),
       audit: []
     };
   }
@@ -109,7 +427,7 @@
   function migrateState(s) {
     const base = newState();
     const merged = { ...base, ...s };
-    merged.version = 8;
+    merged.version = 10;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     if (!merged.settings.scriptUrl || String(merged.settings.scriptUrl).includes('AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg')) {
       merged.settings.scriptUrl = DEFAULT_SETTINGS.scriptUrl;
@@ -120,28 +438,48 @@
     const incomingUsers = Array.isArray(s.users) ? s.users : [];
     const defaultUsers = USERS.map(u => {
       const old = incomingUsers.find(x => x.id === u.id) || {};
-      return { ...u, role: 'admin', active: old.active !== false, passwordHash: old.passwordHash || '', salt: old.salt || '', credentialId: old.credentialId || '', credentialUserHandle: old.credentialUserHandle || '', recoveryCode: old.recoveryCode || s.settings?.recoveryCode || `${u.name}-Reset-2026` };
+      return normalizeEmployeeUser({ ...u, ...old, role:'admin', loginEnabled:old.loginEnabled !== false, employmentActive:true, recoveryCode:old.recoveryCode || s.settings?.recoveryCode || `${u.name}-Reset-2026` }, u);
     });
-    const customUsers = incomingUsers.filter(u => u && u.id && !USERS.some(base => base.id === u.id)).map(u => ({
-      id: normalizeUserId(u.id),
-      name: u.name || u.id,
-      emoji: u.emoji || String(u.name || u.id || '?').slice(0,1).toUpperCase(),
-      role: u.role === 'admin' ? 'admin' : 'staff',
-      active: u.active !== false,
-      passwordHash: u.passwordHash || '',
-      salt: u.salt || '',
-      credentialId: u.credentialId || '',
-      credentialUserHandle: u.credentialUserHandle || '',
-      recoveryCode: u.recoveryCode || `${u.name || u.id}-Reset-2026`
-    })).filter(u => u.id);
+    const customUsers = incomingUsers
+      .filter(u => u && u.id && !USERS.some(base => base.id === u.id))
+      .map(u => normalizeEmployeeUser(u))
+      .filter(u => u.id);
     merged.users = [...defaultUsers, ...customUsers];
-    merged.people = Array.isArray(s.people) ? s.people.map(p => ({ email: '', ...p })) : [];
-    merged.leads = Array.isArray(s.leads) ? s.leads : [];
-    merged.jobs = Array.isArray(s.jobs) ? s.jobs.map(j => normalizeJobForNoUnpaidDone({ source: '', referredById: '', ...j })) : [];
+    merged.people = Array.isArray(s.people) ? s.people.map(normalizePersonRecord) : [];
+    merged.leads = Array.isArray(s.leads) ? s.leads.map(normalizeLeadRecord) : [];
+    merged.jobs = Array.isArray(s.jobs) ? s.jobs.map(j => normalizeJobRecord(normalizeJobForNoUnpaidDone({ source:'', referredById:'', ...j }))) : [];
     merged.rewards = Array.isArray(s.rewards) ? s.rewards : [];
+    // Protect the official LM/L/J/R numbering even when an older backup contains
+    // stale counters. Existing records always determine the next free number.
+    const maxNumber = (items, pattern, fallback) => (items || []).reduce((max, item) => {
+      const match = String(item?.id || '').match(pattern);
+      return match ? Math.max(max, Number(match[1]) || 0) : max;
+    }, fallback);
+    merged.counters.nextPerson = Math.max(merged.counters.nextPerson || 1001, maxNumber(merged.people, /^LM(\d+)$/i, 1000) + 1);
+    merged.counters.nextLead = Math.max(merged.counters.nextLead || 1, maxNumber(merged.leads, /^L(\d+)$/i, 0) + 1);
+    merged.counters.nextJob = Math.max(merged.counters.nextJob || 1, maxNumber(merged.jobs, /^J(\d+)$/i, 0) + 1);
+    merged.counters.nextReward = Math.max(merged.counters.nextReward || 1, maxNumber(merged.rewards, /^R(\d+)$/i, 0) + 1);
     merged.finance = { manualIncome: [], expenses: [], ...(s.finance || {}) };
     if (!Array.isArray(merged.finance.manualIncome)) merged.finance.manualIncome = [];
     if (!Array.isArray(merged.finance.expenses)) merged.finance.expenses = [];
+    merged.finance.expenses = merged.finance.expenses.map(x => ({ paymentStatus:x.paymentStatus || (x.automatic ? 'offen' : ''), ...x }));
+    // Existing credited referral bonuses become visible in Buchhaltung as open, deferred costs.
+    merged.rewards.forEach(r => {
+      if (!r || !r.id || !r.status || r.status === 'offen') return;
+      const id = `BONUS-${r.id}`;
+      if (merged.finance.expenses.some(x => x.id === id && !x.deletedAt)) return;
+      const receiver = merged.people.find(p => p.id === r.customerId) || {};
+      const source = merged.people.find(p => p.id === r.fromPersonId) || {};
+      merged.finance.expenses.push({
+        id, sourceType:'referralReward', rewardId:r.id, automatic:true, category:'Kundenbonus & Empfehlungen', subtype:'Empfehlungsbonus',
+        title:`Empfehlungsbonus ${receiver.name || r.customerId || ''} · Auftrag ${r.jobId || ''}`, amount:amountValue(r.amount || 0),
+        jobId:r.jobId || '', personId:r.customerId || '', paymentStatus:r.status === 'eingelöst / ausbezahlt' ? 'bezahlt' : 'offen',
+        date:String(r.redeemedAt || r.creditedAt || r.createdAt || new Date().toISOString()).slice(0,10),
+        notes:`Empfehlung für ${source.name || r.fromPersonId || 'Neukunde'}`, createdAt:r.creditedAt || r.createdAt || new Date().toISOString(), createdBy:'system'
+      });
+    });
+    reconcileRewardExpenseStates(merged);
+    merged.websiteContent = normalizeWebsiteContent(s.websiteContent || {});
     merged.audit = Array.isArray(s.audit) ? s.audit : [];
     localStorage.setItem(STORE_KEY, JSON.stringify(merged));
     return merged;
@@ -191,11 +529,11 @@
       [/^lead erstellt|^lead gespeichert|^lead$/i, 'Lead erstellt', 'Leads'],
       [/^lead geändert|lead edit/i, 'Lead geändert', 'Leads'],
       [/lead verloren|lead lost/i, 'Lead verloren', 'Leads'],
-      [/lead in job/i, 'Lead in Job umgewandelt', 'Jobs'],
-      [/^job erstellt|^job gespeichert|^job$/i, 'Job gespeichert', 'Jobs'],
-      [/^job geändert/i, 'Job geändert', 'Jobs'],
-      [/job bezahlt|complete paid/i, 'Job bezahlt/abgeschlossen', 'Jobs'],
-      [/job payment|payment still open|complete blocked/i, 'Job Zahlung offen gelassen', 'Jobs'],
+      [/lead in job|lead in auftrag/i, 'Lead in Auftrag umgewandelt', 'Jobs'],
+      [/^job erstellt|^job gespeichert|^job$|^auftrag erstellt|^auftrag gespeichert/i, 'Auftrag gespeichert', 'Jobs'],
+      [/^job geändert|^auftrag geändert/i, 'Auftrag geändert', 'Jobs'],
+      [/job bezahlt|auftrag bezahlt|bezahlt\/abgeschlossen|complete paid/i, 'Auftrag bezahlt/abgeschlossen', 'Jobs'],
+      [/job payment|auftrag.*zahlung offen|abschluss blockiert|payment still open|complete blocked/i, 'Auftrag Zahlung offen gelassen', 'Jobs'],
       [/manual income delete|einnahme gelöscht/i, 'Einnahme gelöscht', 'Buchhaltung'],
       [/manual income edit|einnahme geändert/i, 'Einnahme geändert', 'Buchhaltung'],
       [/manual income|einnahme gespeichert/i, 'Einnahme gespeichert', 'Buchhaltung'],
@@ -208,8 +546,9 @@
       [/password|passwort/i, 'Passwort geändert', 'Benutzer'],
       [/biometric off/i, 'Biometrie entfernt', 'Benutzer'],
       [/biometric/i, 'Biometrie aktiviert', 'Benutzer'],
-      [/user disable|benutzer deaktiviert/i, 'Benutzer deaktiviert', 'Benutzer'],
-      [/user save|benutzer gespeichert/i, 'Benutzer gespeichert', 'Benutzer'],
+      [/user disable|benutzer deaktiviert|mitarbeiter deaktiviert/i, 'Mitarbeiter deaktiviert', 'Benutzer'],
+      [/user save|benutzer gespeichert|mitarbeiter erstellt|mitarbeiter aktualisiert/i, 'Mitarbeiter gespeichert', 'Benutzer'],
+      [/akquiseprovision|provision geändert/i, 'Akquiseprovision geändert', 'Buchhaltung'],
       [/customers import|kunden importiert/i, 'Kunden importiert', 'Import'],
       [/leads import|leads importiert/i, 'Leads importiert', 'Import'],
       [/website leads imported|website/i, 'Website-Leads importiert', 'Leads'],
@@ -218,8 +557,12 @@
     for (const [pattern, action, area] of rules) {
       if (pattern.test(r)) { meta.action = action; meta.area = area; break; }
     }
-    const idMatch = r.match(/\b(L\d{3,}|J\d{3,}|LM\d{3,}|F\d{3,}|R\d{3,}|[a-z0-9_-]{2,})\b/i);
-    if (idMatch && !['lead','job','save','edit'].includes(idMatch[1].toLowerCase())) meta.objectId = idMatch[1];
+    // Prefer the stable business reference. This ensures Activities clearly show
+    // Lead-, customer- and order numbers instead of generic words such as "Auftrag".
+    const businessId = r.match(/\b(?:LM\d{3,}|L\d{3,}|J\d{3,}|F\d{3,}|R\d{3,})\b/i);
+    const fallbackId = r.match(/:\s*([a-z0-9_-]{2,})\b/i);
+    if (businessId) meta.objectId = businessId[0].toUpperCase();
+    else if (fallbackId) meta.objectId = fallbackId[1];
     return meta;
   }
 
@@ -339,6 +682,7 @@
         manualIncome: mergeRecordsById(local.finance?.manualIncome || [], cloud.finance?.manualIncome || []),
         expenses: mergeRecordsById(local.finance?.expenses || [], cloud.finance?.expenses || [])
       },
+      websiteContent: Date.parse(local.websiteContent?.updatedAt || '') >= Date.parse(cloud.websiteContent?.updatedAt || '') ? normalizeWebsiteContent(local.websiteContent || {}) : normalizeWebsiteContent(cloud.websiteContent || {}),
       audit: [...(cloud.audit || []), ...(local.audit || [])].slice(-400)
     };
     if (!merged.settings.scriptUrl && local.settings?.scriptUrl) merged.settings.scriptUrl = local.settings.scriptUrl;
@@ -375,7 +719,38 @@
   function personById(id) { return state.people.find(p => p.id === id); }
   function leadById(id) { return state.leads.find(l => l.id === id); }
   function jobById(id) { return state.jobs.find(j => j.id === id); }
-  function allPeopleSorted() { return [...state.people].sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'de-CH')); }
+  function employeeById(id) { return state.users.find(u => u.id === id); }
+  function jobTeamIds(job = {}) { return Array.from(new Set([job.assignedTo, ...(job.teamMemberIds || [])].filter(Boolean))); }
+  function canViewLead(lead = {}, userId = currentUser) {
+    if (!lead || !userId) return false;
+    if (isAdmin(userId) || hasPermission('viewAllOperational', userId)) return true;
+    return [lead.createdBy, lead.updatedBy, lead.acquiredBy, lead.assignedTo].includes(userId);
+  }
+  function canEditLead(lead = {}, userId = currentUser) {
+    if (isAdmin(userId) || hasPermission('viewAllOperational', userId)) return true;
+    return hasPermission('createLeads', userId) && [lead.createdBy, lead.acquiredBy, lead.assignedTo].includes(userId);
+  }
+  function canViewJob(job = {}, userId = currentUser) {
+    if (!job || !userId) return false;
+    if (isAdmin(userId) || hasPermission('viewAllOperational', userId)) return true;
+    const operational = jobTeamIds(job).includes(userId) || job.createdBy === userId;
+    const acquisitionView = job.acquiredBy === userId && hasPermission('viewOwnCompensation', userId);
+    return operational || acquisitionView;
+  }
+  function canEditJob(job = {}, userId = currentUser) {
+    if (isAdmin(userId)) return true;
+    const operational = jobTeamIds(job).includes(userId) || job.createdBy === userId;
+    return operational && (hasPermission('updateJobs', userId) || hasPermission('uploadPhotos', userId));
+  }
+  function canViewPerson(person = {}, userId = currentUser) {
+    if (!person || !userId) return false;
+    if (isAdmin(userId) || hasPermission('viewAllOperational', userId)) return true;
+    return state.leads.some(l => l.personId === person.id && canViewLead(l, userId)) || state.jobs.some(j => j.personId === person.id && canViewJob(j, userId));
+  }
+  function visibleLeads() { return state.leads.filter(l => canViewLead(l)); }
+  function visibleJobs() { return state.jobs.filter(j => canViewJob(j)); }
+  function visibleCustomers() { return state.people.filter(p => p.status === 'customer' && canViewPerson(p)); }
+  function allPeopleSorted() { return [...state.people].filter(p => canViewPerson(p) || isAdmin() || hasPermission('viewAllOperational')).sort((a,b)=>(a.name||'').localeCompare(b.name||'', 'de-CH')); }
   function normalizeJobForNoUnpaidDone(job = {}) {
     const j = { ...job };
     const status = String(j.status || '').toLowerCase();
@@ -413,7 +788,7 @@
     const needle = String(q || '').trim().toLowerCase();
     if (!needle) return [];
     return [...state.people]
-      .filter(p => personSearchText(p).includes(needle))
+      .filter(p => (isAdmin() || hasPermission('viewAllOperational') || canViewPerson(p)) && personSearchText(p).includes(needle))
       .sort((a,b) => {
         const sa = a.status === 'customer' ? 0 : 1;
         const sb = b.status === 'customer' ? 0 : 1;
@@ -706,18 +1081,44 @@
   }
 
   function renderUserOptions() {
-    const opts = activeUsers().map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)}${u.role === 'admin' ? ' · Admin' : ''}</option>`).join('');
+    const loginOpts = loginUsers().map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)}${u.role === 'admin' ? ' · Admin' : ''}</option>`).join('');
     $$('[data-user-select]').forEach(sel => {
       const old = sel.value;
-      sel.innerHTML = opts;
+      sel.innerHTML = loginOpts;
       if (old && [...sel.options].some(o => o.value === old)) sel.value = old;
     });
-    $$('[data-assigned-select]').forEach(sel => {
+    const employeeOpts = employeeUsers().map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)} · ${esc(roleLabel(u.role))}</option>`).join('');
+    $$('[data-assigned-select],[data-employee-select]').forEach(sel => {
       const old = sel.value || currentUser;
-      sel.innerHTML = activeUsers().map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)}</option>`).join('');
+      sel.innerHTML = `<option value="">– nicht zugewiesen –</option>${employeeOpts}`;
       if (old && [...sel.options].some(o => o.value === old)) sel.value = old;
     });
+    renderTeamMemberOptions();
+    renderExpenseEmployeeOptions($(`[data-expense-employee-select]`)?.value || '');
   }
+
+  function renderTeamMemberOptions(selectedIds = null, primaryId = null) {
+    const box = $('[data-team-member-options]');
+    if (!box) return;
+    const form = $('[data-job-form]');
+    const primary = normalizeUserId(primaryId || form?.elements?.assignedTo?.value || '');
+    const current = selectedIds || (editingCompensationLines || []).map(x=>x.employeeId);
+    box.dataset.primaryId = primary;
+    box.innerHTML = employeeUsers().map(u => {
+      const isPrimary = u.id === primary;
+      const checked = isPrimary || current.includes(u.id);
+      return `<label class="employee-check ${isPrimary?'is-primary':''}"><input type="checkbox" name="teamMemberIds" value="${esc(u.id)}" ${checked?'checked':''} ${isPrimary?'disabled':''}><span>${esc(u.name || u.id)}</span><small>${isPrimary?'Hauptverantwortlich · ':''}${esc(roleLabel(u.role))}</small></label>`;
+    }).join('');
+    if (form && !isAdmin()) box.querySelectorAll('input').forEach(x => x.disabled = true);
+  }
+  $('[data-job-form] [name="assignedTo"]')?.addEventListener('change', event => {
+    const box = $('[data-team-member-options]');
+    if (!box) return;
+    const previousPrimary = normalizeUserId(box.dataset.primaryId || '');
+    const selected = Array.from(box.querySelectorAll('input:checked')).map(x => x.value).filter(id => id !== previousPrimary);
+    renderTeamMemberOptions(selected, event.target.value);
+    syncTeamCompensationFromSelection();
+  });
 
   function renderPermissions() {
     const admin = isAdmin();
@@ -726,6 +1127,10 @@
       btn.hidden = !allowed;
     });
     $$('[data-admin-only]').forEach(el => { el.hidden = !admin; });
+    $('[data-settings-form]')?.classList.toggle('personal-settings-only', !admin);
+    $('[data-panel="settings"]')?.classList.toggle('personal-settings-panel', !admin);
+    $$('[data-open-lead]').forEach(el => { el.hidden = !(admin || hasPermission('createLeads')); });
+    $$('[data-open-job]').forEach(el => { el.hidden = !canCreateJobs(); });
     if (currentUser && !canAccessTab(activeTab)) activeTab = 'dashboard';
   }
 
@@ -892,7 +1297,7 @@
     if (!currentUser) return;
     renderPermissions();
     const u = state.users.find(x => x.id === currentUser);
-    $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)}${u?.role==='admin'?' · Admin':''}`;
+    $('[data-user-pill]').innerHTML = `<span>${esc(userEmoji(currentUser))}</span>${esc(u?.name || currentUser)} · ${esc(roleLabel(u?.role || 'staff'))}`;
     setTab(activeTab);
     setTimeout(setupSmartStickyNav, 120);
     if (!renderLogin._checkedWebsiteLeads && getSetting('scriptUrl')) {
@@ -907,7 +1312,7 @@
     const userId = fd.get('user');
     const password = String(fd.get('password') || '');
     const user = state.users.find(u => u.id === userId);
-    if (!user || user.active === false) return toast('Benutzer ist nicht aktiv.');
+    if (!user || user.active === false || user.loginEnabled === false || user.employmentActive === false) return toast('Portal-Login ist für diesen Benutzer nicht aktiv.');
     if (!user.passwordHash) {
       if (password.length < 4) return toast('Bitte mindestens 4 Zeichen verwenden.');
       await setPassword(userId, password);
@@ -927,7 +1332,7 @@
     renderPermissions();
     $$('[data-tab]').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
     $$('[data-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tab));
-    const titles = { dashboard:'Übersicht', leads:'Leads', jobs:'Jobs', customers:'Kunden', finance:'Buchhaltung', rewards:'Bonus', settings:'Einstellungen' };
+    const titles = { dashboard:'Übersicht', leads:'Leads', jobs:'Jobs', customers:'Kunden', finance:'Buchhaltung', rewards:'Bonus', employees:'Mitarbeiter', content:'Website-Inhalte', settings:'Einstellungen' };
     $('[data-page-title]').textContent = titles[tab] || 'Übersicht';
     renderAll();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -947,13 +1352,13 @@
 
   function renderAll() {
     if (!currentUser) return;
-    renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderFinance(); renderRewards(); renderUsers(); fillSettings(false); updatePortalModeUi(); applySetupLocks(); compactPortalInfoTexts();
+    renderStats(); renderToday(); renderLeads(); renderJobs(); renderCustomers(); renderFinance(); renderRewards(); renderUsers(); renderWebsiteContentEditor(); fillSettings(false); updatePortalModeUi(); applySetupLocks(); compactPortalInfoTexts();
   }
 
   function renderStats() {
-    const openLeadCount = activeLeads().length;
-    const openJobCount = state.jobs.filter(isOpenJob).length;
-    const customerCount = activeCustomers().length;
+    const openLeadCount = activeLeads().filter(canViewLead).length;
+    const openJobCount = visibleJobs().filter(isOpenJob).length;
+    const customerCount = visibleCustomers().length;
     const openRewards = state.rewards.filter(r => r.status === 'offen').reduce((s,r)=>s+Number(r.amount||0),0);
     const cards = [['Offene Leads', openLeadCount], ['Offene Jobs', openJobCount], ['Kunden', customerCount]];
     if (isAdmin()) cards.push(['Offener Bonus', `CHF ${openRewards}`]);
@@ -962,7 +1367,7 @@
 
   function renderToday() {
     const now = Date.now();
-    const jobs = state.jobs.filter(j => j.appointmentAt && isOpenJob(j))
+    const jobs = visibleJobs().filter(j => j.appointmentAt && isOpenJob(j))
       .sort((a,b)=>new Date(a.appointmentAt)-new Date(b.appointmentAt));
     const pageData = paginateItems(jobs, 'today');
     renderPager('today', pageData);
@@ -1007,7 +1412,7 @@
   function renderLeads() {
     const q = ($('[data-lead-search]')?.value || '').toLowerCase().trim();
     const filter = $('[data-lead-filter]')?.value || 'active';
-    let leads = [...state.leads].sort((a,b)=>(personById(a.personId)?.name||'').localeCompare(personById(b.personId)?.name||'', 'de-CH') || new Date(b.createdAt)-new Date(a.createdAt));
+    let leads = [...visibleLeads()].sort((a,b)=>(personById(a.personId)?.name||'').localeCompare(personById(b.personId)?.name||'', 'de-CH') || new Date(b.createdAt)-new Date(a.createdAt));
     if (filter === 'active') leads = leads.filter(l => !['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden','Verloren'].includes(l.status));
     if (filter === 'won') leads = leads.filter(l => ['Job erstellt','Job erledigt / Zahlung offen','Kunde geworden'].includes(l.status));
     if (filter === 'lost') leads = leads.filter(l => l.status === 'Verloren');
@@ -1023,20 +1428,25 @@
   function leadCard(l) {
     const p = personById(l.personId) || {};
     const ref = personById(l.referredById || p.referredById);
+    const acquired = l.acquiredBy ? userName(l.acquiredBy) : 'nicht zugewiesen';
+    const assigned = l.assignedTo ? userName(l.assignedTo) : 'nicht zugewiesen';
+    const canEdit = canEditLead(l);
+    const canConvert = canCreateJobs() && l.status === 'Offen';
+    const contact = isAdmin() ? waLeadLink(p,l) : '';
     return `<article class="item-card">
       <div class="item-top">
-        <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy || l.assignedTo || currentUser))}</div></div>
-        <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span>${ref?`<span class="badge ok">Empfohlen von ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
+        <div><div class="item-title"><span class="order-ref">Lead ${esc(l.id || '')}</span> · ${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span></div><div class="item-sub">${esc(l.service || '')} · ${esc(p.place || '')} · erfasst von ${esc(userName(l.createdBy || currentUser))}</div></div>
+        <div class="badges"><span class="badge ${l.status==='Verloren'?'danger':l.status==='Offen'?'warn':'ok'}">${esc(l.status)}</span><span class="badge">gewonnen: ${esc(acquired)}</span><span class="badge">zuständig: ${esc(assigned)}</span>${ref?`<span class="badge ok">Empfohlen von ${esc(ref.name)} · ${esc(ref.id)}</span>`:''}</div>
       </div>
-      <div class="item-sub">${esc(fullAddressForPerson(p))}${l.expectedValue?` · ca. CHF ${esc(l.expectedValue)}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}${l.notes?`<br>${esc(String(l.notes).slice(0,160))}`:''}</div>
-      <div class="actions">${waLeadLink(p,l)}${phoneLink(p.phone)}${mapLink(p)}<button class="secondary" data-edit-lead="${esc(l.id)}">Bearbeiten</button>${l.status==='Offen'?`<button class="primary" data-convert-lead="${esc(l.id)}">In Job umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Job</button>`}</div>
+      <div class="item-sub">${esc(fullAddressForPerson(p))}${l.expectedValue?` · Schätzung ${esc(money(l.expectedValue))}`:''}${l.appointmentAt?` · ${fmtDate(l.appointmentAt)}`:''}${l.notes?`<br>${esc(String(l.notes).slice(0,160))}`:''}</div>
+      <div class="actions">${contact}${phoneLink(p.phone)}${mapLink(p)}${canEdit?`<button class="secondary" data-edit-lead="${esc(l.id)}">Bearbeiten</button>`:''}${canConvert?`<button class="primary" data-convert-lead="${esc(l.id)}">In Auftrag umwandeln</button><button class="secondary" data-mark-lead-lost="${esc(l.id)}">Verloren</button>`:(canCreateJobs()?`<button class="secondary" data-open-person-job="${esc(p.id || '')}">Neuer Auftrag</button>`:'')}</div>
     </article>`;
   }
 
   function renderJobs() {
     const q = ($('[data-job-search]')?.value || '').toLowerCase().trim();
     const filter = $('[data-job-filter]')?.value || 'open';
-    let jobs = [...state.jobs].sort((a,b)=>new Date(a.appointmentAt || a.createdAt)-new Date(b.appointmentAt || b.createdAt));
+    let jobs = [...visibleJobs()].sort((a,b)=>new Date(a.appointmentAt || a.createdAt)-new Date(b.appointmentAt || b.createdAt));
     if (filter === 'open') jobs = jobs.filter(isOpenJob);
     if (filter === 'unpaid') jobs = jobs.filter(j => isOpenJob(j) && amountValue(j.amount) > 0);
     if (filter === 'done') jobs = jobs.filter(isCompletedJob);
@@ -1058,19 +1468,26 @@
     const ref = personById(j.referredById || p.referredById);
     const currentAmount = amountValue(j.amount);
     const customerTotal = p.status === 'customer' ? totalRevenueForPerson(p.id) : 0;
-    const amountBadges = p.status === 'customer'
+    const showAmount = isAdmin() || hasPermission('viewJobAmount');
+    const amountBadges = !showAmount ? '' : (p.status === 'customer'
       ? `${currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : ''}<span class="badge money-badge total">Umsatz total ${esc(money(customerTotal))}</span>`
-      : (currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : '');
+      : (currentAmount ? `<span class="badge money-badge order">Auftrag ${esc(money(currentAmount))}</span>` : ''));
     const syncBadges = jobSyncBadges(j);
     const photos = photoPreviewHtml([j.beforePhoto, j.afterPhoto], true);
+    const team = jobTeamIds(j).map(userName).join(', ') || userName(j.assignedTo || j.createdBy || currentUser);
+    const acquired = j.acquiredBy ? userName(j.acquiredBy) : '';
+    const ownPay = !isAdmin() && hasPermission('viewOwnCompensation') ? compensationForEmployee(j, currentUser) : 0;
+    const compBadge = ownPay > 0 ? `<span class="badge ok">Deine Vergütung ${esc(money(ownPay))}</span>` : '';
+    const edit = canEditJob(j) ? `<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>` : '';
+    const complete = isAdmin() && !cancelled && !paid ? `<button class="primary" data-complete-job="${esc(j.id)}">Job erledigt &amp; bezahlt</button>` : '';
     return `<article class="item-card">
       <div class="item-top">
-        <div><div class="item-title">${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · zuständig: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
-        <div class="badges"><span class="badge ${statusClass}">${esc(statusLabel)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${amountBadges}${syncBadges}${ref?`<span class="badge ok">Empfohlen von ${esc(ref.id)}</span>`:''}</div>
+        <div><div class="item-title"><span class="order-ref">Auftrag ${esc(j.id || '')}</span> · ${esc(p.name || 'Ohne Name')} <span class="badge badge-id">${esc(p.id || '')}</span> <span class="badge ${p.status==='customer'?'ok':'warn'}">${p.status==='customer'?'Kunde':'Lead'}</span></div><div class="item-sub">${fmtDate(j.appointmentAt)} · ${esc(j.service || '')} · verantwortlich: ${esc(userName(j.assignedTo || j.createdBy || currentUser))}</div></div>
+        <div class="badges"><span class="badge ${statusClass}">${esc(statusLabel)}</span>${paid?`<span class="badge ok">Zahlung erledigt</span>`:'<span class="badge warn">Zahlung offen</span>'}${amountBadges}${compBadge}${syncBadges}${ref?`<span class="badge ok">Empfohlen von ${esc(ref.id)}</span>`:''}</div>
       </div>
-      <div class="item-sub">${esc(fullAddressForPerson(p))}</div>
+      <div class="item-sub">${esc(fullAddressForPerson(p))}<br>Team: ${esc(team)}${acquired?` · Lead gewonnen durch ${esc(acquired)}`:''}</div>
       ${photos ? `<div class="photo-preview">${photos}</div>` : ''}
-      <div class="actions">${customerReminderLink(j)}${calendarButton(j)}${phoneLink(p.phone)}${mapLink(p)}${reviewLink(p, j)}<button class="secondary" data-edit-job="${esc(j.id)}">Bearbeiten</button>${!cancelled && !paid ? `<button class="primary" data-complete-job="${esc(j.id)}">Job erledigt &amp; bezahlt</button>` : ''}</div>
+      <div class="actions">${isAdmin()?customerReminderLink(j):''}${calendarButtons(j)}${phoneLink(p.phone)}${mapLink(p)}${isAdmin()?reviewLink(p,j):''}${notifyTeamButton(j)}${edit}${complete}</div>
     </article>`;
   }
 
@@ -1093,7 +1510,7 @@
   function renderCustomers() {
     const q = ($('[data-customer-search]')?.value || '').toLowerCase().trim();
     const filter = $('[data-customer-filter]')?.value || 'all';
-    let customers = activeCustomers();
+    let customers = visibleCustomers();
     if (filter === 'active') customers = customers.filter(p => contactStatus(p) === 'Aktiv');
     if (filter === 'inactive') customers = customers.filter(p => contactStatus(p) === 'Inaktiv / Pause');
     if (filter === 'blocked') customers = customers.filter(p => contactStatus(p) === 'Nicht kontaktieren');
@@ -1105,20 +1522,23 @@
   }
 
   function customerCard(p) {
-    const jobs = state.jobs.filter(j => j.personId === p.id);
-    const paidJobsCount = paidJobsForPerson(p.id).length;
+    const jobs = state.jobs.filter(j => j.personId === p.id && canViewJob(j));
+    const paidJobsCount = jobs.filter(isPaidJob).length;
     const openJobsCount = jobs.filter(isOpenJob).length;
-    const revenueTotal = totalRevenueForPerson(p.id);
+    const revenueTotal = jobs.filter(isPaidJob).reduce((sum,j)=>sum+amountValue(j.amount),0);
     const link = referralLink(p.id);
     const blocked = isContactBlocked(p);
     const warning = contactWarningText(p);
+    const admin = isAdmin();
     const contactActions = blocked
       ? `<button class="secondary" data-show-contact-warning="${esc(p.id)}">Kontakt gesperrt</button>`
-      : `${whatsappLink(p.phone, referralInviteText(p), 'Empfehlungslink senden', true)}${reviewLink(p)}${phoneLink(p.phone)}<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`;
+      : `${admin?whatsappLink(p.phone, referralInviteText(p), 'Empfehlungslink senden', true):''}${admin?reviewLink(p):''}${phoneLink(p.phone)}${admin?`<button class="secondary" data-copy-ref="${esc(p.id)}">Link kopieren</button>`:''}`;
+    const agreement = p.acquisitionAgreement?.employeeId ? normalizeCommissionAgreement(p.acquisitionAgreement) : null;
+    const commissionBadge = agreement ? `<span class="badge ${agreement.active?'ok':'warn'}">Provision: ${esc(userName(agreement.employeeId))} ${esc(String(agreement.firstPct))}% / ${esc(String(agreement.repeatPct))}%</span>` : '';
     return `<article class="item-card ${blocked ? 'contact-blocked' : ''}">
-      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span> ${contactBadge(p)}</div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div>${warning ? `<div class="item-warning">${esc(warning)}</div>` : ''}</div><div class="badges"><span class="badge">${jobs.length} Job(s)</span><span class="badge ok">${paidJobsCount} bezahlt</span>${openJobsCount ? `<span class="badge warn">${openJobsCount} offen</span>` : ''}<span class="badge money-badge total">Umsatz total ${esc(money(revenueTotal))}</span><span class="badge">${esc(p.source || 'Quelle offen')}</span></div></div>
-      <div class="referral-link-line"><span>Empfehlungslink</span><strong>${esc(link)}</strong></div>
-      <div class="actions">${contactActions}${mapLink(p)}<button class="secondary" data-edit-customer="${esc(p.id)}">Bearbeiten</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Job</button></div>
+      <div class="item-top"><div><div class="item-title">${esc(p.name)} <span class="badge badge-id">${esc(p.id)}</span> ${contactBadge(p)}</div><div class="item-sub">${esc(fullAddressForPerson(p) || p.address || '')}</div>${warning ? `<div class="item-warning">${esc(warning)}</div>` : ''}</div><div class="badges"><span class="badge">${jobs.length} Auftrag/Aufträge</span><span class="badge ok">${paidJobsCount} bezahlt</span>${openJobsCount ? `<span class="badge warn">${openJobsCount} offen</span>` : ''}${(admin||hasPermission('viewJobAmount'))?`<span class="badge money-badge total">Umsatz total ${esc(money(revenueTotal))}</span>`:''}<span class="badge">${esc(p.source || 'Quelle offen')}</span>${admin?commissionBadge:''}</div></div>
+      ${admin?`<div class="referral-link-line"><span>Empfehlungslink</span><strong>${esc(link)}</strong></div>`:''}
+      <div class="actions">${contactActions}${mapLink(p)}${admin?`<button class="secondary" data-edit-customer="${esc(p.id)}">Bearbeiten</button><button class="secondary" data-edit-commission="${esc(p.id)}">Provision bearbeiten</button><button class="secondary" data-open-person-job="${esc(p.id)}">Neuer Auftrag</button>`:''}</div>
     </article>`;
   }
 
@@ -1267,6 +1687,26 @@
       return (!range.from || end >= range.from) && (!range.to || start <= range.to);
     }).map(x => ({ type:'Manuell', id:x.id, date:x.from || x.createdAt, from:x.from || '', to:x.to || '', title:x.title || 'Manuelle Einnahme', amount:amountValue(x.amount), notes:x.notes || '', createdBy:x.createdBy || '' }));
   }
+  function isEmployeeExpenseRecord(x = {}) {
+    return x.category === 'Löhne & Mitarbeiter' || x.sourceType === 'employeeCompensation';
+  }
+  function isRewardExpenseRecord(x = {}) {
+    return x.category === 'Kundenbonus & Empfehlungen' || x.sourceType === 'referralReward';
+  }
+  function isDeferredExpenseRecord(x = {}) { return isEmployeeExpenseRecord(x) || isRewardExpenseRecord(x); }
+  function employeeExpensePaymentStatus(x = {}) {
+    if (!isEmployeeExpenseRecord(x)) return '';
+    if (x.paymentStatus === 'bezahlt' || x.paymentStatus === 'offen') return x.paymentStatus;
+    // Bestehende manuell erfasste Löhne galten bisher bereits als Ausgabe.
+    return x.automatic ? 'offen' : 'bezahlt';
+  }
+  function rewardExpensePaymentStatus(x = {}) {
+    if (!isRewardExpenseRecord(x)) return '';
+    return x.paymentStatus === 'bezahlt' ? 'bezahlt' : 'offen';
+  }
+  function deferredExpensePaymentStatus(x = {}) {
+    return isEmployeeExpenseRecord(x) ? employeeExpensePaymentStatus(x) : (isRewardExpenseRecord(x) ? rewardExpensePaymentStatus(x) : '');
+  }
   function expenseItems(range) {
     return (state.finance?.expenses || []).filter(x => !x.deletedAt).filter(x => dateInRange(x.date || x.createdAt, range.from, range.to)).map(x => ({ ...x, amount:amountValue(x.amount) }));
   }
@@ -1274,18 +1714,29 @@
     const jobs = jobIncomeItems(range);
     const manual = manualIncomeItems(range);
     const expenses = expenseItems(range);
+    const countedExpenses = expenses.filter(x => !isDeferredExpenseRecord(x) || deferredExpensePaymentStatus(x) === 'bezahlt');
     const forecast = forecastJobs(range);
     const forecastLeads = forecastLeadItems(range);
     const forecastAll = [...forecast, ...forecastLeads];
     const jobIncome = jobs.reduce((s,x)=>s+amountValue(x.amount),0);
     const manualIncome = manual.reduce((s,x)=>s+amountValue(x.amount),0);
-    const expenseTotal = expenses.reduce((s,x)=>s+amountValue(x.amount),0);
+    const expenseTotal = countedExpenses.reduce((s,x)=>s+amountValue(x.amount),0);
+    const employeeExpenses = expenses.filter(isEmployeeExpenseRecord);
+    const employeePaidExpenses = employeeExpenses.filter(x => employeeExpensePaymentStatus(x) === 'bezahlt');
+    const employeeOpenExpenses = employeeExpenses.filter(x => employeeExpensePaymentStatus(x) !== 'bezahlt');
+    const employeeCostTotal = employeePaidExpenses.reduce((s,x)=>s+amountValue(x.amount),0);
+    const employeeOpenTotal = employeeOpenExpenses.reduce((s,x)=>s+amountValue(x.amount),0);
+    const rewardExpenses = expenses.filter(isRewardExpenseRecord);
+    const rewardPaidExpenses = rewardExpenses.filter(x => rewardExpensePaymentStatus(x) === 'bezahlt');
+    const rewardOpenExpenses = rewardExpenses.filter(x => rewardExpensePaymentStatus(x) !== 'bezahlt');
+    const rewardPaidTotal = rewardPaidExpenses.reduce((sum,x)=>sum+amountValue(x.amount),0);
+    const rewardOpenTotal = rewardOpenExpenses.reduce((sum,x)=>sum+amountValue(x.amount),0);
     const forecastTotal = forecastAll.reduce((s,x)=>s+amountValue(x.amount),0);
-    return { jobs, manual, expenses, forecast, forecastLeads, forecastAll, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
+    return { jobs, manual, expenses, countedExpenses, employeeExpenses, employeePaidExpenses, employeeOpenExpenses, employeeCostTotal, employeeOpenTotal, rewardExpenses, rewardPaidExpenses, rewardOpenExpenses, rewardPaidTotal, rewardOpenTotal, forecast, forecastLeads, forecastAll, jobIncome, manualIncome, incomeTotal:jobIncome+manualIncome, expenseTotal, profit:jobIncome+manualIncome-expenseTotal, forecastTotal };
   }
 
   function canEditFinanceEntry(x) {
-    return !!x && (x.createdBy === currentUser);
+    return !!x && !x.automatic && (x.createdBy === currentUser);
   }
 
   function updateFinanceDateControls(range) {
@@ -1307,6 +1758,19 @@
     }
   }
 
+
+  function applyFiveCardScroll(list) {
+    if (!list) return;
+    const cards = Array.from(list.children).filter(el => el.classList?.contains('item-card'));
+    list.classList.toggle('scroll-after-five', cards.length > 5);
+    list.style.maxHeight = '';
+    if (cards.length <= 5) return;
+    const style = getComputedStyle(list);
+    const gap = parseFloat(style.rowGap || style.gap || 0) || 0;
+    const height = cards.slice(0,5).reduce((sum, card) => sum + card.getBoundingClientRect().height, 0) + gap * 4 + 2;
+    list.style.maxHeight = `${Math.ceil(height)}px`;
+  }
+
   function renderFinance() {
     if (!$('[data-finance-stats]') || !isAdmin()) return;
     const range = getFinanceRange();
@@ -1317,33 +1781,81 @@
       ['Bezahlte Jobs', money(s.jobIncome), `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
       ['Pipeline offen', money(s.forecastTotal), `${s.forecast.length} Job(s) + ${s.forecastLeads.length} Lead(s)`],
-      ['Ausgaben', money(s.expenseTotal), `${s.expenses.length} Kostenposition(en)`],
+      ['Ausgaben', money(s.expenseTotal), `${s.countedExpenses.length} bezahlt/gebucht · ${s.employeeOpenExpenses.length} Lohn offen · ${s.rewardOpenExpenses.length} Bonus offen`],
+      ['Löhne & Mitarbeiter bezahlt', money(s.employeeCostTotal), `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen`],
       ['Gewinn', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
     ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
 
     renderFinanceChart(s);
-    const incomes = [...s.jobs, ...s.manual].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-    const incomePage = paginateItems(incomes, 'income');
-    renderPager('income', incomePage);
-    $('[data-income-count]').textContent = `${incomes.length} Eintrag(e)`;
-    $('[data-income-list]').innerHTML = incomePage.slice.length ? incomePage.slice.map(x => {
+    const incomeQuery = String($('[data-income-search]')?.value || '').trim().toLowerCase();
+    const incomeType = $('[data-income-type-filter]')?.value || 'all';
+    const allIncomes = [...s.jobs, ...s.manual].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const incomes = allIncomes.filter(x => {
+      if (incomeType === 'jobs' && x.type === 'Manuell') return false;
+      if (incomeType === 'manual' && x.type !== 'Manuell') return false;
+      if (!incomeQuery) return true;
+      return [x.title,x.type,x.notes,x.jobId,userName(x.createdBy)].join(' ').toLowerCase().includes(incomeQuery);
+    });
+    $('[data-income-pager]').innerHTML = '';
+    $('[data-income-count]').textContent = incomes.length === allIncomes.length ? `${allIncomes.length} Eintrag(e)` : `${incomes.length} von ${allIncomes.length}`;
+    $('[data-income-list]').innerHTML = incomes.length ? incomes.map(x => {
       const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
       const editBtns = x.type === 'Manuell' && canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-manual-income="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-manual-income="${esc(x.id)}">Löschen</button></div>` : (x.jobId ? `<div class="actions"><button class="secondary" data-edit-job="${esc(x.jobId)}">Job/Zahlung bearbeiten</button></div>` : '');
       return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.type)} · ${esc(fmtDateOnly(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge ok">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
-    }).join('') : '<div class="empty">Keine Einnahmen im Zeitraum.</div>';
+    }).join('') : '<div class="empty">Keine passenden Einnahmen im Zeitraum.</div>';
 
-    const sortedExpenses = [...s.expenses].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
-    const expensePage = paginateItems(sortedExpenses, 'expenses');
-    renderPager('expenses', expensePage);
-    $('[data-expense-count]').textContent = `${s.expenses.length} Eintrag(e)`;
-    $('[data-expense-list]').innerHTML = expensePage.slice.length ? expensePage.slice.map(x => {
-      const by = x.createdBy ? ` · eingetragen von ${userName(x.createdBy)}` : '';
-      const editBtns = canEditFinanceEntry(x) ? `<div class="actions"><button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : '';
-      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(fmtDateOnly(x.date))}${by}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><span class="badge danger">${esc(money(x.amount))}</span></div>${editBtns}</article>`;
-    }).join('') : '<div class="empty">Keine Ausgaben im Zeitraum.</div>';
+    const expenseQuery = String($('[data-expense-search]')?.value || '').trim().toLowerCase();
+    const expenseType = $('[data-expense-type-filter]')?.value || 'all';
+    const expenseStatus = $('[data-expense-status-filter]')?.value || 'all';
+    const allSortedExpenses = [...s.expenses].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    const sortedExpenses = allSortedExpenses.filter(x => {
+      const employee = isEmployeeExpenseRecord(x);
+      const reward = isRewardExpenseRecord(x);
+      const status = deferredExpensePaymentStatus(x);
+      if (expenseType === 'wages' && !employee) return false;
+      if (expenseType === 'bonus' && !reward) return false;
+      if (expenseType === 'material' && !['Maschine / Gerät','Reinigungsmittel / Seife','Mops / Tücher / Material'].includes(x.category)) return false;
+      if (expenseType === 'vehicle' && x.category !== 'Fahrzeug / Benzin') return false;
+      if (expenseType === 'advertising' && x.category !== 'Werbung / Druck') return false;
+      if (expenseType === 'other' && (employee || reward || ['Maschine / Gerät','Reinigungsmittel / Seife','Mops / Tücher / Material','Fahrzeug / Benzin','Werbung / Druck'].includes(x.category))) return false;
+      if (expenseStatus === 'open' && (!isDeferredExpenseRecord(x) || status === 'bezahlt')) return false;
+      if (expenseStatus === 'paid' && isDeferredExpenseRecord(x) && status !== 'bezahlt') return false;
+      if (!expenseQuery) return true;
+      return [x.title,x.category,x.subtype,x.notes,x.jobId,userName(x.employeeId),userName(x.createdBy)].join(' ').toLowerCase().includes(expenseQuery);
+    });
+    $('[data-expenses-pager]').innerHTML = '';
+    $('[data-expense-count]').textContent = sortedExpenses.length === allSortedExpenses.length ? `${allSortedExpenses.length} Eintrag(e)` : `${sortedExpenses.length} von ${allSortedExpenses.length}`;
+    $('[data-expense-list]').innerHTML = sortedExpenses.length ? sortedExpenses.map(x => {
+      const by = x.createdBy && x.createdBy !== 'system' ? ` · eingetragen von ${userName(x.createdBy)}` : '';
+      const isEmployeeExpense = isEmployeeExpenseRecord(x);
+      const isRewardExpense = isRewardExpenseRecord(x);
+      const paymentStatus = deferredExpensePaymentStatus(x);
+      const paymentBadge = isEmployeeExpense ? `<span class="badge ${paymentStatus==='bezahlt'?'ok':'warn'}">Lohn ${paymentStatus==='bezahlt'?'bezahlt':'offen'}</span>` : (isRewardExpense ? `<span class="badge ${paymentStatus==='bezahlt'?'ok':'warn'}">Bonus ${paymentStatus==='bezahlt'?'eingelöst / ausbezahlt':'gutgeschrieben'}</span>` : '');
+      const paymentToggle = isDeferredExpenseRecord(x) && isAdmin() ? `<button class="secondary" data-toggle-deferred-payment="${esc(x.id)}">${paymentStatus==='bezahlt'?'Als offen markieren':(isRewardExpense?'Als eingelöst / ausbezahlt markieren':'Als bezahlt markieren')}</button>` : '';
+      const editBtns = canEditFinanceEntry(x) ? `<div class="actions">${paymentToggle}<button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : (isDeferredExpenseRecord(x) ? `<div class="actions">${paymentToggle}${x.jobId?`<button class="secondary" data-edit-job="${esc(x.jobId)}">Auftrag ${esc(x.jobId)} öffnen</button>`:''}</div>` : '');
+      return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(fmtDateOnly(x.date))}${by}${x.employeeId?` · Mitarbeiter ${esc(userName(x.employeeId))}`:''}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><div class="badges">${paymentBadge}<span class="badge danger">${esc(money(x.amount))}</span></div></div>${editBtns}</article>`;
+    }).join('') : '<div class="empty">Keine passenden Ausgaben im Zeitraum.</div>';
 
+    requestAnimationFrame(() => {
+      applyFiveCardScroll($('[data-income-list]'));
+      applyFiveCardScroll($('[data-expense-list]'));
+    });
+
+    renderEmployeeCostSummary(s);
     renderCustomerActivity(range);
   }
+  function renderEmployeeCostSummary(summary) {
+    const el = $('[data-employee-cost-summary]');
+    if (!el || !isAdmin()) return;
+    const rows = employeeUsers().map(u => {
+      const entries = (summary.employeeExpenses || []).filter(x => x.employeeId === u.id);
+      const paid = entries.filter(x => employeeExpensePaymentStatus(x) === 'bezahlt').reduce((sum,x)=>sum+amountValue(x.amount),0);
+      const open = entries.filter(x => employeeExpensePaymentStatus(x) !== 'bezahlt').reduce((sum,x)=>sum+amountValue(x.amount),0);
+      return { u, entries, paid, open };
+    }).filter(r => r.entries.length).sort((a,b)=>b.paid-a.paid || b.open-a.open);
+    el.innerHTML = rows.length ? rows.map(r => `<div class="employee-cost-row"><div><strong>${esc(r.u.name)}</strong><span>${r.entries.length} Position(en) · ${esc(roleLabel(r.u.role))}</span></div><div><strong>bezahlt ${esc(money(r.paid))}</strong>${r.open>0?`<span class="warn-text">offen ${esc(money(r.open))}</span>`:'<span class="ok-text">alles bezahlt</span>'}</div></div>`).join('') : '<div class="empty">Im gewählten Zeitraum noch keine Mitarbeiterkosten.</div>';
+  }
+
   function renderFinanceChart(s) {
     const max = Math.max(s.incomeTotal, s.forecastTotal || 0, s.expenseTotal, Math.abs(s.profit), 1);
     const rows = [
@@ -1390,14 +1902,15 @@
 
   function renderRewards() {
     if (!$('[data-reward-list]') || !isAdmin()) return;
+    reconcileRewardExpenseStates(state);
     const rewards = [...state.rewards].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
     const pageData = paginateItems(rewards, 'rewards');
     renderPager('rewards', pageData);
     $('[data-reward-list]').innerHTML = pageData.slice.length ? pageData.slice.map(r => {
       const receiver = personById(r.customerId); const from = personById(r.fromPersonId);
       return `<article class="item-card">
-        <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}</div></div><span class="badge ${r.status==='offen'?'warn':'ok'}">${esc(r.status)}</span></div>
-        <div class="actions"><button class="secondary" data-toggle-reward="${esc(r.id)}">${r.status==='offen'?'Als gutgeschrieben markieren':'Wieder offen'}</button>${whatsappLink(receiver?.phone, `Hoi ${receiver?.name || ''}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`, 'WhatsApp')}</div>
+        <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}</div></div><span class="badge ${r.status==='offen'?'warn':'ok'}">${esc(r.status || 'offen')}</span></div>
+        <div class="actions">${r.status==='eingelöst / ausbezahlt'?'<button class="secondary" data-tab-go="finance">In Buchhaltung ansehen</button>':`<button class="secondary" data-toggle-reward="${esc(r.id)}">${r.status==='offen'?'Als gutgeschrieben markieren':'Wieder offen setzen'}</button>`}${whatsappLink(receiver?.phone, `Hoi ${receiver?.name || ''}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`, 'WhatsApp')}</div>
       </article>`;
     }).join('') : '<div class="empty">Noch keine Boni. Sie entstehen automatisch, wenn ein Empfehlungs-Job erledigt wird und der Mindestauftrag erreicht ist.</div>';
   }
@@ -1406,14 +1919,31 @@
     const q = typeof target === 'string' ? target : fullAddressForPerson(target || {});
     return q ? `<a class="secondary" href="https://maps.google.com/?q=${encodeURIComponent(q)}" target="_blank" rel="noopener">Maps</a>` : '';
   }
-  function phoneLink(phone) { const p = parseSwissPhone(phone); return p.ok && !p.empty ? `<a class="secondary" href="tel:${esc(p.tel)}">Anrufen</a>` : ''; }
+  function phoneLink(phone) { if (!isAdmin() && !hasPermission('contactCustomers')) return ''; const p = parseSwissPhone(phone); return p.ok && !p.empty ? `<a class="secondary" href="tel:${esc(p.tel)}">Anrufen</a>` : ''; }
   function smsLink(phone, text='') { return ''; }
   function isLikelySwissMobile(parsed) { return parsed?.ok && !parsed.empty && /^417[4-9]\d{7}$/.test(parsed.wa); }
   function waUrlFor(phone, text) { const p = parseSwissPhone(phone); if (!p.ok || p.empty || !p.wa) return ''; return `https://api.whatsapp.com/send?phone=${p.wa}&text=${encodeURIComponent(text)}`; }
-  function whatsappLink(phone, text, label='WhatsApp', primary=false) { const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
+  function whatsappLink(phone, text, label='WhatsApp', primary=false) { if (!isAdmin()) return ''; const url = waUrlFor(phone, text); return url ? `<a class="${primary?'primary':'secondary'}" href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>` : ''; }
   function waBusinessUrl(text) { const n = normalizeBusinessPhone(getSetting('businessPhone')); return n ? `https://api.whatsapp.com/send?phone=${n}&text=${encodeURIComponent(text)}` : '#'; }
   function customerReminderLink(job) { const p = personById(job.personId) || {}; return whatsappLink(p.phone, reminderText(job), 'Erinnerung senden', true); }
-  function calendarButton(job) { return (!isCompletedJob(job) && !isCancelledJob(job)) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Kalender</button>` : ''; }
+  function calendarButtons(job) {
+    if (isCancelledJob(job)) return '';
+    const personal = `<button class="secondary" data-personal-calendar-job="${esc(job.id)}">Mein Kalender</button>`;
+    const company = isAdmin() && !isCompletedJob(job) ? `<button class="secondary" data-calendar-job="${esc(job.id)}">Firmenkalender</button>` : '';
+    return company + personal;
+  }
+  function calendarButton(job) { return calendarButtons(job); }
+  function canNotifyAssignedTeam(job) {
+    if (!job) return false;
+    return isAdmin() || job.assignedTo === currentUser;
+  }
+  function notifyTeamButton(job) {
+    const recipients = jobTeamIds(job).filter(id => id !== currentUser);
+    return canNotifyAssignedTeam(job) && recipients.length
+      ? `<button class="secondary" data-notify-team="${esc(job.id)}">Team per WhatsApp informieren</button>`
+      : '';
+  }
+  function compensationForEmployee(job, employeeId) { return (job.compensationLines || []).filter(x => x.employeeId === employeeId).reduce((sum,x)=>sum+compensationLineAmount(x),0); }
   function waLeadLink(p,l) { return whatsappLink(p.phone, newCustomerText(p,l), 'WhatsApp'); }
   function reviewLink(p, job = {}) { const link = googleReviewLink(); return link ? whatsappLink(p?.phone, reviewText(p, job), 'Google Review') : ''; }
 
@@ -1460,7 +1990,23 @@
     $('[data-customer-dialog]').showModal();
   }
 
+  function commissionAgreementForLead(acquiredBy, existing = null) {
+    if (!acquiredBy) return null;
+    if (existing?.employeeId === acquiredBy) return normalizeCommissionAgreement(existing, acquiredBy);
+    const fresh = commissionAgreementFromEmployee(acquiredBy);
+    return fresh.employeeId ? { ...fresh, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() } : null;
+  }
+  function renderLeadCommissionSummary(form, acquiredBy = '', existing = null) {
+    const el = $('[data-lead-commission-summary]', form);
+    if (!el) return;
+    const a = commissionAgreementForLead(acquiredBy, existing);
+    el.innerHTML = acquiredBy ? `<strong>Lead gewonnen durch:</strong> ${esc(userName(acquiredBy))}<br><span>${a?.active ? `Provision automatisch: ${esc(String(a.firstPct))}% erster Auftrag, ${esc(String(a.repeatPct))}% Folgeaufträge${a.maxJobs ? `, maximal ${esc(String(a.maxJobs))} Auftrag/ Aufträge` : ', unbegrenzt'}.` : 'Für diese Person ist keine aktive Akquiseprovision hinterlegt.'}</span>` : '<strong>Lead-Gewinnung:</strong> keine Person ausgewählt.';
+  }
+
   function openLeadDialog(lead = null) {
+    if (!isAdmin() && !hasPermission('createLeads')) return toast('Du hast kein Recht, Leads zu erstellen.');
+    if (lead && !canEditLead(lead)) return toast('Dieser Lead ist dir nicht zugewiesen.');
+    renderUserOptions();
     const form = $('[data-lead-form]');
     if (!form) return;
     form.reset();
@@ -1468,6 +2014,9 @@
     form.elements.referredById.value = '';
     form.elements.leadId.value = '';
     form.elements.personId.value = '';
+    form.elements.acquiredBy.value = currentUser || '';
+    form.elements.leadAssignedTo.value = currentUser || '';
+    renderLeadCommissionSummary(form, currentUser);
     $('[data-lead-modal-title]').textContent = 'Lead hinzufügen';
     $('[data-lead-submit]').textContent = 'Lead speichern';
     if (lead) {
@@ -1481,18 +2030,27 @@
       form.elements.place.value = person.place || '';
       form.elements.service.value = lead.service || form.elements.service.value;
       form.elements.source.value = lead.source || person.source || 'Website';
+      form.elements.acquiredBy.value = lead.acquiredBy || lead.createdBy || currentUser || '';
+      form.elements.leadAssignedTo.value = lead.assignedTo || lead.createdBy || currentUser || '';
       form.elements.expectedValue.value = lead.expectedValue || '';
       form.elements.appointmentAt.value = nativeDateTimeValueFromField(lead.appointmentAt) || '';
       form.elements.referredById.value = lead.referredById || person.referredById || '';
       if (form.elements.referredById.value) setRefField('lead', form.elements.referredById.value);
       form.elements.notes.value = lead.notes || '';
-      $('[data-lead-modal-title]').textContent = `Lead bearbeiten: ${person.name || lead.id}`;
+      renderLeadCommissionSummary(form, form.elements.acquiredBy.value, lead.commissionAgreement || person.acquisitionAgreement);
+      $('[data-lead-modal-title]').textContent = `Lead ${lead.id} bearbeiten: ${person.name || ''}`;
       $('[data-lead-submit]').textContent = 'Änderungen speichern';
     }
+    [form.elements.acquiredBy, form.elements.leadAssignedTo].forEach(el => { if (el) el.disabled = !isAdmin(); });
     $('[data-ref-suggestions="lead"]').hidden = true;
     $('[data-lead-dialog]').showModal();
     requestAnimationFrame(() => syncAllCalendarControls(form));
   }
+
+  $('[data-lead-form] [name="acquiredBy"]')?.addEventListener('change', event => {
+    const form = event.target.form;
+    renderLeadCommissionSummary(form, event.target.value);
+  });
 
   function fillJobPerson(form, person, lead = null) {
     if (!form || !person) return;
@@ -1517,9 +2075,184 @@
     }
   }
 
+  function compensationLineAmount(line = {}) {
+    if (line.type === 'none') return 0;
+    if (line.type === 'hourly') return Math.round(amountValue(line.hours) * amountValue(line.rate) * 100) / 100;
+    if (line.type === 'commission') return Math.round((amountValue(line.amount) || (amountValue(line.baseAmount) * amountValue(line.percent) / 100)) * 100) / 100;
+    return Math.round(amountValue(line.amount) * 100) / 100;
+  }
+  function compensationTypeLabel(type) { return ({ none:'Keine Arbeitsvergütung', fixed:'Fixlohn', hourly:'Stundenlohn', commission:'Akquiseprovision' })[type] || 'Vergütung'; }
+  function workLineForEmployee(employeeId, existing = null) {
+    const d = normalizeCompensationDefaults(employeeById(employeeId)?.compensationDefaults || {});
+    const previous = existing ? normalizeCompensationLine(existing) : null;
+    const type = previous?.type && ['fixed','hourly','none'].includes(previous.type) ? previous.type : d.workPayType;
+    return normalizeCompensationLine({
+      id:previous?.id || `work-${employeeId}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+      employeeId,
+      type:type || 'none',
+      hours:previous?.hours || 0,
+      rate:previous?.rate || (type === 'hourly' ? d.hourlyRate : 0),
+      amount:previous?.amount || 0,
+      description:previous?.description || '', automatic:false
+    });
+  }
+  function selectedTeamIdsFromDom() {
+    const form = $('[data-job-form]');
+    if (!form) return [];
+    const primary = normalizeUserId(form.elements.assignedTo?.value || '');
+    return Array.from(new Set([primary, ...Array.from(form.querySelectorAll('[name="teamMemberIds"]:checked')).map(x=>normalizeUserId(x.value))].filter(Boolean)));
+  }
+  function syncTeamCompensationFromSelection() {
+    const selected = selectedTeamIdsFromDom();
+    const old = new Map((editingCompensationLines || []).filter(x=>!x.automatic).map(x=>[x.employeeId,x]));
+    editingCompensationLines = selected.map(id => workLineForEmployee(id, old.get(id)));
+    renderTeamCompensationCards();
+  }
+  function syncTeamCompensationFromDom() {
+    const cards = $$('[data-team-comp-card]');
+    editingCompensationLines = cards.map(card => normalizeCompensationLine({
+      id:card.dataset.lineId,
+      employeeId:card.dataset.employeeId,
+      type:card.querySelector('[data-team-pay-type]')?.value || 'none',
+      hours:card.querySelector('[data-team-hours]')?.value || 0,
+      rate:card.querySelector('[data-team-rate]')?.value || 0,
+      amount:card.querySelector('[data-team-fixed]')?.value || 0,
+      description:card.querySelector('[data-team-note]')?.value || '',
+      automatic:false
+    }));
+    return editingCompensationLines;
+  }
+  function renderTeamCompensationCards() {
+    const list = $('[data-team-compensation-list]');
+    if (!list) return;
+    list.innerHTML = editingCompensationLines.length ? editingCompensationLines.map(line => {
+      const u = employeeById(line.employeeId) || {};
+      const type = ['none','hourly','fixed'].includes(line.type) ? line.type : 'none';
+      const amount = compensationLineAmount(line);
+      return `<article class="team-comp-card" data-team-comp-card data-employee-id="${esc(line.employeeId)}" data-line-id="${esc(line.id)}">
+        <div class="team-comp-head"><div><strong>${esc(u.name || line.employeeId)}</strong><span>${esc(roleLabel(u.role))}${u.phone ? ` · ${esc(u.phone)}` : ''}</span></div><span class="badge" data-team-line-total>${esc(money(amount))}</span></div>
+        <div class="team-comp-grid">
+          <label>Arbeitsstunden<input data-team-hours type="number" min="0" step="0.25" inputmode="decimal" value="${esc(line.hours || '')}" placeholder="z.B. 5"></label>
+          <label>Vergütungsart<select data-team-pay-type><option value="none" ${type==='none'?'selected':''}>Keine Arbeitsvergütung</option><option value="hourly" ${type==='hourly'?'selected':''}>Stundenlohn</option><option value="fixed" ${type==='fixed'?'selected':''}>Fixbetrag für diesen Auftrag</option></select></label>
+          <label data-team-rate-wrap ${type==='hourly'?'':'hidden'}>Stundenlohn CHF<input data-team-rate type="number" min="0" step="0.05" inputmode="decimal" value="${esc(line.rate || '')}"></label>
+          <label data-team-fixed-wrap ${type==='fixed'?'':'hidden'}>Fixbetrag CHF<input data-team-fixed type="number" min="0" step="0.05" inputmode="decimal" value="${esc(line.amount || '')}"></label>
+          <label class="wide">Notiz optional<input data-team-note value="${esc(line.description || '')}" placeholder="z.B. vereinbarter Pauschalbetrag"></label>
+        </div>
+      </article>`;
+    }).join('') : '<div class="empty">Noch kein Mitarbeiter ausgewählt.</div>';
+    updateJobCompensationPreview();
+  }
+  function updateTeamCardVisibility(card) {
+    const type = card.querySelector('[data-team-pay-type]')?.value || 'none';
+    const rateWrap = card.querySelector('[data-team-rate-wrap]');
+    const fixedWrap = card.querySelector('[data-team-fixed-wrap]');
+    if (rateWrap) rateWrap.hidden = type !== 'hourly';
+    if (fixedWrap) fixedWrap.hidden = type !== 'fixed';
+  }
+  function updateJobCompensationPreview() {
+    syncTeamCompensationFromDom();
+    $$('[data-team-comp-card]').forEach((card,index) => {
+      updateTeamCardVisibility(card);
+      const total = card.querySelector('[data-team-line-total]');
+      if (total) total.textContent = money(compensationLineAmount(editingCompensationLines[index] || {}));
+    });
+    const totalEl = $('[data-job-compensation-total]');
+    if (!totalEl) return;
+    const form = $('[data-job-form]');
+    const amount = amountValue(form?.elements?.amount?.value || 0);
+    const jobId = form?.elements?.jobId?.value || '';
+    const personId = form?.elements?.personId?.value || '';
+    const person = personById(personId) || {};
+    const lead = form?.elements?.leadId?.value ? leadById(form.elements.leadId.value) : null;
+    const agreement = lead?.commissionAgreement?.employeeId ? normalizeCommissionAgreement(lead.commissionAgreement) : (person.acquisitionAgreement?.employeeId ? normalizeCommissionAgreement(person.acquisitionAgreement) : null);
+    const draft = { id:jobId || 'draft', personId, amount, commissionAgreement:agreement, acquiredBy:lead?.acquiredBy || agreement?.employeeId || '' };
+    const commission = calculateCommissionLine(draft);
+    const work = editingCompensationLines.reduce((sum,line)=>sum+compensationLineAmount(line),0);
+    const commissionAmount = commission ? compensationLineAmount(commission) : 0;
+    totalEl.innerHTML = `<strong>Arbeitsvergütung: ${esc(money(work))}</strong><span>Akquiseprovision separat: ${esc(money(commissionAmount))} · Mitarbeiterkosten gesamt: ${esc(money(work + commissionAmount))}</span>`;
+  }
+  $('[data-team-member-options]')?.addEventListener('change', syncTeamCompensationFromSelection);
+  $('[data-team-compensation-list]')?.addEventListener('input', updateJobCompensationPreview);
+  $('[data-team-compensation-list]')?.addEventListener('change', updateJobCompensationPreview);
+
+  function agreementForJob(job = {}) {
+    const p = personById(job.personId) || {};
+    const lead = job.leadId ? leadById(job.leadId) : null;
+    const raw = job.commissionAgreement?.employeeId ? job.commissionAgreement : (lead?.commissionAgreement?.employeeId ? lead.commissionAgreement : p.acquisitionAgreement);
+    return raw?.employeeId ? normalizeCommissionAgreement(raw, raw.employeeId) : null;
+  }
+  function commissionOrderNumber(job = {}) {
+    const completed = state.jobs.filter(j => j.personId === job.personId && isPaidJob(j) && j.id !== job.id)
+      .sort((a,b)=>new Date(financeJobDate(a))-new Date(financeJobDate(b)));
+    return completed.length + 1;
+  }
+  function calculateCommissionLine(job = {}) {
+    const agreement = agreementForJob(job);
+    if (!agreement?.employeeId || !agreement.active) return null;
+    const orderNumber = commissionOrderNumber(job);
+    if (agreement.maxJobs > 0 && orderNumber > agreement.maxJobs) return null;
+    const percent = orderNumber === 1 ? agreement.firstPct : agreement.repeatPct;
+    if (percent <= 0 || amountValue(job.amount) <= 0) return null;
+    const amount = Math.round(amountValue(job.amount) * percent) / 100;
+    return normalizeCompensationLine({
+      id:`commission-${job.id || 'draft'}-${agreement.employeeId}`,
+      employeeId:agreement.employeeId,
+      type:'commission', percent, baseAmount:amountValue(job.amount), amount,
+      orderNumber, automatic:true,
+      description:orderNumber === 1 ? 'Provision erster Auftrag' : `Provision Folgeauftrag ${orderNumber}`
+    });
+  }
+  function updateJobAcquisitionSummary(job = null) {
+    const el = $('[data-job-acquisition-summary]');
+    if (!el) return;
+    const form = $('[data-job-form]');
+    const personId = job?.personId || form?.elements.personId?.value || '';
+    const lead = form?.elements.leadId?.value ? leadById(form.elements.leadId.value) : null;
+    const p = personById(personId) || {};
+    const acquiredBy = job?.acquiredBy || lead?.acquiredBy || p.acquisitionAgreement?.employeeId || '';
+    const agreement = lead?.commissionAgreement?.employeeId ? normalizeCommissionAgreement(lead.commissionAgreement) : (p.acquisitionAgreement?.employeeId ? normalizeCommissionAgreement(p.acquisitionAgreement) : null);
+    el.innerHTML = acquiredBy ? `<strong>Lead gewonnen durch:</strong> ${esc(userName(acquiredBy))}${agreement?` · Provision ${esc(String(agreement.firstPct))}% erster Auftrag / ${esc(String(agreement.repeatPct))}% Folgeaufträge · ${agreement.maxJobs?`max. ${agreement.maxJobs}`:'unbegrenzt'} · ${agreement.active?'aktiv':'gestoppt'}`:''}` : '<strong>Lead-Gewinnung:</strong> nicht zugewiesen';
+  }
+  $('[data-job-form] [name="amount"]')?.addEventListener('input', updateJobCompensationPreview);
+
+  function configureJobFormAccess(form, job) {
+    const admin = isAdmin();
+    const update = admin || hasPermission('updateJobs');
+    const upload = admin || hasPermission('uploadPhotos');
+    const editableNames = new Set(['appointmentAt','status','notes']);
+    Array.from(form.elements).forEach(el => {
+      if (!el.name || ['jobId','leadId','personId'].includes(el.name)) return;
+      if (admin) { el.disabled = false; return; }
+      if (['beforePhoto','afterPhoto'].includes(el.name)) el.disabled = !upload;
+      else if (editableNames.has(el.name)) el.disabled = !update;
+      else el.disabled = true;
+    });
+    const paidOption = form.elements.status?.querySelector('option[value="Bezahlt"]');
+    if (paidOption) {
+      paidOption.disabled = !admin;
+      paidOption.hidden = !admin;
+    }
+    const amountLabel = form.elements.amount?.closest('label');
+    if (amountLabel) amountLabel.hidden = !admin && !hasPermission('viewJobAmount');
+  }
+
+  function configureJobSourceField(form, lead = null) {
+    if (!form?.elements?.source) return;
+    const note = $('[data-job-source-note]', form);
+    const inherited = !!lead;
+    form.elements.source.disabled = inherited;
+    if (note) note.textContent = inherited ? `Automatisch übernommen aus Lead ${lead.id}.` : 'Bei direkt erstellten Aufträgen frei wählbar.';
+  }
+
   function openJobDialog(job = null, lead = null, person = null) {
+    if (!job && !canCreateJobs()) return toast('Nur Admins oder Teamleitung können neue Aufträge erstellen.');
+    if (job && !canEditJob(job)) return toast('Dieser Auftrag ist dir nicht zugewiesen oder du hast keine Bearbeitungsrechte.');
     renderUserOptions();
-    const form = $('[data-job-form]'); form.reset(); stagedPhotos = { before:null, after:null }; $('[data-photo-preview]').innerHTML = '';
+    const form = $('[data-job-form]');
+    form.reset();
+    stagedPhotos = { before:null, after:null };
+    editingCompensationLines = [];
+    $('[data-photo-preview]').innerHTML = '';
     if (job) { person = personById(job.personId); lead = job.leadId ? leadById(job.leadId) : null; }
     if (person) fillJobPerson(form, person, lead);
     if (lead) {
@@ -1544,13 +2277,24 @@
       stagedPhotos.before = job.beforePhoto || null;
       stagedPhotos.after = job.afterPhoto || null;
       $('[data-photo-preview]').innerHTML = photoPreviewHtml([stagedPhotos.before, stagedPhotos.after]);
-      $('[data-job-modal-title]').textContent = 'Job bearbeiten';
+      editingCompensationLines = (job.compensationLines || []).filter(x => !x.automatic && x.employeeId).map(normalizeCompensationLine);
+      renderTeamMemberOptions(jobTeamIds(job), job.assignedTo || currentUser);
+      $('[data-job-modal-title]').textContent = `Auftrag ${job.id} bearbeiten`;
+      $('[data-job-order-number]').textContent = `Auftragsnummer: ${job.id} · Kundennummer: ${person?.id || job.personId || ''}`;
     } else {
       form.elements.jobId.value = '';
       form.elements.status.value = 'Geplant';
       form.elements.assignedTo.value = currentUser || 'noah';
-      $('[data-job-modal-title]').textContent = lead ? 'Lead in Job umwandeln' : 'Job direkt erstellen';
+      renderTeamMemberOptions([], currentUser);
+      $('[data-job-modal-title]').textContent = lead ? `Lead ${lead.id} in Auftrag umwandeln` : 'Auftrag direkt erstellen';
+      $('[data-job-order-number]').textContent = 'Neue Auftragsnummer wird beim Speichern automatisch vergeben';
     }
+    if (!editingCompensationLines.length) syncTeamCompensationFromSelection(); else renderTeamCompensationCards();
+    updateJobAcquisitionSummary(job);
+    configureJobFormAccess(form, job);
+    const notifySaveButton = $('[data-save-notify-team]', form);
+    if (notifySaveButton) notifySaveButton.hidden = !(isAdmin() || (job && job.assignedTo === currentUser));
+    configureJobSourceField(form, lead || (job?.leadId ? leadById(job.leadId) : null));
     $('[data-ref-suggestions="job"]').hidden = true;
     $('[data-job-dialog]').showModal();
     requestAnimationFrame(() => syncAllCalendarControls(form));
@@ -1564,6 +2308,7 @@
 
   $('[data-customer-form]')?.addEventListener('submit', event => {
     event.preventDefault();
+    if (!isAdmin()) return toast('Nur Admins können Kundenstammdaten bearbeiten.');
     const form = event.currentTarget;
     if (!form.reportValidity() || !validateContactFields(form)) return;
     const fd = new FormData(form);
@@ -1588,12 +2333,13 @@
     const form = event.currentTarget;
     if (!form.reportValidity() || !validateContactFields(form)) return;
     if (markInvalidDateInput(form.elements.appointmentAt, 'Besichtigung/Termin', true)) return;
+    const existingId = String(form.elements.leadId.value || '').trim();
+    let lead = existingId ? leadById(existingId) : null;
+    if (lead && !canEditLead(lead)) return toast('Dieser Lead kann von dir nicht bearbeitet werden.');
     const fd = new FormData(form);
     const p = findOrCreatePerson({
-      personId: fd.get('personId'), name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById')
+      personId: form.elements.personId.value, name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById')
     });
-    const existingId = String(fd.get('leadId') || '').trim();
-    let lead = existingId ? leadById(existingId) : null;
     if (!lead) {
       lead = { id: nextId('lead'), createdAt: new Date().toISOString(), createdBy: currentUser, status: 'Offen' };
       state.leads.push(lead);
@@ -1601,90 +2347,296 @@
       lead.updatedAt = new Date().toISOString();
       lead.updatedBy = currentUser;
     }
+    const acquiredBy = isAdmin() ? (form.elements.acquiredBy.value || currentUser) : (lead.acquiredBy || currentUser);
+    const assignedTo = isAdmin() ? (form.elements.leadAssignedTo.value || acquiredBy || currentUser) : (lead.assignedTo || currentUser);
+    const agreement = commissionAgreementForLead(acquiredBy, lead.commissionAgreement || p.acquisitionAgreement);
     Object.assign(lead, {
-      personId: p.id,
-      service: fd.get('service'),
-      source: fd.get('source'),
-      expectedValue: fd.get('expectedValue'),
-      appointmentAt: isoDateTimeFromField(fd.get('appointmentAt')),
-      referredById: fd.get('referredById'),
-      status: lead.status || 'Offen',
-      notes: fd.get('notes'),
-      websiteLeadKey: lead.websiteLeadKey || p.websiteLeadKey || ''
+      personId:p.id, service:fd.get('service'), source:fd.get('source'), acquiredBy, assignedTo,
+      expectedValue:fd.get('expectedValue'), appointmentAt:isoDateTimeFromField(fd.get('appointmentAt')),
+      referredById:fd.get('referredById'), status:lead.status || 'Offen', notes:fd.get('notes'),
+      commissionAgreement:agreement,
+      websiteLeadKey:lead.websiteLeadKey || p.websiteLeadKey || ''
     });
-    saveState(`${existingId ? 'Lead geändert' : 'Lead erstellt'}: ${lead.id} / ${p.name || p.id}`); form.closest('dialog').close(); setTab('leads'); toast(existingId ? `Lead geändert: ${p.id}` : `Lead gespeichert: ${p.id}`);
+    p.acquisitionAgreement = agreement?.employeeId ? { ...agreement } : null;
+    saveState(`${existingId ? 'Lead geändert' : 'Lead erstellt'}: ${lead.id} / ${p.id} / gewonnen durch ${acquiredBy || '-'}`);
+    form.closest('dialog').close();
+    setTab('leads');
+    toast(existingId ? `Lead ${lead.id} geändert.` : `Lead ${lead.id} gespeichert · Kunde ${p.id}.`);
   });
 
   $('[data-job-form]')?.addEventListener('submit', event => {
     event.preventDefault();
     const form = event.currentTarget;
-    if (!form.reportValidity() || !validateContactFields(form)) return;
-    if (markInvalidDateInput(form.elements.appointmentAt, 'Termin', true)) return;
-    const fd = new FormData(form);
-    const lead = fd.get('leadId') ? leadById(fd.get('leadId')) : null;
-    const p = findOrCreatePerson({
-      personId: fd.get('personId'), name: fd.get('name'), phone: fd.get('phone'), email: fd.get('email'), address: fd.get('address'), place: fd.get('place'), source: fd.get('source'), referredById: fd.get('referredById') || lead?.referredById || ''
-    });
-    const existingJobId = String(fd.get('jobId') || '').trim();
+    const notifyAfterSave = !!event.submitter?.matches?.('[data-save-notify-team]');
+    const existingJobId = String(form.elements.jobId.value || '').trim();
     let job = existingJobId ? jobById(existingJobId) : null;
+    const admin = isAdmin();
+    if (job && !canEditJob(job)) return toast('Dieser Auftrag kann von dir nicht bearbeitet werden.');
+    if (!job && !canCreateJobs()) return toast('Du kannst keine neuen Aufträge erstellen.');
+    if (markInvalidDateInput(form.elements.appointmentAt, 'Termin', true)) return;
+
+    if (!admin) {
+      if (!job) return;
+      if (hasPermission('updateJobs')) {
+        job.appointmentAt = isoDateTimeFromField(form.elements.appointmentAt.value);
+        const requestedStatus = form.elements.status.value;
+        if (requestedStatus !== 'Bezahlt') job.status = requestedStatus;
+        job.notes = form.elements.notes.value || job.notes || '';
+      }
+      if (hasPermission('uploadPhotos')) {
+        job.beforePhoto = stagedPhotos.before || job.beforePhoto || null;
+        job.afterPhoto = stagedPhotos.after || job.afterPhoto || null;
+      }
+      job.updatedAt = new Date().toISOString();
+      job.updatedBy = currentUser;
+      saveState(`Auftrag geändert: ${job.id} / durch ${currentUser}`);
+      form.closest('dialog').close();
+      setTab('jobs');
+      toast(`Auftrag ${job.id} aktualisiert.`);
+      if (notifyAfterSave) notifyAssignedTeam(job);
+      if ((job.beforePhoto?.dataUrl || job.afterPhoto?.dataUrl || job.appointmentAt) && currentScriptUrl()) setTimeout(() => syncCloud(false), 350);
+      return;
+    }
+
+    if (!form.reportValidity() || !validateContactFields(form)) return;
+    const fd = new FormData(form);
+    const lead = form.elements.leadId.value ? leadById(form.elements.leadId.value) : null;
+    const p = findOrCreatePerson({
+      personId:form.elements.personId.value, name:fd.get('name'), phone:fd.get('phone'), email:fd.get('email'), address:fd.get('address'), place:fd.get('place'), source:form.elements.source.value || lead?.source || job?.source || '', referredById:fd.get('referredById') || lead?.referredById || job?.referredById || ''
+    });
     if (!job) {
-      job = { id: nextId('job'), personId: p.id, createdAt: new Date().toISOString(), createdBy: currentUser };
+      job = { id:nextId('job'), personId:p.id, createdAt:new Date().toISOString(), createdBy:currentUser };
       state.jobs.push(job);
     }
+    syncTeamCompensationFromDom();
+    const assignedTo = fd.get('assignedTo') || currentUser;
+    const teamMemberIds = Array.from(new Set([assignedTo, ...editingCompensationLines.map(x=>x.employeeId)].filter(Boolean)));
+    const agreement = lead?.commissionAgreement?.employeeId ? normalizeCommissionAgreement(lead.commissionAgreement) : (p.acquisitionAgreement?.employeeId ? normalizeCommissionAgreement(p.acquisitionAgreement) : null);
     Object.assign(job, {
-      personId: p.id,
-      leadId: fd.get('leadId') || job.leadId || '',
-      service: fd.get('service'),
-      appointmentAt: isoDateTimeFromField(fd.get('appointmentAt')),
-      amount: fd.get('amount'),
-      status: fd.get('status'),
-      assignedTo: fd.get('assignedTo'),
-      source: fd.get('source'),
-      referredById: fd.get('referredById') || job.referredById || p.referredById || '',
-      notes: fd.get('notes'),
-      beforePhoto: stagedPhotos.before || job.beforePhoto || null,
-      afterPhoto: stagedPhotos.after || job.afterPhoto || null,
-      updatedAt: new Date().toISOString(),
-      updatedBy: currentUser
+      personId:p.id, leadId:form.elements.leadId.value || job.leadId || '', service:fd.get('service'),
+      appointmentAt:isoDateTimeFromField(fd.get('appointmentAt')), amount:fd.get('amount'), status:fd.get('status'),
+      assignedTo, teamMemberIds, acquiredBy:lead?.acquiredBy || agreement?.employeeId || job.acquiredBy || '',
+      commissionAgreement:agreement, compensationLines:editingCompensationLines.map(normalizeCompensationLine),
+      source:form.elements.source.value || lead?.source || p.source || '', referredById:fd.get('referredById') || job.referredById || p.referredById || '',
+      notes:fd.get('notes'), beforePhoto:stagedPhotos.before || job.beforePhoto || null, afterPhoto:stagedPhotos.after || job.afterPhoto || null,
+      updatedAt:new Date().toISOString(), updatedBy:currentUser
     });
-    job = Object.assign(job, normalizeJobForNoUnpaidDone(job));
+    job = Object.assign(job, normalizeJobRecord(normalizeJobForNoUnpaidDone(job)));
     if (job.status === 'Bezahlt') job.paidAt = job.paidAt || new Date().toISOString();
-    else { delete job.paidAt; delete job.completedAt; }
+    else { delete job.paidAt; delete job.completedAt; removeEmployeeExpensesForJob(job.id); }
     if (lead) lead.status = 'Job erstellt';
     if (isCompletedJob(job)) completeJob(job.id, false);
-    saveState(`${existingJobId ? 'Job geändert' : (lead ? 'Lead in Job umgewandelt' : 'Job erstellt')}: ${job.id} / ${p.name || p.id}`); form.closest('dialog').close(); setTab('jobs');
+    saveState(`${existingJobId ? 'Auftrag geändert' : (lead ? 'Lead in Auftrag umgewandelt' : 'Auftrag erstellt')}: ${job.id} / Kunde ${p.id}`);
+    form.closest('dialog').close();
+    setTab('jobs');
     const needsMediaSync = !!(job.beforePhoto?.dataUrl || job.afterPhoto?.dataUrl || job.appointmentAt);
     const calMsg = job.appointmentAt && calendarSyncTarget() ? ' Termin wird automatisch mit Google Calendar synchronisiert.' : '';
-    toast(job.status === 'Bezahlt' ? `Job bezahlt und abgeschlossen: ${p.id}.${calMsg}` : `Job gespeichert: ${p.id}.${calMsg}`);
-    if (needsMediaSync && currentScriptUrl()) {
-      setTimeout(() => syncCloud(false), 350);
-    }
+    toast(job.status === 'Bezahlt' ? `Auftrag ${job.id} bezahlt und abgeschlossen.${calMsg}` : `Auftrag ${job.id} gespeichert.${calMsg}`);
+    if (notifyAfterSave) notifyAssignedTeam(job);
+    if (needsMediaSync && currentScriptUrl()) setTimeout(() => syncCloud(false), 350);
   });
+
+  function openCommissionDialog(personId) {
+    if (!isAdmin()) return;
+    renderUserOptions();
+    const p = personById(personId);
+    const form = $('[data-commission-form]');
+    if (!p || !form) return;
+    const agreement = p.acquisitionAgreement?.employeeId ? normalizeCommissionAgreement(p.acquisitionAgreement) : null;
+    form.reset();
+    form.elements.personId.value = p.id;
+    form.elements.employeeId.value = agreement?.employeeId || '';
+    form.elements.firstPct.value = agreement?.firstPct || '';
+    form.elements.repeatPct.value = agreement?.repeatPct || '';
+    form.elements.maxJobs.value = agreement?.maxJobs || '';
+    form.elements.active.checked = !!agreement?.active;
+    $('[data-commission-customer-label]').textContent = `${p.name || p.id} · ${p.id}. Bereits erzeugte Provisionen bleiben unverändert.`;
+    $('[data-commission-dialog]').showModal();
+  }
+
+  $('[data-commission-form]')?.addEventListener('submit', event => {
+    event.preventDefault();
+    if (!isAdmin()) return;
+    const form = event.currentTarget;
+    const p = personById(form.elements.personId.value);
+    if (!p) return;
+    const previous = p.acquisitionAgreement || {};
+    const employeeId = form.elements.employeeId.value;
+    p.acquisitionAgreement = employeeId ? normalizeCommissionAgreement({
+      employeeId,
+      firstPct:form.elements.firstPct.value,
+      repeatPct:form.elements.repeatPct.value,
+      maxJobs:form.elements.maxJobs.value,
+      active:form.elements.active.checked,
+      createdAt:previous.createdAt || new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+      stoppedAt:form.elements.active.checked ? '' : (previous.stoppedAt || new Date().toISOString())
+    }, employeeId) : null;
+    saveState(`Akquiseprovision geändert: ${p.id} / ${employeeId || 'entfernt'}`);
+    form.closest('dialog').close();
+    renderAll();
+    toast(form.elements.active.checked ? 'Provision für neue Aufträge gespeichert.' : 'Provision für neue Aufträge gestoppt.');
+  });
+
+  function notifyAssignedTeam(job) {
+    if (!job || !canNotifyAssignedTeam(job)) return toast('Nur Admins oder die hauptverantwortliche Person können das Team informieren.');
+    const p = personById(job.personId) || {};
+    const assigned = jobTeamIds(job).map(employeeById).filter(u => u && u.id !== currentUser);
+    if (!assigned.length) return toast('Diesem Auftrag ist noch kein weiterer Mitarbeiter zugewiesen.');
+    const recipients = assigned.filter(u => {
+      const parsed = parseSwissPhone(u.phone);
+      return parsed.ok && !parsed.empty;
+    });
+    if (!recipients.length) return toast('Bei den zugewiesenen Mitarbeitern ist keine gültige Telefonnummer gespeichert. Bitte zuerst unter Mitarbeiter ergänzen.');
+    let chosen = recipients[0];
+    if (recipients.length > 1) {
+      const answer = prompt(`Welchen Mitarbeiter informieren?\n${recipients.map((u,i)=>`${i+1}. ${u.name}`).join('\n')}\n\nNummer eingeben:`, '1');
+      if (answer === null) return;
+      chosen = recipients[Math.max(0, Math.min(recipients.length-1, Number(answer)-1))] || recipients[0];
+    }
+    const portalUrl = `${window.location.origin}/portal/`;
+    const loginLine = chosen.loginEnabled === false ? 'Für dich ist aktuell kein Portal-Login aktiviert.' : `Portal öffnen und einloggen: ${portalUrl}`;
+    const text = `Hallo ${chosen.name || ''}, dir wurde der Lumian-Auftrag ${job.id} zugewiesen.\n\nTermin: ${fmtDate(job.appointmentAt)}\nKunde: ${p.name || ''} (${p.id || ''})\nService: ${job.service || ''}\nAdresse: ${fullAddressForPerson(p)}\n\n${loginLine}\nIm Portal kannst du den Auftrag auch zu deinem persönlichen Kalender hinzufügen.`;
+    const url = waUrlFor(chosen.phone, text);
+    if (!url) return toast('WhatsApp-Link konnte nicht erstellt werden.');
+    window.open(url, '_blank', 'noopener');
+  }
+
+
+  function reconcileRewardExpenseStates(targetState = state) {
+    const rewards = Array.isArray(targetState?.rewards) ? targetState.rewards : [];
+    const expenses = Array.isArray(targetState?.finance?.expenses) ? targetState.finance.expenses : [];
+    rewards.forEach(reward => {
+      if (!reward?.id) return;
+      const entry = expenses.find(x => !x.deletedAt && (x.rewardId === reward.id || x.id === `BONUS-${reward.id}`));
+      if (!entry) return;
+      const paid = entry.paymentStatus === 'bezahlt';
+      const nextStatus = paid ? 'eingelöst / ausbezahlt' : 'gutgeschrieben';
+      reward.status = nextStatus;
+      if (paid) {
+        reward.redeemedAt = reward.redeemedAt || entry.paidAt || entry.date || new Date().toISOString();
+        reward.redeemedBy = reward.redeemedBy || entry.paidBy || entry.updatedBy || 'system';
+      } else {
+        reward.redeemedAt = ''; reward.redeemedBy = '';
+        reward.creditedAt = reward.creditedAt || entry.createdAt || entry.date || new Date().toISOString();
+      }
+      entry.sourceType = 'referralReward';
+      entry.rewardId = reward.id;
+      entry.paymentStatus = paid ? 'bezahlt' : 'offen';
+    });
+  }
+
+  function rewardExpenseId(rewardId) { return `BONUS-${String(rewardId || '').trim()}`; }
+  function syncRewardExpense(reward) {
+    if (!reward) return;
+    state.finance = state.finance || { manualIncome:[], expenses:[] };
+    state.finance.expenses = Array.isArray(state.finance.expenses) ? state.finance.expenses : [];
+    const id = rewardExpenseId(reward.id);
+    let entry = state.finance.expenses.find(x => x.id === id);
+    if (reward.status === 'offen') {
+      if (entry && !entry.deletedAt) { entry.deletedAt = new Date().toISOString(); entry.deletedBy = currentUser; }
+      return;
+    }
+    const receiver = personById(reward.customerId) || {};
+    const source = personById(reward.fromPersonId) || {};
+    if (!entry) {
+      entry = { id, createdAt:new Date().toISOString(), createdBy:'system' };
+      state.finance.expenses.push(entry);
+    }
+    Object.assign(entry, {
+      deletedAt:'', deletedBy:'', sourceType:'referralReward', rewardId:reward.id, automatic:true,
+      category:'Kundenbonus & Empfehlungen', subtype:'Empfehlungsbonus',
+      title:`Empfehlungsbonus ${receiver.name || reward.customerId || ''} · Auftrag ${reward.jobId || ''}`,
+      amount:amountValue(reward.amount || 0), jobId:reward.jobId || '', personId:reward.customerId || '',
+      paymentStatus:reward.status === 'eingelöst / ausbezahlt' ? 'bezahlt' : 'offen',
+      date:(reward.redeemedAt || reward.creditedAt || reward.createdAt || new Date().toISOString()).slice(0,10),
+      notes:`Empfehlung für ${source.name || reward.fromPersonId || 'Neukunde'}${reward.jobId ? ` · Auftrag ${reward.jobId}` : ''}`,
+      updatedAt:new Date().toISOString(), updatedBy:currentUser
+    });
+  }
 
   document.addEventListener('click', event => {
     const convert = event.target.closest('[data-convert-lead]');
-    if (convert) { const lead = leadById(convert.dataset.convertLead); if (lead) openJobDialog(null, lead, personById(lead.personId)); }
+    if (convert) { const lead = leadById(convert.dataset.convertLead); if (lead && canCreateJobs()) openJobDialog(null, lead, personById(lead.personId)); }
     const lost = event.target.closest('[data-mark-lead-lost]');
-    if (lost) { const lead = leadById(lost.dataset.markLeadLost); if (lead) { lead.status='Verloren'; saveState(`Lead verloren: ${lead.id}`); renderAll(); } }
+    if (lost) { const lead = leadById(lost.dataset.markLeadLost); if (lead && canEditLead(lead)) { lead.status='Verloren'; saveState(`Lead verloren: ${lead.id}`); renderAll(); } }
     const editLead = event.target.closest('[data-edit-lead]');
     if (editLead) { const lead = leadById(editLead.dataset.editLead); if (lead) openLeadDialog(lead); }
     const edit = event.target.closest('[data-edit-job]');
     if (edit) { const job = jobById(edit.dataset.editJob); if (job) openJobDialog(job); }
     const done = event.target.closest('[data-complete-job]');
-    if (done) confirmCompleteJobPaid(done.dataset.completeJob);
+    if (done && isAdmin()) confirmCompleteJobPaid(done.dataset.completeJob);
     const paid = event.target.closest('[data-paid-job]');
-    if (paid) confirmCompleteJobPaid(paid.dataset.paidJob);
+    if (paid && isAdmin()) confirmCompleteJobPaid(paid.dataset.paidJob);
     const cal = event.target.closest('[data-calendar-job]');
-    if (cal) addCalendar(jobById(cal.dataset.calendarJob));
+    if (cal && isAdmin()) addCalendar(jobById(cal.dataset.calendarJob));
+    const personalCal = event.target.closest('[data-personal-calendar-job]');
+    if (personalCal) downloadCalendarIcs(jobById(personalCal.dataset.personalCalendarJob));
+    const notify = event.target.closest('[data-notify-team]');
+    if (notify) notifyAssignedTeam(jobById(notify.dataset.notifyTeam));
+    const commission = event.target.closest('[data-edit-commission]');
+    if (commission) openCommissionDialog(commission.dataset.editCommission);
     const copy = event.target.closest('[data-copy-ref]');
-    if (copy) { const link = referralLink(copy.dataset.copyRef); navigator.clipboard?.writeText(link); toast('Empfehlungslink kopiert.'); }
+    if (copy && isAdmin()) { const link = referralLink(copy.dataset.copyRef); navigator.clipboard?.writeText(link); toast('Empfehlungslink kopiert.'); }
     const personJob = event.target.closest('[data-open-person-job]');
-    if (personJob) openJobDialog(null, null, personById(personJob.dataset.openPersonJob));
+    if (personJob && canCreateJobs()) openJobDialog(null, null, personById(personJob.dataset.openPersonJob));
     const rew = event.target.closest('[data-toggle-reward]');
-    if (rew) { const r = state.rewards.find(x => x.id === rew.dataset.toggleReward); if (r) { r.status = r.status === 'offen' ? 'gutgeschrieben' : 'offen'; saveState(`Bonus geändert: ${r.id}`); renderAll(); } }
+    if (rew && isAdmin()) {
+      const r = state.rewards.find(x => x.id === rew.dataset.toggleReward);
+      if (r) {
+        if (r.status === 'eingelöst / ausbezahlt') return toast('Bereits eingelöste oder ausbezahlte Boni werden in der Buchhaltung verwaltet.');
+        if (r.status === 'offen') { r.status = 'gutgeschrieben'; r.creditedAt = new Date().toISOString(); r.creditedBy = currentUser; }
+        else { r.status = 'offen'; r.creditedAt = ''; r.redeemedAt = ''; r.redeemedBy = ''; }
+        r.updatedAt = new Date().toISOString(); r.updatedBy = currentUser;
+        syncRewardExpense(r);
+        saveState(`Bonus geändert: ${r.id}`); renderAll();
+      }
+    }
   });
 
+  function ensureJobCompensation(job) {
+    const manual = (job.compensationLines || []).filter(x => !x.automatic).map(normalizeCompensationLine);
+    const commission = calculateCommissionLine(job);
+    job.compensationLines = commission ? [...manual, commission] : manual;
+    return job.compensationLines;
+  }
+  function employeeExpenseId(jobId, lineId) { return `EMP-${jobId}-${String(lineId).replace(/[^a-zA-Z0-9_-]/g,'_')}`; }
+  function syncEmployeeExpensesForJob(job) {
+    state.finance = state.finance || { manualIncome:[], expenses:[] };
+    const lines = ensureJobCompensation(job).filter(line => line.employeeId && compensationLineAmount(line) > 0);
+    const validIds = new Set(lines.map(line => employeeExpenseId(job.id, line.id)));
+    (state.finance.expenses || []).filter(x => x.automatic && x.jobId === job.id && !validIds.has(x.id)).forEach(x => {
+      x.deletedAt = x.deletedAt || new Date().toISOString();
+      x.deletedBy = currentUser;
+    });
+    lines.forEach(line => {
+      const id = employeeExpenseId(job.id, line.id);
+      let entry = state.finance.expenses.find(x => x.id === id);
+      const amount = compensationLineAmount(line);
+      const detail = line.type === 'hourly' ? `${line.hours} Std. × ${money(line.rate)}` : (line.type === 'commission' ? `${line.percent}% von ${money(line.baseAmount)} · Auftrag Nr. ${line.orderNumber}` : 'Fixbetrag');
+      if (!entry) {
+        entry = { id, createdAt:new Date().toISOString(), createdBy:'system', automatic:true, sourceType:'employeeCompensation', paymentStatus:'offen' };
+        state.finance.expenses.push(entry);
+      }
+      Object.assign(entry, {
+        deletedAt:'', date:ymd(parseDateValue(financeJobDate(job)) || new Date()),
+        category:'Löhne & Mitarbeiter', subtype:compensationTypeLabel(line.type),
+        title:`${userName(line.employeeId)} · ${compensationTypeLabel(line.type)} · Auftrag ${job.id}`,
+        amount, employeeId:line.employeeId, jobId:job.id, personId:job.personId,
+        compensationLineId:line.id, notes:`${detail}${line.description ? ' · '+line.description : ''}`,
+        updatedAt:new Date().toISOString(), updatedBy:currentUser
+      });
+    });
+  }
+  function removeEmployeeExpensesForJob(jobId) {
+    ((state.finance && state.finance.expenses) || []).filter(x => x.automatic && x.jobId === jobId && !x.deletedAt).forEach(x => {
+      x.deletedAt = new Date().toISOString();
+      x.deletedBy = currentUser;
+    });
+  }
+
   function confirmCompleteJobPaid(jobId) {
+    if (!isAdmin()) return toast('Nur Admins können Zahlung und Abschluss bestätigen.');
     const job = jobById(jobId);
     if (!job) return;
     const p = personById(job.personId) || {};
@@ -1725,14 +2677,17 @@
     p.customerSince = p.customerSince || new Date().toISOString();
     if (lead) lead.status = 'Kunde geworden';
 
+    ensureJobCompensation(job);
+    syncEmployeeExpensesForJob(job);
+
     const amount = amountValue(job.amount || lead?.expectedValue || 0);
     const refId = job.referredById || lead?.referredById || p.referredById;
     if (refId && refId !== p.id && amount >= Number(getSetting('minOrder'))) {
       const exists = state.rewards.some(r => r.jobId === job.id && r.customerId === refId);
       if (!exists) state.rewards.push({ id: nextId('reward'), customerId: refId, fromPersonId: p.id, jobId: job.id, amount: Number(getSetting('bonusAmount')), status: 'offen', createdAt: new Date().toISOString(), createdBy: currentUser });
     }
-    saveState(`Job bezahlt/abgeschlossen: ${job.id}`); renderAll();
-    if (showMessage) toast('Job bezahlt und abgeschlossen. Person ist jetzt Kunde und zählt als echte Einnahme.');
+    saveState(`Auftrag bezahlt/abgeschlossen: ${job.id} / Mitarbeiterkosten automatisch verbucht`); renderAll();
+    if (showMessage) toast(`Auftrag ${job.id} bezahlt und abgeschlossen. Mitarbeiterkosten wurden automatisch unter Löhne & Mitarbeiter verbucht.`);
   }
 
   async function compressImage(file) {
@@ -1773,8 +2728,8 @@
       `Kunde: ${p.name || ''} (${p.id || ''})`,
       `Telefon: ${p.phone || ''}`,
       `Service: ${job.service || ''}`,
-      `Betrag: CHF ${job.amount || ''}`,
-      `Job: ${job.id}`,
+      (isAdmin() || hasPermission('viewJobAmount')) ? `Betrag: CHF ${job.amount || ''}` : '',
+      `Auftragsnummer: ${job.id}`,
       maps ? `Maps: ${maps}` : ''
     ].filter(Boolean).join('\n');
     const ics = [
@@ -1783,7 +2738,7 @@
       `DTSTAMP:${icsDate(new Date())}`,
       `DTSTART:${icsDate(start)}`,
       `DTEND:${icsDate(end)}`,
-      `SUMMARY:${clean(`Lumian: ${p.name || 'Kunde'} - ${job.service || 'Reinigung'}`)}`,
+      `SUMMARY:${clean(`Lumian Auftrag ${job.id}: ${p.name || 'Kunde'} - ${job.service || 'Reinigung'}`)}`,
       `LOCATION:${clean(address)}`,
       maps ? `URL:${clean(maps)}` : '',
       `DESCRIPTION:${clean(description)}`,
@@ -1880,6 +2835,95 @@
   });
   $('[data-show-all-customers]')?.addEventListener('click', () => { customerListMode = 'all'; renderCustomers(); });
 
+  let activeContentPage = 'home';
+  function contentFieldValue(key, type) {
+    const c = normalizeWebsiteContent(state.websiteContent || {});
+    if (type === 'image') return c.media[key] || { src:'', name:'' };
+    return c.values[key] ?? '';
+  }
+  function renderContentField(field) {
+    const [key,label,type] = field;
+    if (type === 'image') {
+      const media = contentFieldValue(key,type);
+      const src = media.dataUrl || canonicalWebsiteAssetUrl(media.src || '');
+      const sizeInfo = media.size ? ` · komprimiert ${humanFileSize(media.size)}${media.width&&media.height?` · ${media.width}×${media.height}px`:''}` : '';
+      return `<label class="content-image-field" data-content-field-wrap="${esc(key)}"><span>${esc(label)}</span><div class="content-image-preview">${src?`<img src="${esc(src)}" alt="${esc(label)}" loading="lazy">`:'<div class="empty">Kein Bild</div>'}</div><input type="file" accept="image/jpeg,image/png,image/webp" data-content-image="${esc(key)}"><small>${esc(media.name || media.src || 'Bestehendes Bild bleibt erhalten, bis ein neues gewählt wird.')}${esc(sizeInfo)}</small><small class="image-guidance">Standard: längste Seite max. 1400 px, automatisch als komprimiertes WebP gespeichert. Zielgrösse ca. 350 KB oder kleiner; das Portal verkleinert sehr grosse Originale vor dem Upload.</small></label>`;
+    }
+    const value=contentFieldValue(key,type);
+    if (type==='textarea') return `<label>${esc(label)}<textarea rows="4" data-content-value="${esc(key)}">${esc(value)}</textarea></label>`;
+    return `<label>${esc(label)}<input type="${type==='url'?'text':'text'}" data-content-value="${esc(key)}" value="${esc(value)}"></label>`;
+  }
+  function renderWebsiteContentEditor(force = false) {
+    const root=$('[data-content-editor]'); if (!root || !isAdmin()) return;
+    if (!force && root.dataset.renderedPage===activeContentPage && root.children.length) return;
+    root.dataset.renderedPage=activeContentPage;
+    $$('[data-content-page]').forEach(b=>b.classList.toggle('active',b.dataset.contentPage===activeContentPage));
+    const content=normalizeWebsiteContent(state.websiteContent || {});
+    if (activeContentPage==='gallery') {
+      root.innerHTML=`<article class="content-section-card"><div class="content-section-head"><div><h3>Homepage · Galerie</h3><p>Bilder hinzufügen, Titel und Beschreibung ändern oder Reihenfolge anpassen. Lokale Bilder verwenden vollständige HTTPS-Links; neue Uploads werden auf max. 1400 px und eine Zielgrösse von ca. 350 KB oder kleiner komprimiert.</p></div><button class="secondary" type="button" data-add-gallery-item>+ Bild hinzufügen</button></div><div class="gallery-editor-list" data-gallery-editor>${content.gallery.map((g,i)=>galleryEditorCard(g,i)).join('')}</div><div class="content-section-actions"><button class="primary" type="button" data-save-gallery>Galerie speichern & veröffentlichen</button></div></article>`;
+      return;
+    }
+    const sections=WEBSITE_CONTENT_SECTIONS.filter(x=>x.page===activeContentPage);
+    root.innerHTML=sections.map(sec=>`<article class="content-section-card" data-content-section="${esc(sec.id)}"><div class="content-section-head"><div><h3>${esc(sec.title)}</h3><p>Nur dieser Abschnitt wird gespeichert.</p></div></div><div class="content-fields">${sec.fields.map(renderContentField).join('')}</div><div class="content-section-actions"><button class="primary" type="button" data-save-content-section="${esc(sec.id)}">Abschnitt speichern & veröffentlichen</button></div></article>`).join('');
+  }
+  function galleryEditorCard(g,index) {
+    const src=g.dataUrl || canonicalWebsiteAssetUrl(g.src || '');
+    const meta = g.size ? `${humanFileSize(g.size)}${g.width&&g.height?` · ${g.width}×${g.height}px`:''}` : (g.src ? canonicalWebsiteAssetUrl(g.src) : 'Noch kein Bild gewählt');
+    return `<article class="gallery-editor-card" data-gallery-item="${esc(g.id)}"><div class="gallery-editor-image">${src?`<img src="${esc(src)}" alt="${esc(g.title || 'Galerie')}" loading="lazy">`:'<div class="empty">Neues Bild wählen</div>'}</div><div class="gallery-editor-fields"><label>Titel<input data-gallery-title value="${esc(g.title || '')}"></label><label>Beschreibung<textarea rows="2" data-gallery-caption>${esc(g.caption || '')}</textarea></label><label>Bild<input type="file" accept="image/jpeg,image/png,image/webp" data-gallery-image><small>${esc(meta)}</small><small class="image-guidance">Automatische Komprimierung: max. 1400 px, WebP mit angepasster Qualität und Zielgrösse ca. 350 KB. Empfohlenes Original: JPG/PNG/WebP, möglichst unter 8 MB.</small></label><div class="button-row"><button class="secondary" type="button" data-gallery-move="up" ${index===0?'disabled':''}>Nach oben</button><button class="secondary" type="button" data-gallery-move="down">Nach unten</button><button class="secondary danger" type="button" data-gallery-remove>Entfernen</button></div></div></article>`;
+  }
+  async function compressContentImage(file,maxSize=1400,targetBytes=350*1024) {
+    if (!file || !file.type.startsWith('image/')) throw new Error('Bitte eine JPG-, PNG- oder WebP-Bilddatei wählen.');
+    if (file.size > 20 * 1024 * 1024) throw new Error('Das Originalbild ist grösser als 20 MB. Bitte zuerst ein kleineres Bild wählen.');
+    const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});
+    const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=dataUrl;});
+    const canvas=document.createElement('canvas');
+    const drawAtMax=(limit)=>{const scale=Math.min(1,limit/Math.max(img.width,img.height));canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d',{alpha:true});ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);};
+    drawAtMax(maxSize);
+    let quality=.84;
+    let compressed=canvas.toDataURL('image/webp',quality);
+    while (approximateDataUrlBytes(compressed)>targetBytes && quality>.58) { quality=Math.max(.58,quality-.07); compressed=canvas.toDataURL('image/webp',quality); }
+    if (approximateDataUrlBytes(compressed)>targetBytes && Math.max(canvas.width,canvas.height)>1100) { drawAtMax(1100); quality=.72; compressed=canvas.toDataURL('image/webp',quality); while(approximateDataUrlBytes(compressed)>targetBytes && quality>.56){quality=Math.max(.56,quality-.06);compressed=canvas.toDataURL('image/webp',quality);} }
+    const mime=compressed.startsWith('data:image/webp')?'image/webp':'image/jpeg';
+    const ext=mime==='image/webp'?'.webp':'.jpg';
+    return { dataUrl:compressed, name:String(file.name || 'website-image').replace(/\.[^.]+$/, '')+ext, type:mime, size:approximateDataUrlBytes(compressed), width:canvas.width, height:canvas.height };
+  }
+  async function publishWebsiteContent(reason) {
+    state.websiteContent=normalizeWebsiteContent(state.websiteContent || {}); state.websiteContent.updatedAt=new Date().toISOString(); state.websiteContent.updatedBy=currentUser;
+    saveState(reason,{cloud:false}); renderWebsiteContentEditor(true); toast('Inhalt gespeichert. Veröffentlichung wird synchronisiert.');
+    if (currentScriptUrl()) await syncCloud(false); else toast('Gespeichert. Für die öffentliche Website zuerst Google Apps Script verbinden.');
+  }
+  $$('[data-content-page]').forEach(btn=>btn.addEventListener('click',()=>{activeContentPage=btn.dataset.contentPage;renderWebsiteContentEditor(true);}));
+  $('[data-refresh-content]')?.addEventListener('click',()=>{renderWebsiteContentEditor(true);toast('Inhaltsansicht aktualisiert.');});
+  $('[data-content-editor]')?.addEventListener('change', async event=>{
+    const image=event.target.closest('[data-content-image]');
+    if (image?.files?.[0]) { try { const compressed=await compressContentImage(image.files[0]); state.websiteContent=normalizeWebsiteContent(state.websiteContent||{}); state.websiteContent.media[image.dataset.contentImage]={...(state.websiteContent.media[image.dataset.contentImage]||{}),...compressed}; renderWebsiteContentEditor(true); } catch(e){toast(e.message||'Bild konnte nicht verarbeitet werden.');} }
+    const galleryImage=event.target.closest('[data-gallery-image]');
+    if (galleryImage?.files?.[0]) { try { const card=galleryImage.closest('[data-gallery-item]'); const item=state.websiteContent.gallery.find(x=>x.id===card.dataset.galleryItem); Object.assign(item,await compressContentImage(galleryImage.files[0])); renderWebsiteContentEditor(true); } catch(e){toast(e.message||'Bild konnte nicht verarbeitet werden.');} }
+  });
+  $('[data-content-editor]')?.addEventListener('click', async event=>{
+    const save=event.target.closest('[data-save-content-section]');
+    if (save) {
+      const sec=WEBSITE_CONTENT_SECTIONS.find(x=>x.id===save.dataset.saveContentSection);
+      if (!sec) return;
+      if (!(await confirmSensitiveAction(`Website-Inhalt "${sec.title}" speichern und veröffentlichen?`))) return;
+      state.websiteContent=normalizeWebsiteContent(state.websiteContent||{});
+      sec.fields.forEach(([key,,type])=>{if(type==='image')return; const input=$(`[data-content-value="${CSS.escape(key)}"]`,save.closest('[data-content-section]')); if(input) state.websiteContent.values[key]=input.value;});
+      await publishWebsiteContent(`Website-Inhalt veröffentlicht: ${sec.title}`);
+      return;
+    }
+    if (event.target.closest('[data-add-gallery-item]')) { state.websiteContent=normalizeWebsiteContent(state.websiteContent||{}); state.websiteContent.gallery.push({id:`g-${Date.now()}`,src:'',title:'Neues Galeriebild',caption:'',dataUrl:'',name:'',size:0,width:0,height:0}); renderWebsiteContentEditor(true); return; }
+    const card=event.target.closest('[data-gallery-item]');
+    if (!card) { if(event.target.closest('[data-save-gallery]')) await saveGalleryFromEditor(); return; }
+    if (event.target.closest('[data-gallery-remove]')) { state.websiteContent.gallery=state.websiteContent.gallery.filter(x=>x.id!==card.dataset.galleryItem); renderWebsiteContentEditor(true); return; }
+    const move=event.target.closest('[data-gallery-move]'); if(move){ const arr=state.websiteContent.gallery; const i=arr.findIndex(x=>x.id===card.dataset.galleryItem); const n=move.dataset.galleryMove==='up'?i-1:i+1; if(n>=0&&n<arr.length){[arr[i],arr[n]]=[arr[n],arr[i]];renderWebsiteContentEditor(true);} return; }
+  });
+  async function saveGalleryFromEditor(){
+    if (!(await confirmSensitiveAction('Website-Galerie speichern und veröffentlichen?'))) return;
+    state.websiteContent=normalizeWebsiteContent(state.websiteContent||{});
+    $$('[data-gallery-item]').forEach(card=>{const item=state.websiteContent.gallery.find(x=>x.id===card.dataset.galleryItem); if(item){item.title=card.querySelector('[data-gallery-title]')?.value||'';item.caption=card.querySelector('[data-gallery-caption]')?.value||'';}});
+    await publishWebsiteContent('Website-Galerie veröffentlicht');
+  }
+
   function fillSettings(force = false) {
     const form = $('[data-settings-form]'); if (!form) return;
     if (form.dataset.filled === 'yes' && !force) return;
@@ -1898,17 +2942,21 @@
     if (form.dataset.filled !== 'yes') fillSettings(true);
     const fd = new FormData(form);
     const includeCloud = options.includeCloud === true;
-    Object.keys(DEFAULT_SETTINGS).forEach(key => {
-      if (!fd.has(key)) return;
-      if (CLOUD_SETTING_KEYS.includes(key) && !includeCloud) return;
-      state.settings[key] = String(fd.get(key) || '').trim();
-    });
-    state.settings.bonusAmount = Number(state.settings.bonusAmount || 0);
-    state.settings.minOrder = Number(state.settings.minOrder || 0);
+    const admin = isAdmin();
+    if (admin) {
+      Object.keys(DEFAULT_SETTINGS).forEach(key => {
+        if (!fd.has(key)) return;
+        if (CLOUD_SETTING_KEYS.includes(key) && !includeCloud) return;
+        state.settings[key] = String(fd.get(key) || '').trim();
+      });
+      state.settings.bonusAmount = Number(state.settings.bonusAmount || 0);
+      state.settings.minOrder = Number(state.settings.minOrder || 0);
+    }
     const u = state.users.find(x => x.id === currentUser);
     if (u && fd.has('userRecoveryCode')) u.recoveryCode = String(fd.get('userRecoveryCode') || '').trim() || defaultRecoveryCode(currentUser);
-    saveState(includeCloud ? 'Google/Drive Einstellungen geändert' : 'Einstellungen geändert');
-    if (showToast) toast(includeCloud ? 'Google/Drive Einstellungen gespeichert.' : 'Einstellungen gespeichert. Google/Drive bleibt separat geschützt.');
+    const reason = admin ? (includeCloud ? 'Google/Drive Einstellungen geändert' : 'Einstellungen geändert') : 'Persönlichen Reset-Code geändert';
+    saveState(reason);
+    if (showToast) toast(admin ? (includeCloud ? 'Google/Drive Einstellungen gespeichert.' : 'Einstellungen gespeichert. Google/Drive bleibt separat geschützt.') : 'Persönlicher Reset-Code gespeichert.');
     fillSettings(true);
     applySetupLocks();
     return true;
@@ -1918,9 +2966,11 @@
     saveSettingsFromForm(true);
   });
   $('[data-save-cloud-settings]')?.addEventListener('click', async () => {
+    if (!isAdmin()) return toast('Nur Admins können Google/Drive Einstellungen ändern.');
     if (!isSetupUnlocked('cloud') && !(await unlockSetupSection('cloud'))) return;
     saveSettingsFromForm(true, { includeCloud: true });
   });
+  $('[data-save-personal-security]')?.addEventListener('click', () => saveSettingsFromForm(true));
   $('[data-change-password]')?.addEventListener('click', async () => {
     const form = $('[data-settings-form]'); const u = state.users.find(x => x.id === currentUser);
     const cur = String(form.elements.currentPassword.value || ''); const neu = String(form.elements.newPassword.value || '');
@@ -2000,25 +3050,48 @@
   function excelXmlEscape(value) {
     return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-  function excelXmlCell(value, rowIndex = 0) {
-    const style = rowIndex === 0 ? 'Header' : 'Text';
+  function excelXmlCell(value, style = 'Text') {
     if (typeof value === 'number' && Number.isFinite(value)) {
-      return `<Cell ss:StyleID="${style}"><Data ss:Type="Number">${value}</Data></Cell>`;
+      const numberStyle = style === 'Header' || style === 'Title' ? style : (style === 'ProfitRow' ? 'ProfitNumber' : (style === 'ExpenseRow' ? 'ExpenseNumber' : (style === 'IncomeRow' ? 'IncomeNumber' : (value < 0 ? 'NegativeNumber' : 'Number'))));
+      return `<Cell ss:StyleID="${numberStyle}"><Data ss:Type="Number">${value}</Data></Cell>`;
     }
     return `<Cell ss:StyleID="${style}"><Data ss:Type="String">${excelXmlEscape(value)}</Data></Cell>`;
   }
   function excelXmlWorkbook(sheets) {
     const styles = `<Styles>
-<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="16" ss:Color="#FFFFFF"/><Interior ss:Color="#031A24" ss:Pattern="Solid"/></Style>
-<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#031A24" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/></Style>
-<Style ss:ID="Text"><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+<Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Top"/><Font ss:FontName="Aptos" ss:Size="10"/></Style>
+<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="17" ss:Color="#FFFFFF"/><Interior ss:Color="#06263A" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#36C5F0"/></Borders></Style>
+<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0B4F6C" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#7FDBFF"/></Borders></Style>
+<Style ss:ID="Text"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDE7EC"/></Borders></Style>
+<Style ss:ID="AltText"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Interior ss:Color="#F3F8FA" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDE7EC"/></Borders></Style>
+<Style ss:ID="Meta"><Font ss:Color="#3D5260"/><Interior ss:Color="#EEF6F8" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="Spacer"><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Number"><NumberFormat ss:Format="#,##0.00"/><Alignment ss:Horizontal="Right" ss:Vertical="Top"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDE7EC"/></Borders></Style>
+<Style ss:ID="NegativeNumber"><NumberFormat ss:Format="[Red]-#,##0.00;[Red]-#,##0.00"/><Font ss:Color="#B42318"/><Alignment ss:Horizontal="Right"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#DDE7EC"/></Borders></Style>
+<Style ss:ID="IncomeRow"><Font ss:Bold="1" ss:Color="#0A5A43"/><Interior ss:Color="#E7F8F1" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="IncomeNumber"><Font ss:Bold="1" ss:Color="#0A5A43"/><Interior ss:Color="#E7F8F1" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0.00"/><Alignment ss:Horizontal="Right"/></Style>
+<Style ss:ID="ExpenseRow"><Font ss:Bold="1" ss:Color="#9F2D20"/><Interior ss:Color="#FFF0ED" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="ExpenseNumber"><Font ss:Bold="1" ss:Color="#9F2D20"/><Interior ss:Color="#FFF0ED" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0.00"/><Alignment ss:Horizontal="Right"/></Style>
+<Style ss:ID="ProfitRow"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#087F5B" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:WrapText="1"/></Style>
+<Style ss:ID="ProfitNumber"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#087F5B" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0.00"/><Alignment ss:Horizontal="Right"/></Style>
 </Styles>`;
     const body = sheets.map(([name, rows, widths = []]) => {
       const cols = widths.map(w => `<Column ss:Width="${Number(w) || 100}"/>`).join('');
-      const tableRows = rows.map((row, ri) => `<Row>${row.map(cell => excelXmlCell(cell, ri)).join('')}</Row>`).join('');
-      return `<Worksheet ss:Name="${excelXmlEscape(String(name).slice(0,31))}"><Table>${cols}${tableRows}</Table></Worksheet>`;
+      const tableRows = rows.map((row, ri) => {
+        const nonEmpty = row.filter(v => String(v ?? '').trim() !== '').length;
+        const first = String(row[0] ?? '');
+        let style = ri === 0 ? (nonEmpty === 1 ? 'Title' : 'Header') : (nonEmpty === 0 ? 'Spacer' : (ri < 5 && rows[0]?.length === 1 ? 'Meta' : (ri % 2 === 0 ? 'AltText' : 'Text')));
+        if (/^Gewinn$/i.test(first)) style = 'ProfitRow';
+        else if (/^(Ausgaben|Löhne|Empfehlungsboni)/i.test(first)) style = 'ExpenseRow';
+        else if (/^(Bezahlte Jobs|Manuell ergänzt|Einnahmen)/i.test(first)) style = 'IncomeRow';
+        const height = style === 'Title' ? '30' : (style === 'Header' ? '28' : '22');
+        return `<Row ss:AutoFitHeight="1" ss:Height="${height}">${row.map(cell => excelXmlCell(cell, style)).join('')}</Row>`;
+      }).join('');
+      return `<Worksheet ss:Name="${excelXmlEscape(String(name).slice(0,31))}"><Table>${cols}${tableRows}</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios><PageSetup><Layout x:Orientation="Landscape"/><FitToPage/></PageSetup><Print><FitWidth>1</FitWidth><FitHeight>0</FitHeight></Print></WorksheetOptions></Worksheet>`;
     }).join('');
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${styles}${body}</Workbook>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${styles}${body}</Workbook>`;
   }
   function downloadExcelXml(filename, sheets) {
     const xml = excelXmlWorkbook(sheets);
@@ -2158,6 +3231,15 @@
     if (errors.length) msg += ` Fehler: ${errors.slice(0,3).join(' | ')}`;
     toast(msg);
   }
+  function resolveImportedEmployee(value, fallback = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return fallback;
+    const normalized = normalizeUserId(raw);
+    const byId = employeeUsers().find(u => u.id === normalized);
+    if (byId) return byId.id;
+    const byName = employeeUsers().find(u => String(u.name || '').trim().toLowerCase() === raw.toLowerCase());
+    return byName?.id || fallback;
+  }
   function importLeadsFromObjects(items) {
     let imported = 0, skipped = 0; const errors = [];
     for (const o of items) {
@@ -2175,6 +3257,8 @@
         source: o.quelle || o.source || 'Import',
         referredById: findReferral(o.empfohlenvon || o.referral || o.referredby)
       });
+      const acquiredBy = resolveImportedEmployee(o.leadgewonnendurch || o.gewonnendurch || o.acquiredby, currentUser);
+      const assignedTo = resolveImportedEmployee(o.zustaendig || o.leadzustaendig || o.assignedto, acquiredBy || currentUser);
       const exists = state.leads.some(l => l.personId === person.id && l.service === (o.service || 'Fensterreinigung') && l.status === 'Offen');
       if (!exists) state.leads.push({
         id: nextId('lead'), personId: person.id,
@@ -2182,6 +3266,7 @@
         expectedValue: o.betrag || o.schaetzung || o.expectedvalue || '',
         appointmentAt: dateForInput(o.termin || o.appointment || o.appointmentat),
         referredById: person.referredById || '', status:'Offen', notes:o.notizen || o.notes || '',
+        acquiredBy, assignedTo, commissionAgreement:commissionAgreementForLead(acquiredBy),
         createdAt:new Date().toISOString(), createdBy:currentUser
       });
       imported++;
@@ -2255,6 +3340,39 @@
     renderFinance();
     toast(entry.updatedAt ? 'Einnahme geändert.' : 'Einnahme gespeichert.');
   }
+  function renderExpenseEmployeeOptions(selected = '') {
+    const sel = $('[data-expense-employee-select]');
+    if (!sel) return;
+    sel.innerHTML = `<option value="">– Mitarbeiter wählen –</option>${employeeUsers().map(u=>`<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}`;
+    sel.value = selected || '';
+    renderExpenseJobOptions();
+  }
+  function renderExpenseJobOptions(selected = '') {
+    const form = $('[data-expense-form]');
+    const sel = $('[data-expense-job-select]');
+    if (!form || !sel) return;
+    const employeeId = form.elements.employeeId?.value || '';
+    const jobs = employeeId ? state.jobs.filter(j=>jobTeamIds(j).includes(employeeId) || j.acquiredBy === employeeId) : [];
+    sel.innerHTML = `<option value="">– optional / kein Auftrag –</option>${jobs.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(j=>{const p=personById(j.personId)||{}; return `<option value="${esc(j.id)}">${esc(j.id)} · ${esc(p.name || j.personId)} · ${esc(j.service || '')}</option>`}).join('')}`;
+    if (selected && [...sel.options].some(o=>o.value===selected)) sel.value=selected;
+    updateExpenseJobHint();
+  }
+  function updateExpenseJobHint() {
+    const form = $('[data-expense-form]'); const el = $('[data-expense-job-hint]'); if (!form || !el) return;
+    const job = jobById(form.elements.jobId?.value || ''); const employeeId=form.elements.employeeId?.value || '';
+    if (!job) { el.innerHTML=''; return; }
+    const auto = (state.finance.expenses || []).filter(x=>x.automatic && x.jobId===job.id && (!employeeId || x.employeeId===employeeId) && !x.deletedAt);
+    el.innerHTML = auto.length ? `<strong>Bereits automatisch für diesen Auftrag:</strong> ${auto.map(x=>`${esc(x.subtype || x.title)} ${esc(money(x.amount))}`).join(' · ')}` : 'Für diese Kombination besteht noch keine automatische Lohnposition.';
+  }
+  function updateExpenseEmployeeFields() {
+    const form=$('[data-expense-form]'); const box=$('[data-employee-expense-fields]'); if (!form || !box) return;
+    const active=form.elements.category.value==='Löhne & Mitarbeiter'; box.hidden=!active;
+    if (active) renderExpenseEmployeeOptions(form.elements.employeeId?.value || '');
+  }
+  $('[data-expense-form] [name="category"]')?.addEventListener('change', updateExpenseEmployeeFields);
+  $('[data-expense-employee-select]')?.addEventListener('change', ()=>renderExpenseJobOptions());
+  $('[data-expense-job-select]')?.addEventListener('change', updateExpenseJobHint);
+
   function addExpense(form) {
     if (!isAdmin()) return toast('Nur Admins können Buchhaltung ändern.');
     if (markInvalidDateInput(form.elements.date, 'Datum')) return;
@@ -2273,6 +3391,12 @@
     Object.assign(entry, {
       date: isoDateOnlyFromField(fd.get('date')),
       category: fd.get('category'),
+      subtype: fd.get('category') === 'Löhne & Mitarbeiter' ? (fd.get('subtype') || 'Sonstige Mitarbeiterkosten') : '',
+      employeeId: fd.get('category') === 'Löhne & Mitarbeiter' ? normalizeUserId(fd.get('employeeId') || '') : '',
+      jobId: fd.get('category') === 'Löhne & Mitarbeiter' ? String(fd.get('jobId') || '') : '',
+      paymentStatus: fd.get('category') === 'Löhne & Mitarbeiter' ? (fd.get('paymentStatus') === 'bezahlt' ? 'bezahlt' : 'offen') : '',
+      employeePaidAt: fd.get('category') === 'Löhne & Mitarbeiter' && fd.get('paymentStatus') === 'bezahlt' ? (entry.employeePaidAt || new Date().toISOString()) : '',
+      employeePaidBy: fd.get('category') === 'Löhne & Mitarbeiter' && fd.get('paymentStatus') === 'bezahlt' ? currentUser : '',
       title: fd.get('title'),
       amount: amountValue(fd.get('amount')),
       notes: fd.get('notes') || ''
@@ -2280,68 +3404,172 @@
     saveState(`${entry.updatedBy ? 'Ausgabe geändert' : 'Ausgabe gespeichert'}: ${entry.id} / ${entry.title || ''}`);
     form.reset();
     setDefaultFinanceDates();
+    updateExpenseEmployeeFields();
     renderFinance();
     toast(entry.updatedAt ? 'Ausgabe geändert.' : 'Ausgabe gespeichert.');
+  }
+
+  function userFormPermissionNames() {
+    return {
+      createLeads:'permCreateLeads', viewAllOperational:'permViewAllOperational', contactCustomers:'permContactCustomers',
+      updateJobs:'permUpdateJobs', uploadPhotos:'permUploadPhotos', viewJobAmount:'permViewJobAmount',
+      viewOwnCompensation:'permViewOwnCompensation', viewCustomerHistory:'permViewCustomerHistory'
+    };
+  }
+  function userEditorFields(form = $('[data-user-form]')) {
+    const fields = {};
+    if (!form) return fields;
+    $$('[name]', form).forEach(el => { fields[el.name] = el; });
+    return fields;
+  }
+  function applyRolePresetToUserForm(role) {
+    const form = $('[data-user-form]');
+    const fields = userEditorFields(form);
+    if (!form) return;
+    const preset = defaultPermissionsForRole(role);
+    Object.entries(userFormPermissionNames()).forEach(([key,name]) => { if (fields[name]) fields[name].checked = !!preset[key]; });
+  }
+  $('[data-user-form] [name="role"]')?.addEventListener('change', event => applyRolePresetToUserForm(event.target.value));
+  function updateEmployeePayFields() { const form=$('[data-user-form]'); if (!form) return; const fields=userEditorFields(form); const wrap=$('[data-hourly-rate-field]',form); if (wrap) wrap.hidden = (fields.defaultPayType?.value || 'none') !== 'hourly'; }
+  $('[data-user-form] [name="defaultPayType"]')?.addEventListener('change', updateEmployeePayFields);
+
+  function resetUserEditor() {
+    const form = $('[data-user-form]');
+    if (!form) return;
+    const fields = userEditorFields(form);
+    $$('input, select, textarea', form).forEach(el => {
+      if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+      else el.value = '';
+    });
+    fields.editingUserId.value = '';
+    fields.role.value = 'staff';
+    fields.employeeType.value = 'fixed';
+    fields.defaultPayType.value = 'none';
+    fields.loginEnabled.checked = true;
+    applyRolePresetToUserForm('staff');
+    $('[data-cancel-user-edit]').hidden = true;
+    $('[data-save-user]').textContent = 'Mitarbeiter speichern';
+    fields.userId.disabled = false;
+    updateEmployeePayFields();
+  }
+  function editUserInForm(userId) {
+    if (!isAdmin()) return;
+    const u = employeeById(userId);
+    const form = $('[data-user-form]');
+    if (!u || !form) return;
+    const fields = userEditorFields(form);
+    const d = normalizeCompensationDefaults(u.compensationDefaults || {});
+    fields.editingUserId.value = u.id;
+    fields.userId.value = u.id;
+    fields.userId.disabled = true;
+    fields.name.value = u.name || '';
+    fields.emoji.value = u.emoji || '';
+    fields.phone.value = u.phone || '';
+    fields.email.value = u.email || '';
+    fields.employeeType.value = u.employeeType || 'fixed';
+    fields.role.value = normalizedRole(u.role, u.id) === 'admin' ? 'teamlead' : normalizedRole(u.role, u.id);
+    fields.loginEnabled.checked = u.loginEnabled !== false;
+    fields.password.value = '';
+    fields.recoveryCode.value = u.recoveryCode || '';
+    fields.defaultPayType.value = d.workPayType || 'none';
+    fields.defaultHourlyRate.value = d.hourlyRate || '';
+    fields.firstCommissionPct.value = d.firstCommissionPct || '';
+    fields.repeatCommissionPct.value = d.repeatCommissionPct || '';
+    fields.maxCommissionJobs.value = d.maxCommissionJobs || '';
+    fields.commissionActive.checked = d.commissionActive;
+    const perms = userPermissions(u.id);
+    Object.entries(userFormPermissionNames()).forEach(([key,name]) => { fields[name].checked = !!perms[key]; });
+    $('[data-cancel-user-edit]').hidden = false;
+    $('[data-save-user]').textContent = 'Mitarbeiter aktualisieren';
+    updateEmployeePayFields();
+    form.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
   function renderUsers() {
     const list = $('[data-user-list]');
     if (!list) return;
     if (!isAdmin()) { list.innerHTML = ''; return; }
-    list.innerHTML = activeUsers().map(u => {
+    list.innerHTML = (state.users || []).map(u => {
       const locked = ADMIN_IDS.includes(u.id);
-      return `<article class="item-card mini">
-        <div class="item-top"><div><div class="item-title">${esc(u.name)} <span class="badge">${esc(u.id)}</span></div><div class="item-sub">${u.role === 'admin' ? 'Admin: volle Rechte' : 'Mitarbeiter: Übersicht, Leads, Jobs, Kunden'} · Reset-Code separat</div></div><span class="badge ${u.role==='admin'?'ok':''}">${esc(u.emoji || '?')}</span></div>
-        <div class="actions">${locked ? '<span class="hint">Admin-Benutzer geschützt</span>' : `<button class="secondary danger" data-disable-user="${esc(u.id)}">Deaktivieren</button>`}</div>
+      const d = normalizeCompensationDefaults(u.compensationDefaults || {});
+      const status = u.employmentActive === false ? 'Inaktiv' : (u.loginEnabled === false ? 'Aktiv · ohne Login' : 'Aktiv · Login');
+      const work = d.workPayType === 'hourly' ? `Stundenlohn ${money(d.hourlyRate)}/Std.` : (d.workPayType === 'fixed' ? 'Fixbetrag pro Auftrag' : 'Keine Standard-Arbeitsvergütung');
+      const pay = [work, (d.firstCommissionPct||d.repeatCommissionPct)?`Akquise ${d.firstCommissionPct}% / ${d.repeatCommissionPct}%`:'' ].filter(Boolean).join(' · ');
+      return `<article class="item-card mini ${u.employmentActive===false?'employee-inactive':''}">
+        <div class="item-top"><div><div class="item-title">${esc(u.name)} <span class="badge">${esc(u.id)}</span></div><div class="item-sub">${esc(roleLabel(u.role))} · ${u.employeeType==='temporary'?'Temporär / Hilfskraft':'Fest / regelmässig'} · ${esc(status)}<br>${esc(u.phone || 'keine Telefonnummer')} · ${esc(u.email || 'keine E-Mail')}<br>${esc(pay)}</div></div><span class="badge ${u.employmentActive===false?'danger':u.loginEnabled===false?'warn':'ok'}">${esc(u.emoji || '?')}</span></div>
+        <div class="actions">${locked ? '<span class="hint">Admin-Benutzer geschützt</span>' : `<button class="secondary" data-edit-user="${esc(u.id)}">Bearbeiten</button><button class="secondary ${u.employmentActive===false?'':'danger'}" data-toggle-user-active="${esc(u.id)}">${u.employmentActive===false?'Reaktivieren':'Deaktivieren'}</button>`}</div>
       </article>`;
     }).join('');
   }
 
-  
   async function saveUserFromSetup() {
     const form = $('[data-user-form]');
-    if (!form) return;
-    if (!isAdmin()) return toast('Nur Noah und Timo können Benutzer anlegen.');
-    const fd = new FormData();
-    ['userId','name','emoji','password','recoveryCode','role'].forEach(name => {
-      const el = form.querySelector(`[name="${name}"]`);
-      fd.append(name, el ? el.value : '');
-    });
-    const id = normalizeUserId(fd.get('userId'));
+    if (!form || !isAdmin()) return toast('Nur Noah und Timo können Mitarbeiter verwalten.');
+    const fields = userEditorFields(form);
+    const editingId = normalizeUserId(fields.editingUserId.value || '');
+    const id = editingId || normalizeUserId(fields.userId.value);
     if (!id || id.length < 2) return toast('Benutzername: mindestens 2 Zeichen.');
-    if (ADMIN_IDS.includes(id)) return toast('Noah und Timo sind bereits Admins.');
-    const pw = String(fd.get('password') || '');
-    if (pw.length < 4) return toast('Start-Passwort: mindestens 4 Zeichen.');
+    if (ADMIN_IDS.includes(id)) return toast('Noah und Timo sind geschützte Admin-Benutzer.');
+    const email = String(fields.email.value || '').trim();
+    if (email && !validateEmail(email)) return toast('Bitte eine gültige Mitarbeiter-E-Mail eingeben.');
+    const parsedPhone = parseSwissPhone(fields.phone.value || '');
+    if (!parsedPhone.ok) return toast('Bitte eine gültige Schweizer Telefonnummer eingeben.');
+    const pw = String(fields.password.value || '');
     let u = state.users.find(x => x.id === id);
+    const isNew = !u;
+    if (isNew && fields.loginEnabled.checked && pw.length < 4) return toast('Für einen neuen Portal-Login braucht es ein Start-Passwort mit mindestens 4 Zeichen.');
+    if (pw && pw.length < 4) return toast('Passwort: mindestens 4 Zeichen.');
     if (!u) {
-      u = { id, name:'', emoji:'', role:'staff', active:true, passwordHash:'', salt:'', credentialId:'', credentialUserHandle:'', recoveryCode:'' };
+      u = normalizeEmployeeUser({ id, name:id, role:fields.role.value, employmentActive:true, loginEnabled:fields.loginEnabled.checked });
       state.users.push(u);
     }
-    u.name = String(fd.get('name') || id).trim();
-    u.emoji = String(fd.get('emoji') || u.name.slice(0,1).toUpperCase()).trim().slice(0,2);
-    u.role = 'staff';
-    u.active = true;
-    u.recoveryCode = String(fd.get('recoveryCode') || `${u.name}-Reset-2026`).trim();
-    await setPassword(id, pw);
-    form.querySelectorAll('input,select').forEach(el => { if (el.name !== 'role') el.value=''; });
-    const roleEl = form.querySelector('[name="role"]'); if (roleEl) roleEl.value = 'staff';
-    renderUserOptions(); renderUsers(); saveState(`Benutzer gespeichert: ${u.id}`);
-    toast(`Mitarbeiter ${u.name} gespeichert.`);
+    const role = normalizedRole(fields.role.value, id);
+    const permissions = {};
+    Object.entries(userFormPermissionNames()).forEach(([key,name]) => { permissions[key] = !!fields[name].checked; });
+    Object.assign(u, normalizeEmployeeUser({
+      ...u, id,
+      name:String(fields.name.value || id).trim(),
+      emoji:String(fields.emoji.value || fields.name.value.slice(0,1) || id.slice(0,1)).trim().slice(0,2),
+      phone:parsedPhone.ok && !parsedPhone.empty ? parsedPhone.tel : '',
+      email, employeeType:fields.employeeType.value, role,
+      employmentActive:true, loginEnabled:fields.loginEnabled.checked, active:fields.loginEnabled.checked,
+      recoveryCode:String(fields.recoveryCode.value || `${fields.name.value || id}-Reset-2026`).trim(),
+      permissions,
+      compensationDefaults:{
+        workPayType:fields.defaultPayType.value,
+        hourlyRate:fields.defaultHourlyRate.value,
+        firstCommissionPct:fields.firstCommissionPct.value,
+        repeatCommissionPct:fields.repeatCommissionPct.value,
+        maxCommissionJobs:fields.maxCommissionJobs.value,
+        commissionActive:fields.commissionActive.checked
+      }
+    }));
+    if (pw) await setPassword(id, pw);
+    saveState(`Mitarbeiter ${isNew?'erstellt':'aktualisiert'}: ${u.id}`);
+    resetUserEditor();
+    renderUserOptions();
+    renderUsers();
+    toast(`Mitarbeiter ${u.name} ${isNew?'gespeichert':'aktualisiert'}.`);
   }
   $('[data-save-user]')?.addEventListener('click', saveUserFromSetup);
-
+  $('[data-cancel-user-edit]')?.addEventListener('click', resetUserEditor);
 
   document.addEventListener('click', event => {
-    const dis = event.target.closest('[data-disable-user]');
-    if (!dis) return;
-    if (!isAdmin()) return toast('Nur Admins können Benutzer deaktivieren.');
-    const u = state.users.find(x => x.id === dis.dataset.disableUser);
+    const edit = event.target.closest('[data-edit-user]');
+    if (edit) editUserInForm(edit.dataset.editUser);
+    const toggle = event.target.closest('[data-toggle-user-active]');
+    if (!toggle) return;
+    if (!isAdmin()) return toast('Nur Admins können Mitarbeiter deaktivieren.');
+    const u = state.users.find(x => x.id === toggle.dataset.toggleUserActive);
     if (!u || ADMIN_IDS.includes(u.id)) return;
-    if (!confirm(`${u.name} wirklich deaktivieren?`)) return;
-    u.active = false;
-    saveState(`Benutzer deaktiviert: ${u.id}`);
+    const activate = u.employmentActive === false;
+    if (!activate && !confirm(`${u.name} wirklich deaktivieren? Bestehende Aufträge und Lohnbuchungen bleiben erhalten.`)) return;
+    u.employmentActive = activate;
+    u.loginEnabled = activate ? u.loginEnabled !== false : false;
+    u.active = u.loginEnabled;
+    saveState(`Mitarbeiter ${activate?'reaktiviert':'deaktiviert'}: ${u.id}`);
     renderUserOptions(); renderUsers();
-    toast('Benutzer deaktiviert.');
+    toast(`Mitarbeiter ${activate?'reaktiviert':'deaktiviert'}.`);
   });
 
 
@@ -2356,6 +3584,20 @@
     }
     syncAllCalendarControls();
   }
+
+  ['[data-income-search]','[data-income-type-filter]','[data-expense-search]','[data-expense-type-filter]','[data-expense-status-filter]'].forEach(selector => {
+    const el = $(selector);
+    if (!el) return;
+    el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => renderFinance());
+  });
+  let financeScrollResizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(financeScrollResizeTimer);
+    financeScrollResizeTimer = setTimeout(() => {
+      if (activeTab === 'finance') { applyFiveCardScroll($('[data-income-list]')); applyFiveCardScroll($('[data-expense-list]')); }
+    }, 120);
+  });
+
   $('[data-manual-income-form]')?.addEventListener('submit', event => { event.preventDefault(); addManualIncome(event.currentTarget); });
   $('[data-expense-form]')?.addEventListener('submit', event => { event.preventDefault(); addExpense(event.currentTarget); });
   $$('[data-finance-period],[data-finance-from],[data-finance-to],[data-customer-activity-sort]').forEach(el => el.addEventListener('change', renderFinance));
@@ -2395,6 +3637,28 @@
       saveState(`Einnahme gelöscht: ${entry.id}`); renderFinance(); toast('Einnahme gelöscht.');
     }
 
+    const deferredPayment = event.target.closest('[data-toggle-deferred-payment]');
+    if (deferredPayment) {
+      const entry = (state.finance.expenses || []).find(x => x.id === deferredPayment.dataset.toggleDeferredPayment);
+      if (!entry || !isDeferredExpenseRecord(entry) || !isAdmin()) return;
+      entry.paymentStatus = deferredExpensePaymentStatus(entry) === 'bezahlt' ? 'offen' : 'bezahlt';
+      entry.paidAt = entry.paymentStatus === 'bezahlt' ? new Date().toISOString() : '';
+      entry.paidBy = currentUser;
+      if (isEmployeeExpenseRecord(entry)) { entry.employeePaidAt = entry.paidAt; entry.employeePaidBy = currentUser; }
+      if (isRewardExpenseRecord(entry) && entry.rewardId) {
+        const reward = (state.rewards || []).find(r => r.id === entry.rewardId);
+        if (reward) {
+          reward.status = entry.paymentStatus === 'bezahlt' ? 'eingelöst / ausbezahlt' : 'gutgeschrieben';
+          reward.redeemedAt = entry.paymentStatus === 'bezahlt' ? entry.paidAt : '';
+          reward.redeemedBy = entry.paymentStatus === 'bezahlt' ? currentUser : '';
+          reward.updatedAt = new Date().toISOString(); reward.updatedBy = currentUser;
+        }
+      }
+      saveState(`${isEmployeeExpenseRecord(entry)?'Mitarbeiterlohn':'Empfehlungsbonus'} ${entry.paymentStatus}: ${entry.id} / Auftrag ${entry.jobId || ''}`);
+      renderAll();
+      toast(isEmployeeExpenseRecord(entry) ? (entry.paymentStatus === 'bezahlt' ? 'Mitarbeiterlohn als bezahlt markiert.' : 'Mitarbeiterlohn wieder als offen markiert.') : (entry.paymentStatus === 'bezahlt' ? 'Empfehlungsbonus als eingelöst / ausbezahlt markiert.' : 'Empfehlungsbonus wieder als gutgeschrieben markiert.'));
+    }
+
     const editExpense = event.target.closest('[data-edit-expense]');
     if (editExpense) {
       const entry = (state.finance.expenses || []).find(x => x.id === editExpense.dataset.editExpense);
@@ -2405,6 +3669,11 @@
       form.elements.entryId.value = entry.id;
       form.elements.date.value = nativeDateValueFromField(entry.date || ymd(entry.createdAt));
       form.elements.category.value = entry.category || 'Sonstiges';
+      updateExpenseEmployeeFields();
+      if (form.elements.employeeId) { renderExpenseEmployeeOptions(entry.employeeId || ''); form.elements.employeeId.value = entry.employeeId || ''; }
+      if (form.elements.subtype) form.elements.subtype.value = entry.subtype || 'Sonstige Mitarbeiterkosten';
+      if (form.elements.paymentStatus) form.elements.paymentStatus.value = employeeExpensePaymentStatus(entry) || 'offen';
+      renderExpenseJobOptions(entry.jobId || '');
       form.elements.title.value = entry.title || '';
       form.elements.amount.value = entry.amount || '';
       form.elements.notes.value = entry.notes || '';
@@ -2438,7 +3707,9 @@
       ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
       ['Pipeline offen / noch nicht kassiert', s.forecastTotal, `${s.forecast.length} offene/geplante Jobs + ${s.forecastLeads.length} offene Leads`],
-      ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
+      ['Löhne & Mitarbeiter bezahlt', -s.employeeCostTotal, `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen (${money(s.employeeOpenTotal)})`],
+      ['Empfehlungsboni eingelöst / ausbezahlt', -s.rewardPaidTotal, `${s.rewardPaidExpenses.length} bezahlt · ${s.rewardOpenExpenses.length} gutgeschrieben/offen (${money(s.rewardOpenTotal)})`],
+      ['Ausgaben gesamt', -s.expenseTotal, `${s.countedExpenses.length} gebuchte Kostenposition(en)`],
       ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
     ];
     const incomeRows = [
@@ -2451,8 +3722,25 @@
       ...s.forecastAll.map(x => ['Pipeline offen', fmtDateOnly(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
     ];
     const expenseRows = [
-      ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID'],
-      ...s.expenses.map(x => [fmtDateOnly(x.date), x.category || 'Ausgabe', x.title, amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id])
+      ['Datum','Kategorie','Unterart','Titel','Betrag CHF','Mitarbeiter','Auftrags-Nr.','Kunden-Nr.','Zahlstatus','Automatisch','Eingetragen von','Notiz','ID'],
+      ...s.expenses.map(x => [fmtDateOnly(x.date), x.category || 'Ausgabe', x.subtype || '', x.title, amountValue(x.amount), x.employeeId ? userName(x.employeeId) : '', x.jobId || '', x.personId || '', deferredExpensePaymentStatus(x) || x.paymentStatus || '', x.automatic ? 'Ja' : 'Nein', userName(x.createdBy), x.notes || '', x.id])
+    ];
+    const rewardRows = [
+      ['BonusID','Empfänger','Empfänger LumianNr','Neukunde','Auftrags-Nr.','Betrag CHF','Bonusstatus','Buchhaltung Zahlstatus','Gutgeschrieben am','Eingelöst / ausbezahlt am'],
+      ...(state.rewards || []).filter(r => !r.deletedAt).map(r => {
+        const receiver = personById(r.customerId) || {};
+        const source = personById(r.fromPersonId) || {};
+        const expense = (state.finance?.expenses || []).find(x => x.rewardId === r.id && !x.deletedAt);
+        return [r.id || '', receiver.name || '', r.customerId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), r.status || 'offen', expense ? deferredExpensePaymentStatus(expense) : '', r.creditedAt ? fmtDate(r.creditedAt) : '', r.redeemedAt ? fmtDate(r.redeemedAt) : ''];
+      })
+    ];
+    const employeeCostRows = [
+      ['Mitarbeiter','Mitarbeiter-ID','Auftrags-Nr.','Kunden-Nr.','Vergütungsart','Stunden','Ansatz/Fix CHF','Betrag CHF','Zahlstatus','Datum'],
+      ...s.employeeExpenses.map(x => {
+        const job = x.jobId ? jobById(x.jobId) : null;
+        const line = job?.compensationLines?.find(l => l.id === x.compensationLineId);
+        return [x.employeeId ? userName(x.employeeId) : '', x.employeeId || '', x.jobId || '', x.personId || '', x.subtype || '', line?.hours || '', line?.type === 'hourly' ? amountValue(line.rate) : (line?.type === 'fixed' ? amountValue(line.amount) : ''), amountValue(x.amount), employeeExpensePaymentStatus(x), fmtDateOnly(x.date || x.createdAt)];
+      })
     ];
     const customerRows = [
       ['LumianNr','Kunde','Telefon','PLZ/Ort','Jobs im Zeitraum','Umsatz CHF','Letzter Job','Jobs total'],
@@ -2469,7 +3757,9 @@
       ['Zusammenfassung', summary, [220,130,280]],
       ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100]],
       ['Pipeline offen', forecastRows, [130,90,220,130,90,130,100]],
-      ['Ausgaben', expenseRows, [90,140,220,90,130,240,100]],
+      ['Ausgaben', expenseRows, [90,150,130,240,90,150,100,100,120,90,130,260,130]],
+      ['Mitarbeiterkosten', employeeCostRows, [160,110,110,110,150,80,100,100,120,100]],
+      ['Empfehlungsbonus', rewardRows, [90,170,110,170,110,100,130,140,140,150]],
       ['Kundenaktivität', customerRows, [90,170,120,130,100,90,100,80]]
     ]);
     toast('Excel-Report erstellt.');
@@ -2506,40 +3796,48 @@
   }
   function emergencyCustomersRows() {
     const paid = paidJobs();
-    return [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','Kontaktstatus','Kontaktgrund','Kontaktnotiz','KundeSeit','Jobs bezahlt','Umsatz CHF','Notizen','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+    return [['LumianNr','Status','Name','Telefon','Email','Strasse/Nr','PLZ/Ort','Quelle','EmpfohlenVon','Kontaktstatus','Kontaktgrund','Kontaktnotiz','KundeSeit','Jobs bezahlt','Umsatz CHF','Lead gewonnen durch','Provisionsvereinbarung JSON','Notizen','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
       ...allPeopleSorted().map(p => {
         const pj = paid.filter(j => j.personId === p.id);
         const revenue = pj.reduce((sum,j)=>sum + amountValue(j.amount), 0);
-        return [p.id, personStatusLabel(p), p.name || '', p.phone || '', p.email || '', p.address || '', p.place || '', p.source || '', p.referredById || '', contactStatus(p), p.contactReason || '', p.contactNote || '', p.customerSince ? fmtDateOnly(p.customerSince) : '', pj.length, revenue, p.notes || '', p.createdAt ? fmtDate(p.createdAt) : '', userName(p.createdBy), p.updatedAt ? fmtDate(p.updatedAt) : '', userName(p.updatedBy), p.deletedAt ? fmtDate(p.deletedAt) : ''];
+        return [p.id, personStatusLabel(p), p.name || '', p.phone || '', p.email || '', p.address || '', p.place || '', p.source || '', p.referredById || '', contactStatus(p), p.contactReason || '', p.contactNote || '', p.customerSince ? fmtDateOnly(p.customerSince) : '', pj.length, revenue, p.acquisitionAgreement?.employeeId ? userName(p.acquisitionAgreement.employeeId) : '', JSON.stringify(p.acquisitionAgreement || null), p.notes || '', p.createdAt ? fmtDate(p.createdAt) : '', userName(p.createdBy), p.updatedAt ? fmtDate(p.updatedAt) : '', userName(p.updatedBy), p.deletedAt ? fmtDate(p.deletedAt) : ''];
       })
     ];
   }
   function emergencyLeadsRows() {
     const sorted = [...(state.leads || [])].sort((a,b)=>String(a.id||'').localeCompare(String(b.id||''), 'de-CH'));
-    return [['LeadID','LumianNr','Name','Telefon','Email','Service','Status','Termin','Schätzung CHF','Quelle','EmpfohlenVon','Notizen','WebsiteLeadKey','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+    return [['LeadID','LumianNr','Name','Telefon','Email','Service','Status','Termin','Schätzung CHF','Quelle','EmpfohlenVon','Lead gewonnen durch','Lead zuständig','Provisionsvereinbarung JSON','Notizen','WebsiteLeadKey','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
       ...sorted.map(l => {
         const p = personById(l.personId) || {};
-        return [l.id || '', l.personId || '', p.name || '', p.phone || '', p.email || '', l.service || '', l.status || '', l.appointmentAt ? fmtDate(l.appointmentAt) : '', amountValue(l.expectedValue || 0), l.source || '', l.referredById || p.referredById || '', l.notes || '', l.websiteLeadKey || '', l.createdAt ? fmtDate(l.createdAt) : '', userName(l.createdBy), l.updatedAt ? fmtDate(l.updatedAt) : '', userName(l.updatedBy), l.deletedAt ? fmtDate(l.deletedAt) : ''];
+        return [l.id || '', l.personId || '', p.name || '', p.phone || '', p.email || '', l.service || '', l.status || '', l.appointmentAt ? fmtDate(l.appointmentAt) : '', amountValue(l.expectedValue || 0), l.source || '', l.referredById || p.referredById || '', userName(l.acquiredBy), userName(l.assignedTo), JSON.stringify(l.commissionAgreement || null), l.notes || '', l.websiteLeadKey || '', l.createdAt ? fmtDate(l.createdAt) : '', userName(l.createdBy), l.updatedAt ? fmtDate(l.updatedAt) : '', userName(l.updatedBy), l.deletedAt ? fmtDate(l.deletedAt) : ''];
       })
     ];
   }
   function emergencyJobsRows() {
     const sorted = [...(state.jobs || [])].sort((a,b)=>String(a.appointmentAt || a.createdAt || '').localeCompare(String(b.appointmentAt || b.createdAt || '')) || String(a.id||'').localeCompare(String(b.id||'')));
-    return [['JobID','LumianNr','Name','Telefon','LeadID','Service','Termin','Betrag CHF','Status','Zuständig','Quelle','EmpfohlenVon','Notizen','Bezahlt am','Abgeschlossen am','Vorher Foto','Nachher Foto','Calendar Event ID','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+    return [['Auftrags-Nr.','LumianNr','Name','Telefon','LeadID','Service','Termin','Betrag CHF','Status','Hauptverantwortlich','Team','Lead gewonnen durch','Mitarbeiterkosten CHF','Vergütungspositionen JSON','Quelle','EmpfohlenVon','Notizen','Bezahlt am','Abgeschlossen am','Vorher Foto','Nachher Foto','Calendar Event ID','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
       ...sorted.map(j => {
         const p = personById(j.personId) || {};
-        return [j.id || '', j.personId || '', p.name || '', p.phone || '', j.leadId || '', j.service || '', j.appointmentAt ? fmtDate(j.appointmentAt) : '', amountValue(j.amount || 0), j.status || '', userName(j.assignedTo), j.source || '', j.referredById || p.referredById || '', j.notes || '', j.paidAt ? fmtDate(j.paidAt) : '', j.completedAt ? fmtDate(j.completedAt) : '', photoBackupInfo(j.beforePhoto), photoBackupInfo(j.afterPhoto), j.calendarEventId || '', j.createdAt ? fmtDate(j.createdAt) : '', userName(j.createdBy), j.updatedAt ? fmtDate(j.updatedAt) : '', userName(j.updatedBy), j.deletedAt ? fmtDate(j.deletedAt) : ''];
+        const lines = Array.isArray(j.compensationLines) ? j.compensationLines : [];
+        const employeeCost = lines.reduce((sum,line)=>sum + compensationLineAmount(line), 0);
+        return [j.id || '', j.personId || '', p.name || '', p.phone || '', j.leadId || '', j.service || '', j.appointmentAt ? fmtDate(j.appointmentAt) : '', amountValue(j.amount || 0), j.status || '', userName(j.assignedTo), (j.teamMemberIds || []).map(userName).join(', '), userName(j.acquiredBy), employeeCost, JSON.stringify(lines), j.source || '', j.referredById || p.referredById || '', j.notes || '', j.paidAt ? fmtDate(j.paidAt) : '', j.completedAt ? fmtDate(j.completedAt) : '', photoBackupInfo(j.beforePhoto), photoBackupInfo(j.afterPhoto), j.calendarEventId || '', j.createdAt ? fmtDate(j.createdAt) : '', userName(j.createdBy), j.updatedAt ? fmtDate(j.updatedAt) : '', userName(j.updatedBy), j.deletedAt ? fmtDate(j.deletedAt) : ''];
       })
     ];
   }
   function emergencyRewardsRows() {
     const sorted = [...(state.rewards || [])].sort((a,b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
-    return [['BonusID','Empfänger LumianNr','Empfänger Name','Von LumianNr','Von Name','JobID','Betrag CHF','Status','Notiz','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+    return [['BonusID','Empfänger LumianNr','Empfänger Name','Von LumianNr','Von Name','JobID','Betrag CHF','Status','Buchhaltung Zahlstatus','Gutgeschrieben am','Gutgeschrieben von','Eingelöst / ausbezahlt am','Eingelöst / ausbezahlt von','Notiz','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
       ...sorted.map(r => {
         const receiver = personById(r.customerId) || {};
         const source = personById(r.fromPersonId) || {};
-        return [r.id || '', r.customerId || '', receiver.name || '', r.fromPersonId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), r.status || '', r.notes || '', r.createdAt ? fmtDate(r.createdAt) : '', userName(r.createdBy), r.updatedAt ? fmtDate(r.updatedAt) : '', userName(r.updatedBy), r.deletedAt ? fmtDate(r.deletedAt) : ''];
+        const expense = (state.finance?.expenses || []).find(x => x.rewardId === r.id && !x.deletedAt);
+        return [r.id || '', r.customerId || '', receiver.name || '', r.fromPersonId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), r.status || '', expense ? deferredExpensePaymentStatus(expense) : '', r.creditedAt ? fmtDate(r.creditedAt) : '', userName(r.creditedBy), r.redeemedAt ? fmtDate(r.redeemedAt) : '', userName(r.redeemedBy), r.notes || '', r.createdAt ? fmtDate(r.createdAt) : '', userName(r.createdBy), r.updatedAt ? fmtDate(r.updatedAt) : '', userName(r.updatedBy), r.deletedAt ? fmtDate(r.deletedAt) : ''];
       })
+    ];
+  }
+  function emergencyEmployeesRows() {
+    return [['Mitarbeiter-ID','Name','Telefon','E-Mail','Typ','Rolle','Beschäftigung aktiv','Portal-Login aktiv','Rechte JSON','Standardvergütung JSON'],
+      ...(state.users || []).map(u => [u.id || '',u.name || '',u.phone || '',u.email || '',u.employeeType || '',roleLabel(u.role),u.employmentActive === false ? 'Nein' : 'Ja',u.loginEnabled === false ? 'Nein' : 'Ja',JSON.stringify(u.permissions || {}),JSON.stringify(u.compensationDefaults || {})])
     ];
   }
   function emergencyFinanceSheets() {
@@ -2555,7 +3853,9 @@
       ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
       ['Pipeline offen / noch nicht kassiert', s.forecastTotal, `${s.forecastAll.length} offene/geplante Einträge`],
-      ['Ausgaben', -s.expenseTotal, `${s.expenses.length} Kostenposition(en)`],
+      ['Löhne & Mitarbeiter bezahlt', -s.employeeCostTotal, `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen (${money(s.employeeOpenTotal)})`],
+      ['Empfehlungsboni eingelöst / ausbezahlt', -s.rewardPaidTotal, `${s.rewardPaidExpenses.length} bezahlt · ${s.rewardOpenExpenses.length} gutgeschrieben/offen (${money(s.rewardOpenTotal)})`],
+      ['Ausgaben gesamt', -s.expenseTotal, `${s.countedExpenses.length} gebuchte Kostenposition(en)`],
       ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
     ];
     const incomeRows = [
@@ -2568,23 +3868,32 @@
       ...s.forecastAll.map(x => ['Pipeline offen', fmtDateOnly(x.date), x.title, x.status || (x.leadId ? 'Lead offen' : 'offen/geplant'), x.amount, userName(x.assignedTo || x.createdBy), x.jobId || x.leadId || x.id])
     ];
     const expenseRows = [
-      ['Datum','Kategorie','Titel','Betrag CHF','Eingetragen von','Notiz','ID','Gelöscht am'],
-      ...(state.finance?.expenses || []).map(x => [x.date ? fmtDateOnly(x.date) : fmtDateOnly(x.createdAt), x.category || 'Ausgabe', x.title || '', amountValue(x.amount), userName(x.createdBy), x.notes || '', x.id || '', x.deletedAt ? fmtDate(x.deletedAt) : ''])
+      ['Datum','Kategorie','Unterart','Titel','Betrag CHF','Mitarbeiter','Auftrags-Nr.','Kunden-Nr.','Zahlstatus','Automatisch','Eingetragen von','Notiz','ID','Gelöscht am'],
+      ...(state.finance?.expenses || []).map(x => [x.date ? fmtDateOnly(x.date) : fmtDateOnly(x.createdAt), x.category || 'Ausgabe', x.subtype || '', x.title || '', amountValue(x.amount), x.employeeId ? userName(x.employeeId) : '', x.jobId || '', x.personId || '', deferredExpensePaymentStatus(x) || x.paymentStatus || '', x.automatic ? 'Ja' : 'Nein', userName(x.createdBy), x.notes || '', x.id || '', x.deletedAt ? fmtDate(x.deletedAt) : ''])
     ];
     return [
       ['Zusammenfassung', summary, [220,160,300]],
       ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100,120]],
       ['Pipeline offen', forecastRows, [130,90,240,130,90,130,120]],
-      ['Ausgaben', expenseRows, [90,140,220,90,130,240,100,120]],
-      ['Bonus', emergencyRewardsRows(), [90,90,170,90,170,90,90,90,220,120,120,120,120,120]]
+      ['Ausgaben', expenseRows, [90,140,120,220,90,150,100,100,100,90,130,240,110,120]],
+      ['Bonus', emergencyRewardsRows(), [90,90,170,90,170,90,90,100,120,140,130,160,150,220,130,120,130,120,120]]
     ];
+  }
+  function emergencyWebsiteContentSheets() {
+    const content = normalizeWebsiteContent(state.websiteContent || {});
+    const values = [['Schlüssel','Wert'], ...Object.entries(content.values || {}).sort((a,b)=>a[0].localeCompare(b[0])).map(([key,value])=>[key,value])];
+    const media = [['Schlüssel','Bild-URL','Dateiname','Drive File ID','Aktualisiert am'], ...Object.entries(content.media || {}).sort((a,b)=>a[0].localeCompare(b[0])).map(([key,item])=>[key,canonicalWebsiteAssetUrl(item?.src || ''),item?.name || '',item?.fileId || '',item?.updatedAt || ''])];
+    const gallery = [['Reihenfolge','Galerie-ID','Titel','Beschreibung','Bild-URL','Dateiname','Dateigrösse Byte','Breite px','Höhe px','Drive File ID'], ...(content.gallery || []).map((item,index)=>[index+1,item.id || '',item.title || '',item.caption || '',canonicalWebsiteAssetUrl(item.src || ''),item.name || '',Number(item.size || 0),Number(item.width || 0),Number(item.height || 0),item.fileId || ''])];
+    return [['Texte & Links', values, [260,620]], ['Bilder', media, [240,520,180,170,150]], ['Galerie', gallery, [90,110,180,380,520,180,110,90,90,170]]];
   }
   function emergencyWorkbookFiles() {
     return {
-      'excel/lumian-kunden.xls': excelXmlWorkbook([['Kunden', emergencyCustomersRows(), [90,80,180,130,190,190,130,130,110,120,170,220,100,90,90,260,130,120,130,120,120]]]),
-      'excel/lumian-leads.xls': excelXmlWorkbook([['Leads', emergencyLeadsRows(), [90,90,180,130,190,150,100,130,100,120,110,260,180,130,120,130,120,120]]]),
-      'excel/lumian-jobs.xls': excelXmlWorkbook([['Jobs', emergencyJobsRows(), [90,90,180,130,90,150,130,90,100,120,120,110,260,130,130,260,260,180,130,120,130,120,120]]]),
-      'excel/lumian-buchhaltung-und-bonus.xls': excelXmlWorkbook(emergencyFinanceSheets())
+      'excel/lumian-mitarbeiter.xls': excelXmlWorkbook([['Mitarbeiter', emergencyEmployeesRows(), [110,180,130,190,110,130,110,110,300,300]]]),
+      'excel/lumian-kunden.xls': excelXmlWorkbook([['Kunden', emergencyCustomersRows(), [90,80,180,130,190,190,130,130,110,120,170,220,100,90,90,150,300,260,130,120,130,120,120]]]),
+      'excel/lumian-leads.xls': excelXmlWorkbook([['Leads', emergencyLeadsRows(), [90,90,180,130,190,150,100,130,100,120,110,150,150,300,260,180,130,120,130,120,120]]]),
+      'excel/lumian-jobs.xls': excelXmlWorkbook([['Jobs', emergencyJobsRows(), [100,90,180,130,90,150,130,90,100,150,220,150,110,320,120,110,260,130,130,260,260,180,130,120,130,120,120]]]),
+      'excel/lumian-buchhaltung-und-bonus.xls': excelXmlWorkbook(emergencyFinanceSheets()),
+      'excel/lumian-website-inhalte.xls': excelXmlWorkbook(emergencyWebsiteContentSheets())
     };
   }
 
@@ -2642,9 +3951,9 @@
     const stamp = backupStamp();
     const full = cleanBackupState();
     const files = {
-      'README-WIEDERHERSTELLUNG.txt': `Lumian Services lokales Komplettbackup\nErstellt: ${new Date().toLocaleString('de-CH')}\n\nZum Wiederherstellen im Portal unter Einstellungen > Daten, Import & Backup den gesperrten Bereich entsperren und diese ZIP-Datei bei "Lokales Komplettbackup importieren" auswählen. Die Excel-Dateien sind zur Kontrolle/Lesbarkeit. Für eine komplette Wiederherstellung wird die JSON-Datei im Backup verwendet.`,
+      'README-WIEDERHERSTELLUNG.txt': `Lumian Services lokales Komplettbackup\nErstellt: ${new Date().toLocaleString('de-CH')}\n\nZum Wiederherstellen im Portal unter Einstellungen > Daten, Import & Backup den gesperrten Bereich entsperren und diese ZIP-Datei bei "Lokales Komplettbackup importieren" auswählen. Die JSON-Datei enthält den vollständigen Portalstand inklusive Mitarbeiter, Rechte, Leads, Aufträge, Vergütungen, Buchhaltung, Empfehlungsboni, Website-Inhalte, Galerie und Einstellungen. Die Excel-Dateien dienen zusätzlich zur Kontrolle und Lesbarkeit.`,
       'lumian-portal-full-backup.json': JSON.stringify(full, null, 2),
-      'lumian-portal-meta.json': JSON.stringify({ createdAt:new Date().toISOString(), createdBy:currentUser, portalMode:state.portalMode || '', people:(state.people||[]).length, leads:(state.leads||[]).length, jobs:(state.jobs||[]).length, manualIncome:(state.finance?.manualIncome||[]).length, expenses:(state.finance?.expenses||[]).length }, null, 2),
+      'lumian-portal-meta.json': JSON.stringify({ createdAt:new Date().toISOString(), createdBy:currentUser, portalMode:state.portalMode || '', users:(state.users||[]).length, people:(state.people||[]).length, leads:(state.leads||[]).length, jobs:(state.jobs||[]).length, rewards:(state.rewards||[]).length, manualIncome:(state.finance?.manualIncome||[]).length, expenses:(state.finance?.expenses||[]).length, websiteContentUpdatedAt:state.websiteContent?.updatedAt || '', galleryItems:(state.websiteContent?.gallery||[]).length }, null, 2),
       ...emergencyWorkbookFiles()
     };
     const blob = makeStoreZip(files);
@@ -3206,7 +4515,7 @@
     const url = currentScriptUrl();
     if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
     if (!(await confirmSensitiveAction('Testdaten löschen und produktiv starten?'))) return;
-    const typed = prompt('Letzte Bestätigung: Schreibe PRODUKTIV, um Test-Leads/Jobs/Kunden/Buchhaltung zu löschen. Benutzer, Passwörter und Einstellungen bleiben erhalten.');
+    const typed = prompt('Letzte Bestätigung: Schreibe PRODUKTIV, um Test-Leads/Jobs/Kunden/Buchhaltung zu löschen. Benutzer, Passwörter, Einstellungen und veröffentlichte Website-Inhalte bleiben erhalten.');
     if (typed !== 'PRODUKTIV') return toast('Vorgang abgebrochen.');
     try {
       const data = await jsonpRequest(url, 'golivereset', { confirm:'START-PRODUCTION', backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId });
@@ -3341,6 +4650,7 @@
   $('[data-disable-biometric]')?.addEventListener('click', () => { const u = state.users.find(x => x.id === currentUser); if (u) { u.credentialId=''; u.credentialUserHandle=''; saveState('Biometrie entfernt'); toast('Biometrie auf diesem Gerät entfernt.'); } });
   $('[data-biometric-login]')?.addEventListener('click', biometricLogin);
 
+  resetUserEditor();
   setDefaultFinanceDates();
   renderLogin();
   setupSmartStickyNav();

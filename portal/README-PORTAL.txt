@@ -264,3 +264,49 @@ Wenn Sync/Refresh nur in Inkognito funktioniert, aber nicht im normalen Chrome-P
 3. Danach im Portal einloggen und oben "Refresh" drücken.
 4. Nur falls es weiterhin nicht geht und keine unsynchronisierten Offline-Daten auf diesem Gerät liegen:
    reset.html erneut öffnen und den roten Button "Lokale Portal-Daten zusätzlich löschen" nutzen.
+
+Update v101 – Mitarbeiter, Auftragsvergütung und Website-Inhalte
+----------------------------------------------------------------
+- Neuer eigener Portalbereich „Mitarbeiter“ zwischen Bonus und Einstellungen.
+- Mitarbeiter-Stammdaten enthalten Kontakt, Typ, Login, Rolle, Rechte, Standard-Vergütungsart, Stundenlohn und Standard-Akquiseprovision.
+- Ein Lead unterscheidet klar zwischen „technisch erstellt durch“ und „Kunde/Lead gewonnen durch“. Der Lead-Gewinner kann eine andere Person sein als das ausführende Team.
+- Quelle und Lead-Referenz werden bei der Umwandlung automatisch in den Auftrag übernommen. Der geschätzte Leadwert bleibt Pipeline; der definitive Auftragsbetrag wird erst im Auftrag festgelegt.
+- Die bestehende Job-ID Jxxxx ist die offizielle Auftragsnummer und erscheint in Portal, Aktivitäten, Buchhaltung, Exporten und Drive-Dateinamen.
+- Im Auftrag wird das Team nur einmal ausgewählt. Für jede ausgewählte Person gibt es Arbeitsstunden und genau eine Arbeitsvergütungsart: keine Vergütung, Stundenlohn oder Fixbetrag pro Auftrag.
+- Stunden werden auch bei Fixlohn gespeichert, ändern den vereinbarten Fixbetrag aber nicht.
+- Die Akquiseprovision des Lead-Gewinners bleibt vollständig getrennt von der Arbeitsvergütung. Dieselbe Person kann beides erhalten; sie muss aber nicht am Auftrag arbeiten.
+- Bei bezahlten/abgeschlossenen Aufträgen werden Arbeitslohn und Akquiseprovision automatisch und mit eindeutiger Auftragsreferenz unter „Löhne & Mitarbeiter“ verbucht. Erneutes Speichern oder Synchronisieren erzeugt keine Doppelbuchung.
+- Manuelle Lohnausgaben sind für Bonus, Vorschuss, Korrektur oder Sonderkosten gedacht. Nach Auswahl eines Mitarbeiters werden nur zugehörige Aufträge angeboten und vorhandene automatische Positionen angezeigt.
+- Normale Mitarbeiter sehen nur eigene/zugewiesene Leads, Aufträge und notwendige Kundendaten entsprechend ihren Rechten. Kunden-WhatsApp über die offizielle Lumian-Nummer bleibt Admins vorbehalten.
+- Neuer Adminbereich „Website-Inhalte“ für Homepage und Empfehlungsseite. Texte, Links, Logos, Personenbilder und Galerie können abschnittsweise bearbeitet werden, ohne HTML/CSS zu ändern.
+- Die bestehenden statischen Inhalte und Bilder bleiben immer als Fallback erhalten. Neue oder ersetzte Bilder werden automatisch im Drive-Unterordner „WebsiteMedia“ gespeichert. Dieser Unterordner wird automatisch im bereits eingetragenen Foto-Hauptordner erstellt; manuelles Anlegen ist nicht nötig.
+
+Wichtig nach Upload von v101:
+1) Alle Website-Dateien inklusive assets/js/website-content.js und sw.js hochladen.
+2) portal/GOOGLE-APPS-SCRIPT.gs im vorhandenen Apps-Script-Projekt komplett ersetzen.
+3) Deploy → Manage deployments → Edit → New version → Deploy.
+4) Falls Google nach Drive-/Calendar-Berechtigungen fragt, diese erneut erlauben.
+5) Im Portal als Admin unter Einstellungen den vorhandenen Foto-Drive-Ordner prüfen und einmal „Google/Drive Einstellungen speichern“ ausführen.
+6) „Drive/Kalender testen“ und anschliessend oben „Sync“ ausführen.
+7) Bei alter PWA-/Browseransicht einmal /portal/?swreset=1 öffnen oder „Web-App Cache erneuern“ verwenden.
+
+Drive-Hinweis:
+- Es muss kein neuer Drive-Ordner manuell erstellt werden.
+- Das Apps Script legt „WebsiteMedia“ automatisch im bestehenden Foto-Hauptordner an.
+- Falls das Google-Konto öffentliche Linkfreigaben organisatorisch blockiert, können neu hochgeladene Drive-Bilder auf der öffentlichen Website nicht dargestellt werden. Die vorhandenen statischen Bilder bleiben in diesem Fall sichtbar.
+
+
+Update v103 – Inhaltsverwaltung, persönliche Sicherheit, Bonus-Buchhaltung und Backups
+- Bestehende Website-Bilder werden im Portal über vollständige https://lumianservices.ch/assets/img/... Links angezeigt.
+- Neue Bilder werden auf maximal 1400 px und eine Zielgrösse von ca. 350 KB als WebP komprimiert und in Drive/WebsiteMedia gespeichert.
+- Impressum, Datenschutz und Cookies sind unter Website-Inhalte bearbeitbar.
+- Jeder Benutzer mit Portal-Login kann in den eigenen Einstellungen Passwort, Reset-Code und Biometrie verwalten; Admins können im Mitarbeiterbereich überschreiben.
+- Gutgeschriebene Empfehlungsboni erscheinen als offene Bonuskosten in der Buchhaltung und zählen erst nach Einlösung/Auszahlung als Ausgabe.
+- Lokales/Online-Backup und Excel-Reports enthalten Mitarbeiter, Vergütungen, Bonusstatus, Website-Inhalte und Galerie-Metadaten.
+
+
+Update v104 – Rechtstexte, Buchhaltungsfilter und Bonusabgleich
+- Impressum, Datenschutz und Cookie-/Speicherhinweise berücksichtigen den tatsächlichen Betrieb mit GitHub Pages, Google Apps Script, Sheets, Drive, Calendar, WhatsApp, Local Storage, Session Storage und PWA-Cache.
+- Unveränderte alte Standard-Rechtstexte werden automatisch migriert; eigene individuelle Änderungen bleiben bestehen.
+- Einnahmen und Ausgaben besitzen Suche und sinnvolle Filter. Ab dem sechsten sichtbaren Eintrag scrollt jede Liste separat.
+- Empfehlungsbonus und Buchhaltung sind strikt synchron: gutgeschrieben = offene Bonusposition; eingelöst/ausbezahlt = bezahlte, gewinnmindernde Ausgabe.

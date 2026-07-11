@@ -12,7 +12,7 @@
   <link rel="icon" href="../assets/img/portal-v14-icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="../assets/img/portal-v14-apple-touch.png">
   <link rel="manifest" href="portal.webmanifest">
-  <link rel="stylesheet" href="portal.css?v=108">
+  <link rel="stylesheet" href="portal.css?v=110">
 </head>
 <body>
   <div class="portal-bg" aria-hidden="true"></div>
@@ -246,7 +246,7 @@
 
           <article class="guide-card">
             <h2>Ausgabe hinzufügen</h2>
-            <p class="hint">Normale Kosten werden sofort vom Gewinn abgezogen. Löhne und Mitarbeiterkosten erst, wenn ihr Zahlungsstatus auf „Bezahlt“ steht.</p>
+            <p class="hint">Normale Kosten werden sofort vom Gewinn abgezogen. Löhne und Mitarbeiterkosten erst bei „Bezahlt“. Empfehlungs- und Kundenboni werden separat geführt und zählen erst bei „Eingelöst / ausbezahlt“ als Ausgabe.</p>
             <form class="finance-mini-form" data-expense-form>
               <input type="hidden" name="entryId">
               <label>Datum<input name="date" type="date" data-ch-date lang="de-CH" required></label>
@@ -258,6 +258,7 @@
                   <option>Fahrzeug / Benzin</option>
                   <option>Werbung / Druck</option>
                   <option>Löhne &amp; Mitarbeiter</option>
+                  <option>Empfehlungs- / Kundenbonus</option>
                   <option>Sonstiges</option>
                 </select>
               </label>
@@ -269,12 +270,32 @@
                   <select name="jobId" data-expense-job-select><option value="">– optional / kein Auftrag –</option></select>
                 </label>
                 <label>Art
-                  <select name="subtype"><option>Zusätzlicher Lohn</option><option>Bonus</option><option>Vorschuss</option><option>Korrektur</option><option>Sonstige Mitarbeiterkosten</option></select>
+                  <select name="subtype"><option>Zusätzlicher Lohn</option><option>Mitarbeiterbonus</option><option>Vorschuss</option><option>Korrektur</option><option>Sonstige Mitarbeiterkosten</option></select>
                 </label>
                 <label>Zahlungsstatus
                   <select name="paymentStatus"><option value="offen">Noch offen / nicht bezahlt</option><option value="bezahlt">Bezahlt</option></select>
                 </label>
                 <div class="expense-job-hint" data-expense-job-hint></div>
+              </div>
+              <div class="bonus-expense-fields" data-bonus-expense-fields hidden>
+                <label>Bonus-Empfänger
+                  <select name="bonusCustomerId" data-bonus-customer-select><option value="">– Kunde / Person wählen –</option></select>
+                </label>
+                <label>Empfohlener Neukunde / Anlass
+                  <select name="bonusFromPersonId" data-bonus-from-select><option value="">– optional –</option></select>
+                </label>
+                <label>Zugehöriger Auftrag
+                  <select name="bonusJobId" data-bonus-job-select><option value="">– optional / kein Auftrag –</option></select>
+                </label>
+                <label>Bonusstatus
+                  <select name="bonusStatus">
+                    <option value="offen">Offen</option>
+                    <option value="gutgeschrieben">Gutgeschrieben</option>
+                    <option value="eingelöst / ausbezahlt">Eingelöst / ausbezahlt</option>
+                    <option value="storniert">Storniert</option>
+                  </select>
+                </label>
+                <div class="expense-job-hint" data-bonus-expense-hint>Dieser Bonus wird automatisch auch auf der Bonus-Seite geführt und bleibt mit der Buchhaltung synchronisiert.</div>
               </div>
               <label>Bezeichnung
                 <input name="title" placeholder="z.B. Bonus, Vorschuss oder Material" required>
@@ -311,7 +332,7 @@
               <select data-expense-type-filter aria-label="Ausgaben nach Art filtern">
                 <option value="all">Alle Arten</option>
                 <option value="wages">Löhne &amp; Mitarbeiter</option>
-                <option value="bonus">Empfehlungsboni</option>
+                <option value="bonus">Empfehlungs- / Kundenboni</option>
                 <option value="material">Material &amp; Geräte</option>
                 <option value="vehicle">Fahrzeug / Benzin</option>
                 <option value="advertising">Werbung / Druck</option>
@@ -321,6 +342,10 @@
                 <option value="all">Alle Zahlstatus</option>
                 <option value="paid">Bezahlt / gebucht</option>
                 <option value="open">Noch offen</option>
+                <option value="reward-open">Bonus offen</option>
+                <option value="reward-credited">Bonus gutgeschrieben</option>
+                <option value="reward-paid">Bonus ausbezahlt</option>
+                <option value="reward-cancelled">Bonus storniert</option>
               </select>
             </div>
             <div data-expense-list class="list compact finance-scroll-list"></div>
@@ -351,7 +376,7 @@
         <div class="panel-head">
           <div>
             <h2>Empfehlungsbonus</h2>
-            <p class="muted">Offen = noch nicht gutgeschrieben. Gutgeschrieben erscheint als offene Bonusposition in der Buchhaltung; erst eingelöst oder ausbezahlt zählt als Ausgabe.</p>
+            <p class="muted">Vier klare Status: Offen, gutgeschrieben, ausbezahlt oder storniert. Jeder Bonus erscheint gleichzeitig in der Buchhaltung; nur ausbezahlte Boni zählen als Ausgabe.</p>
           </div>
           <button class="secondary" data-tab-go="settings">Regeln ändern</button>
         </div>
@@ -769,6 +794,6 @@
   </dialog>
 
   <div class="toast" data-toast hidden></div>
-  <script src="portal.js?v=108"></script>
+  <script src="portal.js?v=110"></script>
 </body>
 </html>

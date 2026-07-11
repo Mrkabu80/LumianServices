@@ -2,7 +2,7 @@
   "name": "Lumian Services",
   "short_name": "Lumian Services",
   "description": "Fensterreinigung, Glasreinigung, Storenreinigung, Dachrinnenreinigung, Terrassen-, Balkon-, Fassaden- und Aussenreinigung in der Schweiz.",
-  "start_url": "/?v=53",
+  "start_url": "/?v=111",
   "scope": "/",
   "display": "standalone",
   "background_color": "#061018",
@@ -17,17 +17,20 @@
     {
       "src": "https://www.lumianservices.ch/assets/img/favicon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "https://www.lumianservices.ch/assets/img/favicon-512.png",
+      "src": "https://www.lumianservices.ch/assets/img/favicon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "https://www.lumianservices.ch/assets/img/apple-touch-icon.png",
       "sizes": "180x180",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "shortcuts": [

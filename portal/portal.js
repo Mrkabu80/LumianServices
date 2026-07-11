@@ -17,6 +17,7 @@
   const SESSION_KEY = 'lumian.portal.user';
   const ACTIVITY_LOG_QUEUE_KEY = 'lumian.portal.activityLogQueue.v1';
   const DEVICE_ID_KEY = 'lumian.portal.deviceId.v1';
+  const REWARD_EXPENSE_CATEGORY = 'Empfehlungs- / Kundenbonus';
   const USERS = [
     { id: 'noah', name: 'Noah', emoji: 'N' },
     { id: 'timo', name: 'Timo', emoji: 'T' }
@@ -482,7 +483,7 @@
       const receiver = merged.people.find(p => p.id === r.customerId) || {};
       const source = merged.people.find(p => p.id === r.fromPersonId) || {};
       merged.finance.expenses.push({
-        id, sourceType:'referralReward', rewardId:r.id, automatic:true, category:'Kundenbonus & Empfehlungen', subtype:'Empfehlungsbonus',
+        id, sourceType:'referralReward', rewardId:r.id, automatic:true, category:'Empfehlungs- / Kundenbonus', subtype:'Empfehlungsbonus',
         title:`Empfehlungsbonus ${receiver.name || r.customerId || ''} · Auftrag ${r.jobId || ''}`, amount:amountValue(r.amount || 0),
         jobId:r.jobId || '', personId:r.customerId || '', paymentStatus:r.status === 'eingelöst / ausbezahlt' ? 'bezahlt' : 'offen',
         date:String(r.redeemedAt || r.creditedAt || r.createdAt || new Date().toISOString()).slice(0,10),
@@ -1812,14 +1813,28 @@
     return x.category === 'Löhne & Mitarbeiter' || x.sourceType === 'employeeCompensation';
   }
   function isRewardExpenseRecord(x = {}) {
-    return x.category === 'Kundenbonus & Empfehlungen' || x.sourceType === 'referralReward';
+    return x.category === REWARD_EXPENSE_CATEGORY || x.category === 'Kundenbonus & Empfehlungen' || x.sourceType === 'referralReward' || x.sourceType === 'referral_reward' || !!x.rewardId;
   }
   function normalizeRewardStatus(value = '') {
     const status = String(value || '').trim().toLowerCase();
-    if (status === 'eingelöst / ausbezahlt' || status === 'eingeloest / ausbezahlt' || status === 'bezahlt') return 'eingelöst / ausbezahlt';
+    if (status === 'eingelöst / ausbezahlt' || status === 'eingeloest / ausbezahlt' || status === 'ausbezahlt' || status === 'bezahlt') return 'eingelöst / ausbezahlt';
     if (status === 'gutgeschrieben') return 'gutgeschrieben';
     if (status === 'storniert' || status === 'deaktiviert') return 'storniert';
     return 'offen';
+  }
+  function rewardStatusLabel(value = '') {
+    const status = normalizeRewardStatus(value);
+    if (status === 'gutgeschrieben') return 'Bonus gutgeschrieben';
+    if (status === 'eingelöst / ausbezahlt') return 'Bonus ausbezahlt';
+    if (status === 'storniert') return 'Bonus storniert';
+    return 'Bonus offen';
+  }
+  function rewardStatusBadgeClass(value = '') {
+    const status = normalizeRewardStatus(value);
+    if (status === 'gutgeschrieben') return 'reward-credited';
+    if (status === 'eingelöst / ausbezahlt') return 'reward-paid';
+    if (status === 'storniert') return 'reward-cancelled';
+    return 'reward-open';
   }
   function isDeferredExpenseRecord(x = {}) { return isEmployeeExpenseRecord(x) || isRewardExpenseRecord(x); }
   function employeeExpensePaymentStatus(x = {}) {
@@ -1952,6 +1967,10 @@
       if (expenseType === 'other' && (employee || reward || ['Maschine / Gerät','Reinigungsmittel / Seife','Mops / Tücher / Material','Fahrzeug / Benzin','Werbung / Druck'].includes(x.category))) return false;
       if (expenseStatus === 'open' && (!isDeferredExpenseRecord(x) || status !== 'offen')) return false;
       if (expenseStatus === 'paid' && isDeferredExpenseRecord(x) && status !== 'bezahlt') return false;
+      if (expenseStatus === 'reward-open' && (!reward || normalizeRewardStatus(x.rewardStatus) !== 'offen')) return false;
+      if (expenseStatus === 'reward-credited' && (!reward || normalizeRewardStatus(x.rewardStatus) !== 'gutgeschrieben')) return false;
+      if (expenseStatus === 'reward-paid' && (!reward || normalizeRewardStatus(x.rewardStatus) !== 'eingelöst / ausbezahlt')) return false;
+      if (expenseStatus === 'reward-cancelled' && (!reward || normalizeRewardStatus(x.rewardStatus) !== 'storniert')) return false;
       if (!expenseQuery) return true;
       return [x.title,x.category,x.subtype,x.notes,x.jobId,userName(x.employeeId),userName(x.createdBy)].join(' ').toLowerCase().includes(expenseQuery);
     });
@@ -1965,14 +1984,14 @@
       const rewardState = isRewardExpense ? normalizeRewardStatus(x.rewardStatus || (paymentStatus === 'bezahlt' ? 'eingelöst / ausbezahlt' : 'gutgeschrieben')) : '';
       const paymentBadge = isEmployeeExpense
         ? `<span class="badge ${paymentStatus==='bezahlt'?'ok':'warn'}">Lohn ${paymentStatus==='bezahlt'?'bezahlt':'offen'}</span>`
-        : (isRewardExpense ? `<span class="badge ${rewardState==='storniert'?'danger':(rewardState==='offen'?'warn':'ok')}">Bonus ${esc(rewardState)}</span>` : '');
+        : (isRewardExpense ? `<span class="badge ${rewardStatusBadgeClass(rewardState)}">${esc(rewardStatusLabel(rewardState))}</span>` : '');
       let paymentToggle = '';
       if (isEmployeeExpense && isAdmin()) paymentToggle = `<button class="secondary" data-toggle-deferred-payment="${esc(x.id)}">${paymentStatus==='bezahlt'?'Als offen markieren':'Als bezahlt markieren'}</button>`;
       if (isRewardExpense && isAdmin()) {
-        if (rewardState === 'offen') paymentToggle = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(x.rewardId || '')}">Als gutgeschrieben markieren</button>`;
-        else if (rewardState === 'gutgeschrieben') paymentToggle = `<button class="secondary" data-set-reward-status="eingelöst / ausbezahlt" data-reward-id="${esc(x.rewardId || '')}">Als eingelöst / ausbezahlt markieren</button>`;
-        else if (rewardState === 'eingelöst / ausbezahlt') paymentToggle = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(x.rewardId || '')}">Wieder als gutgeschrieben setzen</button>`;
-        else paymentToggle = `<button class="secondary" data-tab-go="rewards">In Bonus verwalten</button>`;
+        if (rewardState === 'offen') paymentToggle = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(x.rewardId || '')}">Als gutgeschrieben markieren</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(x.rewardId || '')}">Stornieren</button>`;
+        else if (rewardState === 'gutgeschrieben') paymentToggle = `<button class="secondary" data-set-reward-status="eingelöst / ausbezahlt" data-reward-id="${esc(x.rewardId || '')}">Als ausbezahlt markieren</button><button class="secondary" data-set-reward-status="offen" data-reward-id="${esc(x.rewardId || '')}">Wieder offen setzen</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(x.rewardId || '')}">Stornieren</button>`;
+        else if (rewardState === 'eingelöst / ausbezahlt') paymentToggle = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(x.rewardId || '')}">Wieder als gutgeschrieben setzen</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(x.rewardId || '')}">Stornieren</button>`;
+        else paymentToggle = `<button class="secondary" data-set-reward-status="offen" data-reward-id="${esc(x.rewardId || '')}">Reaktivieren</button>`;
       }
       const editBtns = canEditFinanceEntry(x) ? `<div class="actions">${paymentToggle}<button class="secondary" data-edit-expense="${esc(x.id)}">Bearbeiten</button><button class="secondary danger" data-delete-expense="${esc(x.id)}">Löschen</button></div>` : (isDeferredExpenseRecord(x) ? `<div class="actions">${paymentToggle}${x.jobId?`<button class="secondary" data-edit-job="${esc(x.jobId)}">Auftrag ${esc(x.jobId)} öffnen</button>`:''}</div>` : '');
       return `<article class="item-card mini"><div class="item-top"><div><div class="item-title">${esc(x.title)}</div><div class="item-sub">${esc(x.category || 'Ausgabe')} · ${esc(fmtDateOnly(x.date))}${by}${x.employeeId?` · Mitarbeiter ${esc(userName(x.employeeId))}`:''}${x.notes ? ' · ' + esc(x.notes) : ''}</div></div><div class="badges">${paymentBadge}<span class="badge danger">${esc(money(x.amount))}</span></div></div>${editBtns}</article>`;
@@ -2051,20 +2070,22 @@
     $('[data-reward-list]').innerHTML = pageData.slice.length ? pageData.slice.map(r => {
       const receiver = personById(r.customerId); const from = personById(r.fromPersonId);
       const status = normalizeRewardStatus(r.status);
-      const badgeClass = status === 'storniert' ? 'danger' : (status === 'offen' ? 'warn' : 'ok');
+      const badgeClass = rewardStatusBadgeClass(status);
       let actions = '';
       if (status === 'offen') {
         actions = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(r.id)}">Als gutgeschrieben markieren</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(r.id)}">Stornieren</button>`;
       } else if (status === 'gutgeschrieben') {
         actions = `<button class="secondary" data-set-reward-status="eingelöst / ausbezahlt" data-reward-id="${esc(r.id)}">Als eingelöst / ausbezahlt markieren</button><button class="secondary" data-set-reward-status="offen" data-reward-id="${esc(r.id)}">Wieder offen setzen</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(r.id)}">Stornieren</button>`;
       } else if (status === 'eingelöst / ausbezahlt') {
-        actions = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(r.id)}">Wieder als gutgeschrieben setzen</button><button class="secondary" data-tab-go="finance">In Buchhaltung ansehen</button>`;
+        actions = `<button class="secondary" data-set-reward-status="gutgeschrieben" data-reward-id="${esc(r.id)}">Wieder als gutgeschrieben setzen</button><button class="secondary danger" data-set-reward-status="storniert" data-reward-id="${esc(r.id)}">Stornieren</button><button class="secondary" data-tab-go="finance">In Buchhaltung ansehen</button>`;
       } else {
         actions = `<button class="secondary" data-set-reward-status="offen" data-reward-id="${esc(r.id)}">Reaktivieren</button>`;
       }
       const reason = status === 'storniert' && r.cancelReason ? ` · Grund: ${esc(r.cancelReason)}` : '';
+      const sourceText = from?.name || r.fromPersonId ? ` · neuer Kunde / Anlass: ${esc(from?.name || r.fromPersonId)}` : '';
+      const jobText = r.jobId ? ` · Auftrag ${esc(r.jobId)}` : '';
       return `<article class="item-card">
-        <div class="item-top"><div><div class="item-title">CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}</div><div class="item-sub">Empfohlen hat: ${esc(receiver?.id || '')} · neuer Kunde: ${esc(from?.name || r.fromPersonId)} · Job ${esc(r.jobId || '')}${reason}</div></div><span class="badge ${badgeClass}">${esc(status)}</span></div>
+        <div class="item-top"><div><div class="item-title">${r.title ? `${esc(r.title)} · ${esc(money(r.amount))}` : `CHF ${esc(r.amount)} Guthaben für ${esc(receiver?.name || r.customerId)}`}</div><div class="item-sub">Bonus-Empfänger: ${esc(receiver?.name || r.customerId || 'nicht zugeordnet')}${sourceText}${jobText}${reason}</div></div><span class="badge ${badgeClass}">${esc(rewardStatusLabel(status))}</span></div>
         <div class="actions">${actions}${status !== 'storniert' ? whatsappLink(receiver?.phone, `Hoi ${receiver?.name || ''}, danke für deine Empfehlung. Dein CHF ${r.amount} Guthaben wurde bei Lumian Services notiert.`, 'WhatsApp') : ''}</div>
       </article>`;
     }).join('') : '<div class="empty">Noch keine Boni. Sie entstehen automatisch, wenn ein Empfehlungs-Job erledigt wird und der Mindestauftrag erreicht ist.</div>';
@@ -2686,10 +2707,14 @@
       const entryStamp = recordStamp(entry);
       let canonical = normalizeRewardStatus(reward.status);
       const explicitExpenseStatus = entry.rewardStatus ? normalizeRewardStatus(entry.rewardStatus) : '';
-      if (entry.paymentStatus === 'bezahlt') canonical = 'eingelöst / ausbezahlt';
-      else if (entry.paymentStatus === 'storniert') canonical = 'storniert';
-      else if (explicitExpenseStatus && entryStamp > rewardStamp) canonical = explicitExpenseStatus;
-      else if (entryStamp > rewardStamp && canonical === 'eingelöst / ausbezahlt' && entry.paymentStatus === 'offen') canonical = 'gutgeschrieben';
+      // The most recently changed side wins. A direct change on the Bonus page must
+      // not be overwritten by an older paid/open value on the linked expense record.
+      if (entryStamp > rewardStamp) {
+        if (entry.paymentStatus === 'bezahlt') canonical = 'eingelöst / ausbezahlt';
+        else if (entry.paymentStatus === 'storniert') canonical = 'storniert';
+        else if (explicitExpenseStatus) canonical = explicitExpenseStatus;
+        else if (canonical === 'eingelöst / ausbezahlt' && entry.paymentStatus === 'offen') canonical = 'gutgeschrieben';
+      }
 
       const now = new Date().toISOString();
       setField(reward, 'status', canonical);
@@ -2713,13 +2738,15 @@
       const receiver = person(reward.customerId);
       const source = person(reward.fromPersonId);
       const paymentStatus = canonical === 'eingelöst / ausbezahlt' ? 'bezahlt' : (canonical === 'storniert' ? 'storniert' : 'offen');
+      const defaultTitle = `Empfehlungsbonus ${receiver.name || reward.customerId || ''}${reward.jobId ? ` · Auftrag ${reward.jobId}` : ''}`;
+      const defaultNotes = `${reward.fromPersonId ? `Empfehlung / Anlass: ${source.name || reward.fromPersonId}` : 'Manuell erfasster Kundenbonus'}${reward.jobId ? ` · Auftrag ${reward.jobId}` : ''}${reward.cancelReason ? ` · Stornogrund: ${reward.cancelReason}` : ''}`;
       const values = {
         id, deletedAt:'', deletedBy:'', sourceType:'referralReward', rewardId:reward.id, automatic:true,
-        category:'Kundenbonus & Empfehlungen', subtype:'Empfehlungsbonus', rewardStatus:canonical,
-        title:`Empfehlungsbonus ${receiver.name || reward.customerId || ''} · Auftrag ${reward.jobId || ''}`,
+        category:REWARD_EXPENSE_CATEGORY, subtype:reward.manual ? 'Manueller Empfehlungs- / Kundenbonus' : 'Empfehlungsbonus', rewardStatus:canonical,
+        title:reward.title || defaultTitle,
         amount:amountValue(reward.amount || 0), jobId:reward.jobId || '', personId:reward.customerId || '', paymentStatus,
         date:String(reward.redeemedAt || reward.creditedAt || reward.cancelledAt || reward.createdAt || now).slice(0,10),
-        notes:`Empfehlung für ${source.name || reward.fromPersonId || 'Neukunde'}${reward.jobId ? ` · Auftrag ${reward.jobId}` : ''}${reward.cancelReason ? ` · Stornogrund: ${reward.cancelReason}` : ''}`
+        notes:reward.notes ? `${reward.notes}${reward.cancelReason ? ` · Stornogrund: ${reward.cancelReason}` : ''}` : defaultNotes
       };
       Object.entries(values).forEach(([key,value]) => setField(entry, key, value));
       if (paymentStatus === 'bezahlt') {
@@ -3572,20 +3599,92 @@
     const auto = (state.finance.expenses || []).filter(x=>x.automatic && x.jobId===job.id && (!employeeId || x.employeeId===employeeId) && !x.deletedAt);
     el.innerHTML = auto.length ? `<strong>Bereits automatisch für diesen Auftrag:</strong> ${auto.map(x=>`${esc(x.subtype || x.title)} ${esc(money(x.amount))}`).join(' · ')}` : 'Für diese Kombination besteht noch keine automatische Lohnposition.';
   }
+  function renderBonusExpenseOptions(selectedCustomer = '', selectedFrom = '', selectedJob = '') {
+    const form = $('[data-expense-form]');
+    if (!form) return;
+    const people = [...(state.people || [])].filter(p=>p && !p.deletedAt).sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id),'de-CH'));
+    const personOptions = people.map(p=>`<option value="${esc(p.id)}">${esc(p.name || p.id)} · ${esc(p.id)}</option>`).join('');
+    const customerSel = $('[data-bonus-customer-select]');
+    const fromSel = $('[data-bonus-from-select]');
+    const jobSel = $('[data-bonus-job-select]');
+    if (customerSel) {
+      customerSel.innerHTML = `<option value="">– Kunde / Person wählen –</option>${personOptions}`;
+      customerSel.value = selectedCustomer || '';
+    }
+    if (fromSel) {
+      fromSel.innerHTML = `<option value="">– optional –</option>${personOptions}`;
+      fromSel.value = selectedFrom || '';
+    }
+    if (jobSel) {
+      const jobs = [...(state.jobs || [])].filter(j=>j && !j.deletedAt).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+      jobSel.innerHTML = `<option value="">– optional / kein Auftrag –</option>${jobs.map(j=>{const p=personById(j.personId)||{}; return `<option value="${esc(j.id)}">${esc(j.id)} · ${esc(p.name || j.personId)} · ${esc(j.service || '')}</option>`}).join('')}`;
+      if (selectedJob && [...jobSel.options].some(o=>o.value===selectedJob)) jobSel.value=selectedJob;
+    }
+  }
   function updateExpenseEmployeeFields() {
-    const form=$('[data-expense-form]'); const box=$('[data-employee-expense-fields]'); if (!form || !box) return;
-    const active=form.elements.category.value==='Löhne & Mitarbeiter'; box.hidden=!active;
-    if (active) renderExpenseEmployeeOptions(form.elements.employeeId?.value || '');
+    const form=$('[data-expense-form]');
+    const employeeBox=$('[data-employee-expense-fields]');
+    const bonusBox=$('[data-bonus-expense-fields]');
+    if (!form) return;
+    const category=form.elements.category.value;
+    const employeeActive=category==='Löhne & Mitarbeiter';
+    const bonusActive=category===REWARD_EXPENSE_CATEGORY;
+    if (employeeBox) employeeBox.hidden=!employeeActive;
+    if (bonusBox) bonusBox.hidden=!bonusActive;
+    if (form.elements.bonusCustomerId) form.elements.bonusCustomerId.required=bonusActive;
+    if (employeeActive) renderExpenseEmployeeOptions(form.elements.employeeId?.value || '');
+    if (bonusActive) renderBonusExpenseOptions(form.elements.bonusCustomerId?.value || '', form.elements.bonusFromPersonId?.value || '', form.elements.bonusJobId?.value || '');
   }
   $('[data-expense-form] [name="category"]')?.addEventListener('change', updateExpenseEmployeeFields);
   $('[data-expense-employee-select]')?.addEventListener('change', ()=>renderExpenseJobOptions());
   $('[data-expense-job-select]')?.addEventListener('change', updateExpenseJobHint);
+  $('[data-bonus-job-select]')?.addEventListener('change', event => {
+    const form=$('[data-expense-form]');
+    const job=jobById(event.target.value || '');
+    if (form && job && form.elements.bonusFromPersonId && !form.elements.bonusFromPersonId.value) form.elements.bonusFromPersonId.value=job.personId || '';
+  });
+
+  function isoForFinanceDate(dateValue) {
+    const date = isoDateOnlyFromField(dateValue) || ymd(new Date());
+    return `${date}T12:00:00.000Z`;
+  }
+  function addManualRewardExpense(form, fd) {
+    const customerId=String(fd.get('bonusCustomerId') || '').trim();
+    if (!customerId) return toast('Bitte den Bonus-Empfänger wählen.');
+    const now=new Date().toISOString();
+    const effectiveAt=isoForFinanceDate(fd.get('date'));
+    const status=normalizeRewardStatus(fd.get('bonusStatus'));
+    const existingExpenseId=String(fd.get('entryId') || '').trim();
+    if (existingExpenseId) {
+      const old=(state.finance?.expenses || []).find(x=>x.id===existingExpenseId);
+      if (old && !old.automatic) { old.deletedAt=now; old.deletedBy=currentUser; old.updatedAt=now; old.updatedBy=currentUser; }
+    }
+    const reward={
+      id:nextId('reward'), customerId, fromPersonId:String(fd.get('bonusFromPersonId') || '').trim(),
+      jobId:String(fd.get('bonusJobId') || '').trim(), amount:amountValue(fd.get('amount')),
+      title:String(fd.get('title') || '').trim(), notes:String(fd.get('notes') || '').trim(),
+      manual:true, status, createdAt:effectiveAt, createdBy:currentUser, updatedAt:now, updatedBy:currentUser
+    };
+    if (status==='gutgeschrieben' || status==='eingelöst / ausbezahlt') { reward.creditedAt=effectiveAt; reward.creditedBy=currentUser; }
+    if (status==='eingelöst / ausbezahlt') { reward.redeemedAt=effectiveAt; reward.redeemedBy=currentUser; }
+    if (status==='storniert') { reward.cancelledAt=effectiveAt; reward.cancelledBy=currentUser; reward.cancelReason=reward.notes || 'Manuell storniert'; }
+    state.rewards=Array.isArray(state.rewards)?state.rewards:[];
+    state.rewards.push(reward);
+    syncRewardExpense(reward);
+    saveState(`Manueller ${REWARD_EXPENSE_CATEGORY} erstellt: ${reward.id}${reward.jobId ? ` / Auftrag ${reward.jobId}` : ''}`);
+    form.reset();
+    setDefaultFinanceDates();
+    updateExpenseEmployeeFields();
+    renderAll();
+    toast('Bonus gespeichert und mit der Bonus-Seite synchronisiert.');
+  }
 
   function addExpense(form) {
     if (!isAdmin()) return toast('Nur Admins können Buchhaltung ändern.');
     if (markInvalidDateInput(form.elements.date, 'Datum')) return;
     const fd = new FormData(form);
     state.finance = state.finance || { manualIncome: [], expenses: [] };
+    if (fd.get('category') === REWARD_EXPENSE_CATEGORY) return addManualRewardExpense(form, fd);
     const id = fd.get('entryId');
     let entry = id ? state.finance.expenses.find(x => x.id === id) : null;
     if (entry && !canEditFinanceEntry(entry)) return toast('Nur die Person, die den Eintrag erstellt hat, kann ihn bearbeiten.');
@@ -3956,12 +4055,12 @@
       ...s.expenses.map(x => [fmtDateOnly(x.date), x.category || 'Ausgabe', x.subtype || '', x.title, amountValue(x.amount), x.employeeId ? userName(x.employeeId) : '', x.jobId || '', x.personId || '', deferredExpensePaymentStatus(x) || x.paymentStatus || '', x.automatic ? 'Ja' : 'Nein', userName(x.createdBy), x.notes || '', x.id])
     ];
     const rewardRows = [
-      ['BonusID','Empfänger','Empfänger LumianNr','Neukunde','Auftrags-Nr.','Betrag CHF','Bonusstatus','Buchhaltung Zahlstatus','Gutgeschrieben am','Eingelöst / ausbezahlt am'],
+      ['BonusID','Art','Titel','Empfänger','Empfänger LumianNr','Neukunde / Anlass','Auftrags-Nr.','Betrag CHF','Bonusstatus','Buchhaltung Zahlstatus','Gutgeschrieben am','Eingelöst / ausbezahlt am','Storniert am','Stornogrund','Notiz'],
       ...(state.rewards || []).filter(r => !r.deletedAt).map(r => {
         const receiver = personById(r.customerId) || {};
         const source = personById(r.fromPersonId) || {};
         const expense = (state.finance?.expenses || []).find(x => x.rewardId === r.id && !x.deletedAt);
-        return [r.id || '', receiver.name || '', r.customerId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), r.status || 'offen', expense ? deferredExpensePaymentStatus(expense) : '', r.creditedAt ? fmtDate(r.creditedAt) : '', r.redeemedAt ? fmtDate(r.redeemedAt) : ''];
+        return [r.id || '', r.manual ? 'Manuell' : 'Automatisch', r.title || '', receiver.name || '', r.customerId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), normalizeRewardStatus(r.status), expense ? deferredExpensePaymentStatus(expense) : '', r.creditedAt ? fmtDate(r.creditedAt) : '', r.redeemedAt ? fmtDate(r.redeemedAt) : '', r.cancelledAt ? fmtDate(r.cancelledAt) : '', r.cancelReason || '', r.notes || ''];
       })
     ];
     const employeeCostRows = [
@@ -3989,7 +4088,7 @@
       ['Pipeline offen', forecastRows, [130,90,220,130,90,130,100]],
       ['Ausgaben', expenseRows, [90,150,130,240,90,150,100,100,120,90,130,260,130]],
       ['Mitarbeiterkosten', employeeCostRows, [160,110,110,110,150,80,100,100,120,100]],
-      ['Empfehlungsbonus', rewardRows, [90,170,110,170,110,100,130,140,140,150]],
+      ['Empfehlungsbonus', rewardRows, [90,90,180,170,110,170,110,100,130,140,140,150,140,180,220]],
       ['Kundenaktivität', customerRows, [90,170,120,130,100,90,100,80]]
     ]);
     toast('Excel-Report erstellt.');
@@ -4056,12 +4155,12 @@
   }
   function emergencyRewardsRows() {
     const sorted = [...(state.rewards || [])].sort((a,b)=>String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
-    return [['BonusID','Empfänger LumianNr','Empfänger Name','Von LumianNr','Von Name','JobID','Betrag CHF','Status','Buchhaltung Zahlstatus','Gutgeschrieben am','Gutgeschrieben von','Eingelöst / ausbezahlt am','Eingelöst / ausbezahlt von','Notiz','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
+    return [['BonusID','Art','Titel','Empfänger LumianNr','Empfänger Name','Von LumianNr','Von Name / Anlass','JobID','Betrag CHF','Status','Buchhaltung Zahlstatus','Gutgeschrieben am','Gutgeschrieben von','Eingelöst / ausbezahlt am','Eingelöst / ausbezahlt von','Storniert am','Storniert von','Stornogrund','Notiz','Erstellt am','Erstellt von','Geändert am','Geändert von','Gelöscht am'],
       ...sorted.map(r => {
         const receiver = personById(r.customerId) || {};
         const source = personById(r.fromPersonId) || {};
         const expense = (state.finance?.expenses || []).find(x => x.rewardId === r.id && !x.deletedAt);
-        return [r.id || '', r.customerId || '', receiver.name || '', r.fromPersonId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), r.status || '', expense ? deferredExpensePaymentStatus(expense) : '', r.creditedAt ? fmtDate(r.creditedAt) : '', userName(r.creditedBy), r.redeemedAt ? fmtDate(r.redeemedAt) : '', userName(r.redeemedBy), r.notes || '', r.createdAt ? fmtDate(r.createdAt) : '', userName(r.createdBy), r.updatedAt ? fmtDate(r.updatedAt) : '', userName(r.updatedBy), r.deletedAt ? fmtDate(r.deletedAt) : ''];
+        return [r.id || '', r.manual ? 'Manuell' : 'Automatisch', r.title || '', r.customerId || '', receiver.name || '', r.fromPersonId || '', source.name || '', r.jobId || '', amountValue(r.amount || 0), normalizeRewardStatus(r.status), expense ? deferredExpensePaymentStatus(expense) : '', r.creditedAt ? fmtDate(r.creditedAt) : '', userName(r.creditedBy), r.redeemedAt ? fmtDate(r.redeemedAt) : '', userName(r.redeemedBy), r.cancelledAt ? fmtDate(r.cancelledAt) : '', userName(r.cancelledBy), r.cancelReason || '', r.notes || '', r.createdAt ? fmtDate(r.createdAt) : '', userName(r.createdBy), r.updatedAt ? fmtDate(r.updatedAt) : '', userName(r.updatedBy), r.deletedAt ? fmtDate(r.deletedAt) : ''];
       })
     ];
   }
@@ -4106,7 +4205,7 @@
       ['Einnahmen', incomeRows, [150,90,90,220,140,90,130,240,100,120]],
       ['Pipeline offen', forecastRows, [130,90,240,130,90,130,120]],
       ['Ausgaben', expenseRows, [90,140,120,220,90,150,100,100,100,90,130,240,110,120]],
-      ['Bonus', emergencyRewardsRows(), [90,90,170,90,170,90,90,100,120,140,130,160,150,220,130,120,130,120,120]]
+      ['Bonus', emergencyRewardsRows(), [90,90,180,100,170,100,170,100,100,130,140,140,130,160,150,140,130,180,220,140,120,140,120,120]]
     ];
   }
   function emergencyWebsiteContentSheets() {

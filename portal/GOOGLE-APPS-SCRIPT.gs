@@ -1113,9 +1113,9 @@ function writeSheets_(state) {
   writePhotoSyncSheet_(ss, state);
   writeCalendarSyncSheet_(ss, state);
   writeSyncDiagnosticsSheet_(ss, state);
-  writeSheet_(ss, 'Rewards', ['RewardId','CustomerId','FromCustomerId','JobId','Amount','Status','AccountingPaymentStatus','CreditedAt','CreditedBy','RedeemedAt','RedeemedBy','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy'], (state.rewards || []).map(function(r) {
+  writeSheet_(ss, 'Rewards', ['RewardId','Type','Title','CustomerId','FromCustomerId','JobId','Amount','Status','AccountingPaymentStatus','CreditedAt','CreditedBy','RedeemedAt','RedeemedBy','CancelledAt','CancelledBy','CancelReason','Notes','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy'], (state.rewards || []).map(function(r) {
     var expense = (((state.finance || {}).expenses) || []).filter(function(x) { return !x.deletedAt && x.rewardId === r.id; })[0] || null;
-    return [r.id,r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,expense ? deferredExpensePaymentStatus_(expense) : '',r.creditedAt || '',r.creditedBy || '',r.redeemedAt || '',r.redeemedBy || '',r.createdAt,r.createdBy,r.updatedAt || '',r.updatedBy || ''];
+    return [r.id,r.manual === true ? 'Manual' : 'Automatic',r.title || '',r.customerId,r.fromPersonId,r.jobId,r.amount,r.status,expense ? deferredExpensePaymentStatus_(expense) : '',r.creditedAt || '',r.creditedBy || '',r.redeemedAt || '',r.redeemedBy || '',r.cancelledAt || '',r.cancelledBy || '',r.cancelReason || '',r.notes || '',r.createdAt,r.createdBy,r.updatedAt || '',r.updatedBy || ''];
   }));
 
   var finance = calculateFinance_(state);
@@ -1207,11 +1207,11 @@ function isCancelledJob_(job) {
 }
 
 function isEmployeeExpense_(x) {
-  return !!x && (x.category === 'Löhne & Mitarbeiter' || (!!x.employeeId && x.sourceType !== 'referral_reward'));
+  return !!x && (x.category === 'Löhne & Mitarbeiter' || (!!x.employeeId && x.sourceType !== 'referral_reward' && x.sourceType !== 'referralReward'));
 }
 
 function isRewardExpense_(x) {
-  return !!x && (x.sourceType === 'referral_reward' || !!x.rewardId || x.category === 'Kundenbonus & Empfehlungen');
+  return !!x && (x.sourceType === 'referral_reward' || x.sourceType === 'referralReward' || !!x.rewardId || x.category === 'Kundenbonus & Empfehlungen' || x.category === 'Empfehlungs- / Kundenbonus');
 }
 
 function isDeferredExpense_(x) {
@@ -1219,7 +1219,10 @@ function isDeferredExpense_(x) {
 }
 
 function deferredExpensePaymentStatus_(x) {
-  return x && x.paymentStatus === 'bezahlt' ? 'bezahlt' : 'offen';
+  if (!x) return 'offen';
+  if (x.paymentStatus === 'bezahlt') return 'bezahlt';
+  if (x.paymentStatus === 'storniert') return 'storniert';
+  return 'offen';
 }
 
 function calculateFinance_(state) {

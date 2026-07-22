@@ -119,12 +119,9 @@ function syncFull_(payload) {
 function emptyState_() {
   var now = new Date().toISOString();
   return {
-    version: 11,
+    version: 10,
     createdAt: now,
     updatedAt: now,
-    portalMode: 'test',
-    goLiveAt: '',
-    dataEpoch: '',
     users: [],
     settings: {},
     counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
@@ -132,6 +129,8 @@ function emptyState_() {
     leads: [],
     jobs: [],
     rewards: [],
+    dataGeneration: '',
+    goLiveLocked: false,
     finance: { manualIncome: [], expenses: [] },
     websiteContent: { values: {}, media: {}, gallery: [], updatedAt: '', updatedBy: '' },
     audit: []
@@ -146,7 +145,6 @@ function resetAll_(confirmText) {
   createBackupSnapshot_(current, 'before-full-reset');
   appendActivityLogEntries_([{ timestamp: new Date().toISOString(), userId: 'system', userName: 'System', action: 'Kompletter Cloud-Reset', area: 'Setup', objectId: '', description: 'Cloud State wurde komplett zurückgesetzt.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: current.portalMode || '', source: 'server' }], 'system', 'reset-all');
   var state = emptyState_();
-  state.dataEpoch = newDataEpoch_('full-reset');
   state.settings = { backupFolderId: DEFAULT_BACKUP_FOLDER_ID, driveFolderId: DEFAULT_DRIVE_FOLDER_ID, calendarId: DEFAULT_CALENDAR_ID };
   writeSheets_(state);
   clearWebsiteLeadSheet_();
@@ -155,60 +153,31 @@ function resetAll_(confirmText) {
   return json_({ ok: true, resetAt: new Date().toISOString() });
 }
 
-function cleanupTestCalendarAndDrive_(state) {
-  var warnings = [];
-  var deletedEvents = 0;
-  var trashedFolders = 0;
-  var settings = (state && state.settings) || {};
-  var calendarId = parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID);
-  try {
-    var calendar = calendarId === 'primary' ? CalendarApp.getDefaultCalendar() : CalendarApp.getCalendarById(calendarId);
-    if (calendar) {
-      (state.jobs || []).forEach(function(job) { deletedEvents += deleteCalendarEventsForJob_(calendar, job); });
-    }
-  } catch (calendarErr) { warnings.push('Kalenderbereinigung: ' + String(calendarErr)); }
-
-  try {
-    var rootId = String(settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID || '').trim();
-    if (rootId) {
-      var root = DriveApp.getFolderById(rootId);
-      var ids = {};
-      (state.people || []).forEach(function(person) { if (person && person.id) ids[sanitizeDriveName_(person.id)] = true; });
-      Object.keys(ids).forEach(function(name) {
-        var folders = root.getFoldersByName(name);
-        while (folders.hasNext()) { folders.next().setTrashed(true); trashedFolders++; }
-      });
-      // WebsiteMedia is intentionally never touched.
-    }
-  } catch (driveErr) { warnings.push('Drive-Bereinigung: ' + String(driveErr)); }
-  return { deletedEvents:deletedEvents, trashedFolders:trashedFolders, warning:warnings.join(' | ') };
-}
-
-function newDataEpoch_(prefix) {
-  return String(prefix || 'epoch') + '-' + new Date().getTime() + '-' + Utilities.getUuid();
-}
-
 function goLiveReset_(confirmText, backupFolderId) {
   if (confirmText !== 'START-PRODUCTION') {
     return json_({ ok: false, error: 'Produktiv confirmation missing' });
   }
   var current = normalizeStateForMerge_(loadState_() || emptyState_());
+  var hasOperationalData = (current.people || []).length || (current.leads || []).length || (current.jobs || []).length || (current.rewards || []).length || ((current.finance || {}).manualIncome || []).length || ((current.finance || {}).expenses || []).length;
+  if (current.portalMode === 'production' && !hasOperationalData) {
+    return json_({ ok: false, error: 'Produktivbetrieb ist aktiv und alle Testdaten sind bereits gelöscht. Der Löschvorgang ist dauerhaft gesperrt.', alreadyProduction: true });
+  }
+  var warnings = [];
   current.settings = current.settings || {};
   current.settings.backupFolderId = String(backupFolderId || current.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID).trim() || DEFAULT_BACKUP_FOLDER_ID;
-  createBackupSnapshot_(current, 'before-go-live-reset');
-  var cleanup = cleanupTestCalendarAndDrive_(current);
-
+  try { createBackupSnapshot_(current, 'before-go-live-reset'); }
+  catch (backupErr) { warnings.push('Sicherungsbackup konnte nicht erstellt werden: ' + String(backupErr)); }
   var now = new Date().toISOString();
+  var generation = 'production-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000000);
   var clean = emptyState_();
-  clean.version = current.version || 8;
+  clean.version = current.version || 10;
   clean.createdAt = current.createdAt || now;
   clean.updatedAt = now;
   clean.portalMode = 'production';
   clean.goLiveAt = now;
-  clean.dataEpoch = newDataEpoch_('production');
+  clean.dataGeneration = generation;
+  clean.goLiveLocked = true;
   clean.users = current.users || [];
-  // Website content is production content, not disposable test data.
-  // Keep published texts, links, media and gallery during the Go-Live reset.
   clean.websiteContent = current.websiteContent || { values: {}, media: {}, gallery: [], updatedAt: '', updatedBy: '' };
   clean.settings = current.settings || {};
   clean.settings.driveFolderId = clean.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
@@ -220,15 +189,21 @@ function goLiveReset_(confirmText, backupFolderId) {
   clean.jobs = [];
   clean.rewards = [];
   clean.finance = { manualIncome: [], expenses: [] };
-  clean.audit = (current.audit || []).slice(-300);
-  clean.audit.push({ at: now, by: 'system', reason: 'Testdaten gelöscht und Produktivmodus gestartet' });
-
-  writeSheets_(clean);
-  clearWebsiteLeadSheet_();
-  saveState_(clean, null);
-  createBackupSnapshot_(clean, 'after-go-live-reset');
-  appendActivityLogEntries_([{ timestamp: now, userId: 'system', userName: 'System', action: 'Testdaten gelöscht & Produktivbetrieb gestartet', area: 'Setup', objectId: '', description: 'Go-Live Reset: Testdaten gelöscht, Einstellungen/Benutzer/Website-Inhalte behalten.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: 'production', source: 'server' }], 'system', 'go-live-reset');
-  return json_({ ok: true, resetAt: now, mode: 'production', dataEpoch:clean.dataEpoch, deletedCalendarEvents:cleanup.deletedEvents, trashedDriveFolders:cleanup.trashedFolders, cleanupWarning:cleanup.warning || '' });
+  clean.audit = [];
+  try {
+    var cleanJson = JSON.stringify(stateForStorage_(clean));
+    saveStateToSheet_(cleanJson);
+    try { PropertiesService.getScriptProperties().setProperty('LUMIAN_STATE', cleanJson.slice(0, 8000)); } catch (propertyErr) {}
+  } catch (saveErr) {
+    return json_({ ok: false, error: 'Cloud-State konnte nicht gespeichert werden: ' + String(saveErr) });
+  }
+  try { saveLatestBackup_(stateForStorage_(clean)); } catch (latestBackupErr) { warnings.push('Latest-Backup konnte nicht aktualisiert werden: ' + String(latestBackupErr)); }
+  try { writeSheets_(clean); } catch (sheetErr) { warnings.push('Google-Sheets konnten nicht vollständig geleert werden: ' + String(sheetErr)); }
+  try { clearWebsiteLeadSheet_(); } catch (leadErr) { warnings.push('Website-Leads konnten nicht vollständig geleert werden: ' + String(leadErr)); }
+  try { createBackupSnapshot_(clean, 'after-go-live-reset'); } catch (afterBackupErr) { warnings.push('Abschlussbackup konnte nicht erstellt werden: ' + String(afterBackupErr)); }
+  try { appendActivityLogEntries_([{ timestamp: now, userId: 'system', userName: 'System', action: 'Testdaten gelöscht & Produktivbetrieb gestartet', area: 'Setup', objectId: '', description: 'Go-Live Reset: Testdaten gelöscht, Einstellungen/Benutzer/Website-Inhalte behalten.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: 'production', source: 'server' }], 'system', 'go-live-reset'); }
+  catch (activityErr) { warnings.push('Aktivitätsprotokoll konnte nicht geschrieben werden: ' + String(activityErr)); }
+  return json_({ ok: true, resetAt: now, mode: 'production', dataGeneration: generation, locked: true, warnings: warnings });
 }
 
 function clearWebsiteLeadSheet_() {
@@ -339,13 +314,14 @@ function normalizeStateForMerge_(s) {
   out.createdAt = out.createdAt || base.createdAt;
   out.updatedAt = out.updatedAt || '';
   out.portalMode = out.portalMode || 'test';
-  out.dataEpoch = String(out.dataEpoch || '');
   out.goLiveAt = out.goLiveAt || '';
+  out.dataGeneration = out.dataGeneration || '';
+  out.goLiveLocked = out.goLiveLocked === true;
   out.settings = out.settings || {};
   out.settings.driveFolderId = out.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
   out.settings.backupFolderId = out.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
   out.settings.calendarId = out.settings.calendarId || DEFAULT_CALENDAR_ID;
-  out.users = Array.isArray(out.users) ? out.users.map(sanitizeUserCredentials_) : [];
+  out.users = Array.isArray(out.users) ? out.users : [];
   out.counters = out.counters || {};
   out.counters.nextPerson = Number(out.counters.nextPerson || 1001);
   out.counters.nextLead = Number(out.counters.nextLead || 1);
@@ -416,16 +392,6 @@ function copyObject_(source) {
   source = source || {};
   for (var key in source) if (Object.prototype.hasOwnProperty.call(source, key)) out[key] = source[key];
   return out;
-}
-
-function deepClone_(value) {
-  return JSON.parse(JSON.stringify(value === undefined ? null : value));
-}
-
-function sanitizeUserCredentials_(user) {
-  var clean = deepClone_(user || {});
-  ['password','plainPassword','passwort','temporaryPassword','newPassword'].forEach(function(key) { delete clean[key]; });
-  return clean;
 }
 
 function mergeUserObjects_(older, newer) {
@@ -513,18 +479,16 @@ function mergeStates_(current, incoming, userId) {
   merged.updatedAt = now;
   merged.portalMode = (current.portalMode === 'production' || incoming.portalMode === 'production') ? 'production' : (incoming.portalMode || current.portalMode || 'test');
   merged.goLiveAt = current.goLiveAt || incoming.goLiveAt || '';
-  var currentEpoch = String(current.dataEpoch || '');
-  var incomingEpoch = String(incoming.dataEpoch || '');
-  var rejectIncomingOperationalData = !!currentEpoch && currentEpoch !== incomingEpoch;
-  merged.dataEpoch = currentEpoch || incomingEpoch || '';
+  merged.dataGeneration = current.dataGeneration || incoming.dataGeneration || '';
+  merged.goLiveLocked = current.goLiveLocked === true || incoming.goLiveLocked === true || merged.portalMode === 'production';
   merged.settings = mergeSettings_(current.settings, incoming.settings);
   merged.users = mergeUsers_(current.users, incoming.users);
-  merged.counters = rejectIncomingOperationalData ? deepClone_(current.counters) : maxCounters_(current.counters, incoming.counters);
-  merged.people = rejectIncomingOperationalData ? deepClone_(current.people) : mergeRecordArrays_(current.people, incoming.people);
-  merged.leads = rejectIncomingOperationalData ? deepClone_(current.leads) : mergeRecordArrays_(current.leads, incoming.leads);
-  merged.jobs = rejectIncomingOperationalData ? deepClone_(current.jobs) : mergeRecordArrays_(current.jobs, incoming.jobs);
-  merged.rewards = rejectIncomingOperationalData ? deepClone_(current.rewards) : mergeRecordArrays_(current.rewards, incoming.rewards);
-  merged.finance = rejectIncomingOperationalData ? deepClone_(current.finance) : {
+  merged.counters = maxCounters_(current.counters, incoming.counters);
+  merged.people = mergeRecordArrays_(current.people, incoming.people);
+  merged.leads = mergeRecordArrays_(current.leads, incoming.leads);
+  merged.jobs = mergeRecordArrays_(current.jobs, incoming.jobs);
+  merged.rewards = mergeRecordArrays_(current.rewards, incoming.rewards);
+  merged.finance = {
     manualIncome: mergeRecordArrays_(current.finance.manualIncome, incoming.finance.manualIncome),
     expenses: mergeRecordArrays_(current.finance.expenses, incoming.finance.expenses)
   };
@@ -532,6 +496,18 @@ function mergeStates_(current, incoming, userId) {
   var incomingContentTime = new Date((incoming.websiteContent && incoming.websiteContent.updatedAt) || 0).getTime() || 0;
   merged.websiteContent = JSON.parse(JSON.stringify(incomingContentTime >= currentContentTime ? (incoming.websiteContent || {}) : (current.websiteContent || {})));
   merged.audit = (current.audit || []).concat(incoming.audit || []).slice(-400);
+  if (current.dataGeneration && incoming.dataGeneration !== current.dataGeneration) {
+    merged.dataGeneration = current.dataGeneration;
+    merged.portalMode = current.portalMode || 'production';
+    merged.goLiveAt = current.goLiveAt || merged.goLiveAt;
+    merged.goLiveLocked = true;
+    merged.counters = current.counters;
+    merged.people = current.people;
+    merged.leads = current.leads;
+    merged.jobs = current.jobs;
+    merged.rewards = current.rewards;
+    merged.finance = current.finance;
+  }
   if (userId) merged.audit.push({ at: now, by: userId, reason: 'cloud merge sync' });
   return merged;
 }
@@ -1084,7 +1060,6 @@ function stateForStorage_(state) {
   // If Drive upload worked, savePhoto_ already replaced dataUrl with Drive metadata.
   // If Drive upload failed, keep an error marker but strip the base64 to avoid breaking cloud state.
   var clean = JSON.parse(JSON.stringify(state || {}));
-  clean.users = (clean.users || []).map(sanitizeUserCredentials_);
   (clean.jobs || []).forEach(function(job) {
     ['beforePhoto', 'afterPhoto'].forEach(function(key) {
       var ph = job[key];
@@ -1178,7 +1153,7 @@ function writeSheets_(state) {
     ['Bezahlte Jobs', finance.paidJobsTotal, finance.paidJobsCount + ' kassierte Jobs'],
     ['Manuell ergänzt', finance.manualIncomeTotal, finance.manualIncomeCount + ' Eintrag(e)'],
     ['Pipeline offen', finance.forecastTotal, finance.forecastJobsCount + ' Job(s) + ' + finance.forecastLeadsCount + ' Lead(s)'],
-    ['Löhne & Mitarbeiter bezahlt', finance.employeeExpenseTotal, finance.employeeExpenseCount + ' bezahlt · ' + finance.employeeOpenExpenseCount + ' offen'],
+    ['Löhne bezahlt', finance.employeeExpenseTotal, finance.employeeExpenseCount + ' bezahlt · ' + finance.employeeOpenExpenseCount + ' offen'],
     ['Empfehlungsboni eingelöst / ausbezahlt', finance.rewardExpenseTotal, finance.rewardExpenseCount + ' bezahlt · ' + finance.rewardOpenExpenseCount + ' gutgeschrieben/offen'],
     ['Ausgaben gesamt', finance.expenseTotal, finance.expenseCount + ' bezahlte/gebuchte Kostenposition(en)'],
     ['Gewinn', finance.paidJobsTotal + finance.manualIncomeTotal - finance.expenseTotal, 'bezahlte Einnahmen minus Ausgaben']

@@ -76,11 +76,8 @@
     const role = normalizedRole(u.role || fallback.role, id);
     const name = String(u.name || fallback.name || id || 'Mitarbeiter').trim();
     const loginEnabled = u.loginEnabled !== undefined ? u.loginEnabled !== false : u.active !== false;
-    const safe = { ...fallback, ...u };
-    // Never persist legacy/plain-text credentials in local storage, cloud state or backups.
-    ['password','plainPassword','passwort','temporaryPassword','newPassword'].forEach(key => delete safe[key]);
     return {
-      ...safe, id, name,
+      ...fallback, ...u, id, name,
       emoji: String(u.emoji || fallback.emoji || name.slice(0,1).toUpperCase()).slice(0,2),
       role,
       employeeType: u.employeeType === 'temporary' || role === 'helper' ? 'temporary' : 'fixed',
@@ -91,7 +88,7 @@
       active: loginEnabled,
       permissions: normalizePermissions(role, u.permissions),
       compensationDefaults: normalizeCompensationDefaults(u.compensationDefaults || u),
-      passwordHash: u.passwordHash || '', salt: u.salt || '', passwordAlgo: u.passwordAlgo || '', passwordIterations: Number(u.passwordIterations || 0),
+      passwordHash: u.passwordHash || '', salt: u.salt || '',
       credentialId: u.credentialId || '', credentialUserHandle: u.credentialUserHandle || '',
       recoveryCode: u.recoveryCode || `${name}-Reset-2026`
     };
@@ -414,7 +411,8 @@
       users: USERS.map(u => normalizeEmployeeUser({ ...u, role:'admin', active:true, loginEnabled:true, employmentActive:true, employeeType:'fixed', passwordHash:'', salt:'', credentialId:'', credentialUserHandle:'', recoveryCode:`${u.name}-Reset-2026` }, u)),
       portalMode: 'test',
       goLiveAt: '',
-      dataEpoch: '',
+      dataGeneration: '',
+      goLiveLocked: false,
       settings: { ...DEFAULT_SETTINGS },
       counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
       people: [],
@@ -443,8 +441,7 @@
   function migrateState(s) {
     const base = newState();
     const merged = { ...base, ...s };
-    merged.version = 11;
-    merged.dataEpoch = String(s.dataEpoch || '');
+    merged.version = 10;
     merged.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     if (!merged.settings.scriptUrl || String(merged.settings.scriptUrl).includes('AKfycbzE4gou4eqYLhpS_Ap4oDTMDHQBqk1KC9m6XXBJCP2VefN0AKWSPhH6pcWzrBaMftRiVg')) {
       merged.settings.scriptUrl = DEFAULT_SETTINGS.scriptUrl;
@@ -721,9 +718,6 @@
   function mergeLocalCloudStates(localState = {}, cloudState = {}) {
     const local = migrateState({ ...localState });
     const cloud = migrateState({ ...cloudState });
-    const cloudEpoch = String(cloud.dataEpoch || '');
-    const localEpoch = String(local.dataEpoch || '');
-    const cloudOwnsOperationalData = !!cloudEpoch && cloudEpoch !== localEpoch;
     const merged = {
       ...cloud,
       ...local,
@@ -731,23 +725,36 @@
       updatedAt: new Date().toISOString(),
       portalMode: (cloud.portalMode === 'production' || local.portalMode === 'production') ? 'production' : (cloud.portalMode || local.portalMode || 'test'),
       goLiveAt: cloud.goLiveAt || local.goLiveAt || '',
-      dataEpoch: cloudEpoch || localEpoch || '',
+      dataGeneration: cloud.dataGeneration || local.dataGeneration || '',
+      goLiveLocked: cloud.goLiveLocked === true || local.goLiveLocked === true || cloud.portalMode === 'production' || local.portalMode === 'production',
       settings: { ...DEFAULT_SETTINGS, ...(local.settings || {}), ...(cloud.settings || {}) },
       users: mergeUsers(local.users, cloud.users),
-      counters: cloudOwnsOperationalData ? { ...cloud.counters } : maxCounters(local.counters, cloud.counters),
-      people: cloudOwnsOperationalData ? [...(cloud.people || [])] : mergeRecordsById(local.people, cloud.people),
-      leads: cloudOwnsOperationalData ? [...(cloud.leads || [])] : mergeRecordsById(local.leads, cloud.leads),
-      jobs: cloudOwnsOperationalData ? [...(cloud.jobs || [])] : mergeRecordsById(local.jobs, cloud.jobs),
-      rewards: cloudOwnsOperationalData ? [...(cloud.rewards || [])] : mergeRecordsById(local.rewards, cloud.rewards),
-      finance: cloudOwnsOperationalData ? {
-        manualIncome:[...(cloud.finance?.manualIncome || [])], expenses:[...(cloud.finance?.expenses || [])]
-      } : {
+      counters: maxCounters(local.counters, cloud.counters),
+      people: mergeRecordsById(local.people, cloud.people),
+      leads: mergeRecordsById(local.leads, cloud.leads),
+      jobs: mergeRecordsById(local.jobs, cloud.jobs),
+      rewards: mergeRecordsById(local.rewards, cloud.rewards),
+      finance: {
         manualIncome: mergeRecordsById(local.finance?.manualIncome || [], cloud.finance?.manualIncome || []),
         expenses: mergeRecordsById(local.finance?.expenses || [], cloud.finance?.expenses || [])
       },
       websiteContent: Date.parse(local.websiteContent?.updatedAt || '') >= Date.parse(cloud.websiteContent?.updatedAt || '') ? normalizeWebsiteContent(local.websiteContent || {}) : normalizeWebsiteContent(cloud.websiteContent || {}),
       audit: [...(cloud.audit || []), ...(local.audit || [])].slice(-400)
     };
+    // A production reset starts a new data generation. A stale browser from an older
+    // generation must never re-introduce deleted test data into the clean cloud state.
+    if (cloud.dataGeneration && local.dataGeneration !== cloud.dataGeneration) {
+      merged.dataGeneration = cloud.dataGeneration;
+      merged.portalMode = cloud.portalMode || 'production';
+      merged.goLiveAt = cloud.goLiveAt || merged.goLiveAt || '';
+      merged.goLiveLocked = true;
+      merged.counters = cloud.counters || { nextPerson:1001, nextLead:1, nextJob:1, nextReward:1, nextFinance:1 };
+      merged.people = cloud.people || [];
+      merged.leads = cloud.leads || [];
+      merged.jobs = cloud.jobs || [];
+      merged.rewards = cloud.rewards || [];
+      merged.finance = cloud.finance || { manualIncome:[], expenses:[] };
+    }
     if (!merged.settings.scriptUrl && local.settings?.scriptUrl) merged.settings.scriptUrl = local.settings.scriptUrl;
     if (!merged.settings.driveFolderId && local.settings?.driveFolderId) merged.settings.driveFolderId = local.settings.driveFolderId;
     if (!merged.settings.backupFolderId && local.settings?.backupFolderId) merged.settings.backupFolderId = local.settings.backupFolderId;
@@ -1130,37 +1137,17 @@
     const hash = await crypto.subtle.digest('SHA-256', bytes);
     return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
-  function bytesToBase64(bytes) {
-    let binary = '';
-    new Uint8Array(bytes).forEach(b => { binary += String.fromCharCode(b); });
-    return btoa(binary);
-  }
-  function makeSalt() {
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    return bytesToBase64(bytes);
-  }
-  async function pbkdf2Hash(password, salt, iterations = 210000) {
-    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-    const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt:new TextEncoder().encode(salt), iterations }, key, 256);
-    return bytesToBase64(bits);
-  }
+
+  function makeSalt() { return crypto.getRandomValues(new Uint32Array(2)).join('-') + '-' + Date.now(); }
   async function verifyPassword(user, password) {
     if (!user.passwordHash) return true;
-    if (user.passwordAlgo === 'pbkdf2-sha256') {
-      const iterations = Number(user.passwordIterations || 210000);
-      return await pbkdf2Hash(password, user.salt || '', iterations) === user.passwordHash;
-    }
-    // Backward compatibility for existing salted SHA-256 hashes.
     return await sha256(`${user.salt}:${password}`) === user.passwordHash;
   }
   async function setPassword(userId, password) {
     const u = state.users.find(x => x.id === userId);
     if (!u) return false;
     u.salt = makeSalt();
-    u.passwordIterations = 210000;
-    u.passwordAlgo = 'pbkdf2-sha256';
-    u.passwordHash = await pbkdf2Hash(password, u.salt, u.passwordIterations);
-    ['password','plainPassword','passwort','temporaryPassword','newPassword'].forEach(key => delete u[key]);
+    u.passwordHash = await sha256(`${u.salt}:${password}`);
     touchUserRecord(u);
     saveState(`Passwort geändert: ${userId}`);
     return true;
@@ -1229,6 +1216,17 @@
     return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
   }
 
+  function hasOperationalData() {
+    return Boolean(
+      (state.people || []).length ||
+      (state.leads || []).length ||
+      (state.jobs || []).length ||
+      (state.rewards || []).length ||
+      (state.finance?.manualIncome || []).length ||
+      (state.finance?.expenses || []).length
+    );
+  }
+
   function updatePortalModeUi() {
     const production = String(state.portalMode || 'test') === 'production';
     const label = production ? `PRODUKTIVBETRIEB${state.goLiveAt ? ' seit ' + formatShortDate(state.goLiveAt) : ''}` : 'TESTBETRIEB';
@@ -1237,6 +1235,14 @@
       el.classList.toggle('production', production);
       el.classList.toggle('test', !production);
     });
+    const resetFinished = production && !hasOperationalData();
+    $$('[data-reset-cloud]').forEach(btn => {
+      btn.disabled = resetFinished;
+      btn.hidden = resetFinished;
+      btn.setAttribute('aria-disabled', String(resetFinished));
+      if (production && hasOperationalData()) btn.textContent = 'Verbliebene Testdaten endgültig löschen';
+    });
+    $$('[data-production-reset-hint]').forEach(el => { el.hidden = !resetFinished; });
   }
 
   function isSetupUnlocked(section) {
@@ -1471,9 +1477,6 @@
       toast(`Passwort für ${user.name} gesetzt.`);
     } else if (!(await verifyPassword(user, password))) {
       return toast('Passwort stimmt nicht.');
-    } else if (user.passwordAlgo !== 'pbkdf2-sha256') {
-      // Transparently upgrade older hashes after a successful login.
-      await setPassword(userId, password);
     }
     currentUser = userId;
     sessionStorage.setItem(SESSION_KEY, currentUser);
@@ -1963,7 +1966,7 @@
       ['Manuell ergänzt', money(s.manualIncome), `${s.manual.length} Eintrag(e)`],
       ['Pipeline offen', money(s.forecastTotal), `${s.forecast.length} Job(s) + ${s.forecastLeads.length} Lead(s)`],
       ['Ausgaben', money(s.expenseTotal), `${s.countedExpenses.length} bezahlt/gebucht · ${s.employeeOpenExpenses.length} Lohn offen · ${s.rewardOpenExpenses.length} Bonus offen`],
-      ['Löhne & Mitarbeiter bezahlt', money(s.employeeCostTotal), `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen`],
+      ['Löhne bezahlt', money(s.employeeCostTotal), `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen`],
       ['Gewinn', money(s.profit), 'bezahlte Einnahmen minus Ausgaben']
     ].map(([label,val,sub]) => `<div class="stat"><span>${esc(label)}</span><strong>${esc(val)}</strong><em>${esc(sub)}</em></div>`).join('');
 
@@ -4070,7 +4073,7 @@
       ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
       ['Pipeline offen / noch nicht kassiert', s.forecastTotal, `${s.forecast.length} offene/geplante Jobs + ${s.forecastLeads.length} offene Leads`],
-      ['Löhne & Mitarbeiter bezahlt', -s.employeeCostTotal, `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen (${money(s.employeeOpenTotal)})`],
+      ['Löhne bezahlt', -s.employeeCostTotal, `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen (${money(s.employeeOpenTotal)})`],
       ['Empfehlungsboni eingelöst / ausbezahlt', -s.rewardPaidTotal, `${s.rewardPaidExpenses.length} bezahlt · ${s.rewardOpenExpenses.length} gutgeschrieben/offen (${money(s.rewardOpenTotal)})`],
       ['Ausgaben gesamt', -s.expenseTotal, `${s.countedExpenses.length} gebuchte Kostenposition(en)`],
       ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
@@ -4216,7 +4219,7 @@
       ['Bezahlte Jobs', s.jobIncome, `${s.jobs.length} kassierte Jobs`],
       ['Manuell ergänzt', s.manualIncome, `${s.manual.length} Eintrag(e)`],
       ['Pipeline offen / noch nicht kassiert', s.forecastTotal, `${s.forecastAll.length} offene/geplante Einträge`],
-      ['Löhne & Mitarbeiter bezahlt', -s.employeeCostTotal, `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen (${money(s.employeeOpenTotal)})`],
+      ['Löhne bezahlt', -s.employeeCostTotal, `${s.employeePaidExpenses.length} bezahlt · ${s.employeeOpenExpenses.length} offen (${money(s.employeeOpenTotal)})`],
       ['Empfehlungsboni eingelöst / ausbezahlt', -s.rewardPaidTotal, `${s.rewardPaidExpenses.length} bezahlt · ${s.rewardOpenExpenses.length} gutgeschrieben/offen (${money(s.rewardOpenTotal)})`],
       ['Ausgaben gesamt', -s.expenseTotal, `${s.countedExpenses.length} gebuchte Kostenposition(en)`],
       ['Gewinn', s.profit, 'bezahlte Einnahmen minus Ausgaben']
@@ -4882,32 +4885,53 @@
 
   async function goLiveResetCloud() {
     if (!isAdmin()) return toast('Nur Admins können Testdaten löschen.');
+    if (String(state.portalMode || 'test') === 'production' && !hasOperationalData()) {
+      updatePortalModeUi();
+      return toast('Produktivbetrieb ist aktiv und alle Testdaten sind bereits gelöscht. Der Löschvorgang ist dauerhaft gesperrt.');
+    }
     saveSettingsFromForm(false);
     const url = currentScriptUrl();
     if (!url) return toast('Bitte zuerst Google Apps Script URL in den Einstellungen eintragen.');
     if (!(await confirmSensitiveAction('Testdaten löschen und produktiv starten?'))) return;
     const typed = prompt('Letzte Bestätigung: Schreibe PRODUKTIV, um Test-Leads/Jobs/Kunden/Buchhaltung zu löschen. Benutzer, Passwörter, Einstellungen und veröffentlichte Website-Inhalte bleiben erhalten.');
     if (typed !== 'PRODUKTIV') return toast('Vorgang abgebrochen.');
+    const button = $('[data-reset-cloud]');
+    if (button) button.disabled = true;
     try {
-      const data = await jsonpRequest(url, 'golivereset', { confirm:'START-PRODUCTION', backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId });
+      const data = await jsonpRequest(url, 'golivereset', {
+        confirm:'START-PRODUCTION',
+        backupFolderId: getSetting('backupFolderId') || DEFAULT_SETTINGS.backupFolderId
+      });
       if (!data?.ok) throw new Error(data?.error || 'Produktiv-Start nicht bestätigt.');
-      const now = data.resetAt || new Date().toISOString();
       const clean = newState();
+      clean.version = state.version || clean.version;
+      clean.createdAt = state.createdAt || clean.createdAt;
+      clean.updatedAt = data.resetAt || new Date().toISOString();
       clean.portalMode = 'production';
-      clean.goLiveAt = now;
-      clean.dataEpoch = String(data.dataEpoch || `production-${now}`);
-      clean.settings = { ...state.settings };
-      clean.users = (state.users || []).map(u => normalizeEmployeeUser(u));
-      clean.websiteContent = normalizeWebsiteContent(state.websiteContent || {});
-      clean.audit = [{ at:now, by:currentUser || 'system', reason:'Testdaten gelöscht und Produktivmodus gestartet' }];
-      state = clean;
-      localStorage.setItem(STORE_KEY, JSON.stringify(clean));
+      clean.goLiveAt = data.resetAt || new Date().toISOString();
+      clean.dataGeneration = data.dataGeneration || clean.goLiveAt;
+      clean.goLiveLocked = true;
+      clean.settings = { ...clean.settings, ...(state.settings || {}) };
+      clean.users = Array.isArray(state.users) ? state.users : clean.users;
+      clean.websiteContent = normalizeWebsiteContent(state.websiteContent || defaultWebsiteContent());
+      clean.counters = { nextPerson:1001, nextLead:1, nextJob:1, nextReward:1, nextFinance:1 };
+      clean.people = [];
+      clean.leads = [];
+      clean.jobs = [];
+      clean.rewards = [];
+      clean.finance = { manualIncome:[], expenses:[] };
+      clean.audit = [];
+      state = migrateState(clean);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
       OLD_KEYS.forEach(k => localStorage.removeItem(k));
-      localStorage.removeItem(ACTIVITY_LOG_QUEUE_KEY);
-      toast(`Testdaten vollständig gelöscht. Produktivmodus aktiv.${data.cleanupWarning ? ' Hinweis: '+data.cleanupWarning : ''}`);
-      setTimeout(() => location.reload(), 900);
-    } catch {
-      toast('Produktiv-Start konnte nicht abgeschlossen werden.');
+      updatePortalModeUi();
+      renderAll();
+      const warning = Array.isArray(data.warnings) && data.warnings.length ? ` Hinweis: ${data.warnings.join(' | ')}` : '';
+      toast(`Testdaten gelöscht und Produktivbetrieb dauerhaft aktiviert.${warning}`);
+    } catch (err) {
+      console.error('Go-live reset failed:', err);
+      if (button) button.disabled = false;
+      toast(`Produktiv-Start fehlgeschlagen: ${err?.message || 'Unbekannter Fehler'}`);
     }
   }
 

@@ -119,9 +119,12 @@ function syncFull_(payload) {
 function emptyState_() {
   var now = new Date().toISOString();
   return {
-    version: 10,
+    version: 11,
     createdAt: now,
     updatedAt: now,
+    portalMode: 'test',
+    goLiveAt: '',
+    dataEpoch: '',
     users: [],
     settings: {},
     counters: { nextPerson: 1001, nextLead: 1, nextJob: 1, nextReward: 1, nextFinance: 1 },
@@ -143,12 +146,46 @@ function resetAll_(confirmText) {
   createBackupSnapshot_(current, 'before-full-reset');
   appendActivityLogEntries_([{ timestamp: new Date().toISOString(), userId: 'system', userName: 'System', action: 'Kompletter Cloud-Reset', area: 'Setup', objectId: '', description: 'Cloud State wurde komplett zurückgesetzt.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: current.portalMode || '', source: 'server' }], 'system', 'reset-all');
   var state = emptyState_();
+  state.dataEpoch = newDataEpoch_('full-reset');
   state.settings = { backupFolderId: DEFAULT_BACKUP_FOLDER_ID, driveFolderId: DEFAULT_DRIVE_FOLDER_ID, calendarId: DEFAULT_CALENDAR_ID };
   writeSheets_(state);
   clearWebsiteLeadSheet_();
   saveState_(state, null);
   createBackupSnapshot_(state, 'after-full-reset');
   return json_({ ok: true, resetAt: new Date().toISOString() });
+}
+
+function cleanupTestCalendarAndDrive_(state) {
+  var warnings = [];
+  var deletedEvents = 0;
+  var trashedFolders = 0;
+  var settings = (state && state.settings) || {};
+  var calendarId = parseCalendarId_(settings.calendarId || DEFAULT_CALENDAR_ID);
+  try {
+    var calendar = calendarId === 'primary' ? CalendarApp.getDefaultCalendar() : CalendarApp.getCalendarById(calendarId);
+    if (calendar) {
+      (state.jobs || []).forEach(function(job) { deletedEvents += deleteCalendarEventsForJob_(calendar, job); });
+    }
+  } catch (calendarErr) { warnings.push('Kalenderbereinigung: ' + String(calendarErr)); }
+
+  try {
+    var rootId = String(settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID || '').trim();
+    if (rootId) {
+      var root = DriveApp.getFolderById(rootId);
+      var ids = {};
+      (state.people || []).forEach(function(person) { if (person && person.id) ids[sanitizeDriveName_(person.id)] = true; });
+      Object.keys(ids).forEach(function(name) {
+        var folders = root.getFoldersByName(name);
+        while (folders.hasNext()) { folders.next().setTrashed(true); trashedFolders++; }
+      });
+      // WebsiteMedia is intentionally never touched.
+    }
+  } catch (driveErr) { warnings.push('Drive-Bereinigung: ' + String(driveErr)); }
+  return { deletedEvents:deletedEvents, trashedFolders:trashedFolders, warning:warnings.join(' | ') };
+}
+
+function newDataEpoch_(prefix) {
+  return String(prefix || 'epoch') + '-' + new Date().getTime() + '-' + Utilities.getUuid();
 }
 
 function goLiveReset_(confirmText, backupFolderId) {
@@ -159,6 +196,7 @@ function goLiveReset_(confirmText, backupFolderId) {
   current.settings = current.settings || {};
   current.settings.backupFolderId = String(backupFolderId || current.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID).trim() || DEFAULT_BACKUP_FOLDER_ID;
   createBackupSnapshot_(current, 'before-go-live-reset');
+  var cleanup = cleanupTestCalendarAndDrive_(current);
 
   var now = new Date().toISOString();
   var clean = emptyState_();
@@ -167,6 +205,7 @@ function goLiveReset_(confirmText, backupFolderId) {
   clean.updatedAt = now;
   clean.portalMode = 'production';
   clean.goLiveAt = now;
+  clean.dataEpoch = newDataEpoch_('production');
   clean.users = current.users || [];
   // Website content is production content, not disposable test data.
   // Keep published texts, links, media and gallery during the Go-Live reset.
@@ -189,7 +228,7 @@ function goLiveReset_(confirmText, backupFolderId) {
   saveState_(clean, null);
   createBackupSnapshot_(clean, 'after-go-live-reset');
   appendActivityLogEntries_([{ timestamp: now, userId: 'system', userName: 'System', action: 'Testdaten gelöscht & Produktivbetrieb gestartet', area: 'Setup', objectId: '', description: 'Go-Live Reset: Testdaten gelöscht, Einstellungen/Benutzer/Website-Inhalte behalten.', deviceId: 'apps-script', deviceLabel: 'Apps Script', portalMode: 'production', source: 'server' }], 'system', 'go-live-reset');
-  return json_({ ok: true, resetAt: now, mode: 'production' });
+  return json_({ ok: true, resetAt: now, mode: 'production', dataEpoch:clean.dataEpoch, deletedCalendarEvents:cleanup.deletedEvents, trashedDriveFolders:cleanup.trashedFolders, cleanupWarning:cleanup.warning || '' });
 }
 
 function clearWebsiteLeadSheet_() {
@@ -300,12 +339,13 @@ function normalizeStateForMerge_(s) {
   out.createdAt = out.createdAt || base.createdAt;
   out.updatedAt = out.updatedAt || '';
   out.portalMode = out.portalMode || 'test';
+  out.dataEpoch = String(out.dataEpoch || '');
   out.goLiveAt = out.goLiveAt || '';
   out.settings = out.settings || {};
   out.settings.driveFolderId = out.settings.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
   out.settings.backupFolderId = out.settings.backupFolderId || DEFAULT_BACKUP_FOLDER_ID;
   out.settings.calendarId = out.settings.calendarId || DEFAULT_CALENDAR_ID;
-  out.users = Array.isArray(out.users) ? out.users : [];
+  out.users = Array.isArray(out.users) ? out.users.map(sanitizeUserCredentials_) : [];
   out.counters = out.counters || {};
   out.counters.nextPerson = Number(out.counters.nextPerson || 1001);
   out.counters.nextLead = Number(out.counters.nextLead || 1);
@@ -376,6 +416,16 @@ function copyObject_(source) {
   source = source || {};
   for (var key in source) if (Object.prototype.hasOwnProperty.call(source, key)) out[key] = source[key];
   return out;
+}
+
+function deepClone_(value) {
+  return JSON.parse(JSON.stringify(value === undefined ? null : value));
+}
+
+function sanitizeUserCredentials_(user) {
+  var clean = deepClone_(user || {});
+  ['password','plainPassword','passwort','temporaryPassword','newPassword'].forEach(function(key) { delete clean[key]; });
+  return clean;
 }
 
 function mergeUserObjects_(older, newer) {
@@ -463,14 +513,18 @@ function mergeStates_(current, incoming, userId) {
   merged.updatedAt = now;
   merged.portalMode = (current.portalMode === 'production' || incoming.portalMode === 'production') ? 'production' : (incoming.portalMode || current.portalMode || 'test');
   merged.goLiveAt = current.goLiveAt || incoming.goLiveAt || '';
+  var currentEpoch = String(current.dataEpoch || '');
+  var incomingEpoch = String(incoming.dataEpoch || '');
+  var rejectIncomingOperationalData = !!currentEpoch && currentEpoch !== incomingEpoch;
+  merged.dataEpoch = currentEpoch || incomingEpoch || '';
   merged.settings = mergeSettings_(current.settings, incoming.settings);
   merged.users = mergeUsers_(current.users, incoming.users);
-  merged.counters = maxCounters_(current.counters, incoming.counters);
-  merged.people = mergeRecordArrays_(current.people, incoming.people);
-  merged.leads = mergeRecordArrays_(current.leads, incoming.leads);
-  merged.jobs = mergeRecordArrays_(current.jobs, incoming.jobs);
-  merged.rewards = mergeRecordArrays_(current.rewards, incoming.rewards);
-  merged.finance = {
+  merged.counters = rejectIncomingOperationalData ? deepClone_(current.counters) : maxCounters_(current.counters, incoming.counters);
+  merged.people = rejectIncomingOperationalData ? deepClone_(current.people) : mergeRecordArrays_(current.people, incoming.people);
+  merged.leads = rejectIncomingOperationalData ? deepClone_(current.leads) : mergeRecordArrays_(current.leads, incoming.leads);
+  merged.jobs = rejectIncomingOperationalData ? deepClone_(current.jobs) : mergeRecordArrays_(current.jobs, incoming.jobs);
+  merged.rewards = rejectIncomingOperationalData ? deepClone_(current.rewards) : mergeRecordArrays_(current.rewards, incoming.rewards);
+  merged.finance = rejectIncomingOperationalData ? deepClone_(current.finance) : {
     manualIncome: mergeRecordArrays_(current.finance.manualIncome, incoming.finance.manualIncome),
     expenses: mergeRecordArrays_(current.finance.expenses, incoming.finance.expenses)
   };
@@ -1030,6 +1084,7 @@ function stateForStorage_(state) {
   // If Drive upload worked, savePhoto_ already replaced dataUrl with Drive metadata.
   // If Drive upload failed, keep an error marker but strip the base64 to avoid breaking cloud state.
   var clean = JSON.parse(JSON.stringify(state || {}));
+  clean.users = (clean.users || []).map(sanitizeUserCredentials_);
   (clean.jobs || []).forEach(function(job) {
     ['beforePhoto', 'afterPhoto'].forEach(function(key) {
       var ph = job[key];
